@@ -1,0 +1,15 @@
+/home/ludvig/Programming/CSharp/math/bin/Debug/net10.0/math
+/home/ludvig/Programming/CSharp/math/bin/Debug/net10.0/math.deps.json
+/home/ludvig/Programming/CSharp/math/bin/Debug/net10.0/math.runtimeconfig.json
+/home/ludvig/Programming/CSharp/math/bin/Debug/net10.0/math.dll
+/home/ludvig/Programming/CSharp/math/bin/Debug/net10.0/math.pdb
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.GeneratedMSBuildEditorConfig.editorconfig
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.AssemblyInfoInputs.cache
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.AssemblyInfo.cs
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.csproj.CoreCompileInputs.cache
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.sourcelink.json
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.dll
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/refint/math.dll
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.pdb
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/math.genruntimeconfig.cache
+/home/ludvig/Programming/CSharp/math/obj/Debug/net10.0/ref/math.dll
