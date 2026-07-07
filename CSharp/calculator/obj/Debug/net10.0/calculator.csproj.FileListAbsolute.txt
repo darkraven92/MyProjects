@@ -1,0 +1,15 @@
+/home/ludvig/Programming/CSharp/calculator/bin/Debug/net10.0/calculator
+/home/ludvig/Programming/CSharp/calculator/bin/Debug/net10.0/calculator.deps.json
+/home/ludvig/Programming/CSharp/calculator/bin/Debug/net10.0/calculator.runtimeconfig.json
+/home/ludvig/Programming/CSharp/calculator/bin/Debug/net10.0/calculator.dll
+/home/ludvig/Programming/CSharp/calculator/bin/Debug/net10.0/calculator.pdb
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.GeneratedMSBuildEditorConfig.editorconfig
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.AssemblyInfoInputs.cache
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.AssemblyInfo.cs
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.csproj.CoreCompileInputs.cache
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.sourcelink.json
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.dll
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/refint/calculator.dll
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.pdb
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/calculator.genruntimeconfig.cache
+/home/ludvig/Programming/CSharp/calculator/obj/Debug/net10.0/ref/calculator.dll
