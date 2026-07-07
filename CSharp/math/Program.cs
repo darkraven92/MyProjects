@@ -30,14 +30,16 @@ namespace Math
                 }
                 _heigth = value;
             }
-            public double Area
+        }
+
+        public double Area
         {
             get
             {
                 return (_bas * _heigth) / 2.0;
             }
         }
-        }
+
 
         //Konstruktor
         public Triangle(int bas, int height)
@@ -47,22 +49,23 @@ namespace Math
         }
     }
     class Program
-{
-    static void Main(string[] args)
     {
-        Console.WriteLine("Base: ");
-        int bas = int.Parse(Console.ReadLine());
-        Console.WriteLine("Height: ");
-        int height = int.Parse(Console.ReadLine());
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Base: ");
+            int bas = int.Parse(Console.ReadLine());
+            Console.WriteLine("Height: ");
+            int height = int.Parse(Console.ReadLine());
 
-        try
-        {
-            Triangle triangle = new Triangle(bas, height);
-            Console.WriteLine($"Area: {triangle.Area} ");
-        }
-        catch (ArgumentException ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
+            try
+            {
+                Triangle triangle = new Triangle(bas, height);
+                Console.WriteLine($"Area: {triangle.Area} ");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
         }
     }
 }
