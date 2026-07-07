@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/ludvig/Programming/CSharp/CSharp.csproj": {}
+    "/home/ludvig/Programming/CSharp/math/math.csproj": {}
   },
   "projects": {
-    "/home/ludvig/Programming/CSharp/CSharp.csproj": {
+    "/home/ludvig/Programming/CSharp/math/math.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/ludvig/Programming/CSharp/CSharp.csproj",
-        "projectName": "CSharp",
-        "projectPath": "/home/ludvig/Programming/CSharp/CSharp.csproj",
+        "projectUniqueName": "/home/ludvig/Programming/CSharp/math/math.csproj",
+        "projectName": "math",
+        "projectPath": "/home/ludvig/Programming/CSharp/math/math.csproj",
         "packagesPath": "/home/ludvig/.nuget/packages/",
-        "outputPath": "/home/ludvig/Programming/CSharp/obj/",
+        "outputPath": "/home/ludvig/Programming/CSharp/math/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/ludvig/.nuget/NuGet/NuGet.Config"
