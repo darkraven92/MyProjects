@@ -1,0 +1,15 @@
+/home/ludvig/Programming/CSharp/ContactManager/bin/Debug/net10.0/ContactManager
+/home/ludvig/Programming/CSharp/ContactManager/bin/Debug/net10.0/ContactManager.deps.json
+/home/ludvig/Programming/CSharp/ContactManager/bin/Debug/net10.0/ContactManager.runtimeconfig.json
+/home/ludvig/Programming/CSharp/ContactManager/bin/Debug/net10.0/ContactManager.dll
+/home/ludvig/Programming/CSharp/ContactManager/bin/Debug/net10.0/ContactManager.pdb
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.GeneratedMSBuildEditorConfig.editorconfig
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.AssemblyInfoInputs.cache
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.AssemblyInfo.cs
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.csproj.CoreCompileInputs.cache
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.sourcelink.json
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.dll
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/refint/ContactManager.dll
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.pdb
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ContactManager.genruntimeconfig.cache
+/home/ludvig/Programming/CSharp/ContactManager/obj/Debug/net10.0/ref/ContactManager.dll
