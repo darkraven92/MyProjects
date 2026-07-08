@@ -43,6 +43,11 @@ class Program
                 });
 
             }
+            if (input == 2)
+            {
+                Console.WriteLine("Search: ");
+                string searchName = Console.ReadLine();
+            }
         }
     }
 }
