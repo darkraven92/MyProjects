@@ -1,0 +1,15 @@
+/home/ludvig/Programming/CSharp/BankAccountSystem/bin/Debug/net10.0/BankAccountSystem
+/home/ludvig/Programming/CSharp/BankAccountSystem/bin/Debug/net10.0/BankAccountSystem.deps.json
+/home/ludvig/Programming/CSharp/BankAccountSystem/bin/Debug/net10.0/BankAccountSystem.runtimeconfig.json
+/home/ludvig/Programming/CSharp/BankAccountSystem/bin/Debug/net10.0/BankAccountSystem.dll
+/home/ludvig/Programming/CSharp/BankAccountSystem/bin/Debug/net10.0/BankAccountSystem.pdb
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.GeneratedMSBuildEditorConfig.editorconfig
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.AssemblyInfoInputs.cache
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.AssemblyInfo.cs
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.csproj.CoreCompileInputs.cache
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.sourcelink.json
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.dll
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/refint/BankAccountSystem.dll
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.pdb
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/BankAccountSystem.genruntimeconfig.cache
+/home/ludvig/Programming/CSharp/BankAccountSystem/obj/Debug/net10.0/ref/BankAccountSystem.dll

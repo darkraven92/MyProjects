@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "QnAN3mfwVzo=",
+  "success": true,
+  "projectFilePath": "/home/ludvig/Programming/CSharp/ProCSharp10With.Net6/ProCSharp10With.Net6.csproj",
+  "expectedPackageFiles": [
+    "/home/ludvig/.nuget/packages/microsoft.aspnetcore.app.ref/10.0.9/microsoft.aspnetcore.app.ref.10.0.9.nupkg.sha512"
+  ],
+  "logs": []
+}
