@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Projects/" />
+  <Folder Name="/Projects/MyFirstConsoleApp/">
+    <Project Path="Projects/MyFirstConsoleApp/MyFirstConsoleApp/MyFirstConsoleApp.csproj" />
+  </Folder>
+</Solution>

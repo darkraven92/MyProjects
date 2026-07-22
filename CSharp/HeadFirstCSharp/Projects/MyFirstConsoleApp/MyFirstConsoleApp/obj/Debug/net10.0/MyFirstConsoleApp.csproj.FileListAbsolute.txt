@@ -1,0 +1,15 @@
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/bin/Debug/net10.0/MyFirstConsoleApp
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/bin/Debug/net10.0/MyFirstConsoleApp.deps.json
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/bin/Debug/net10.0/MyFirstConsoleApp.runtimeconfig.json
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/bin/Debug/net10.0/MyFirstConsoleApp.dll
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/bin/Debug/net10.0/MyFirstConsoleApp.pdb
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.GeneratedMSBuildEditorConfig.editorconfig
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.AssemblyInfoInputs.cache
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.AssemblyInfo.cs
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.csproj.CoreCompileInputs.cache
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.sourcelink.json
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.dll
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/refint/MyFirstConsoleApp.dll
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.pdb
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/MyFirstConsoleApp.genruntimeconfig.cache
+/home/ludvig/Programming/CSharp/HeadFirstCSharp/Projects/MyFirstConsoleApp/MyFirstConsoleApp/obj/Debug/net10.0/ref/MyFirstConsoleApp.dll
