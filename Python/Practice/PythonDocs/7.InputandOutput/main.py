@@ -32,16 +32,56 @@ def main():
     skriv_ut_resultat(elever)
 main()  
 """
+"""
+def analysera_fil(filnamn):
+    antal_rader = 0
+    total_tecken = 0
 
-def analysera_fil(f):
-    with open("workfile.txt") as f:
-        print(f.read())
-    
+    with open(filnamn, "r", encoding="utf-8") as f:
+        for rad in f:
+            antal_rader += 1
+            rensad_rad = rad.strip("\n")
+            total_tecken += len(rensad_rad)
+    print(f"Antal rader: {antal_rader}")
+    print(f"Antal tecken: {total_tecken}")
 
 def main():
-    with open("workfile.txt", "w", encoding="utf-8") as f:
+    filnamn = "workfile.txt"
+    with open(filnamn, "w", encoding="utf-8") as f:
         f.write("Hej på dig!\nDet här är en testfil.")
-    analysera_fil(f)
+    analysera_fil(filnamn)
     
 
 main()
+"""
+"""
+def analysera_logg(filnamn, sokord):
+    antal_rader = 0
+    traffar = 0
+
+    with open(filnamn,"r",encoding="utf-8") as f:
+        for rad in f:
+            antal_rader +=1
+            if sokord in rad:
+                traffar += 1
+        print(f"Totalt antal loggrader:{antal_rader}")
+        print(f"Antal rader med {sokord}: {traffar}")
+
+
+def main():
+
+    loggdata = (
+        "INFO: Systemet startade\n"
+        "ERROR: Kunde inte ansluta till databasen\n"
+        "INFO: Användare loggade in\n"
+        "ERROR: Filen hittades inte\n"
+        "WARNING: Lite minne kvar\n"
+    )
+
+    filnamn = "workfile2.txt"
+    with open(filnamn,"w",encoding="utf-8") as f:
+        f.write(loggdata)
+    sokord = input()
+    analysera_logg(filnamn, sokord)
+main()
+"""

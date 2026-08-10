@@ -1,0 +1,5 @@
+INFO: Systemet startade
+ERROR: Kunde inte ansluta till databasen
+INFO: Användare loggade in
+ERROR: Filen hittades inte
+WARNING: Lite minne kvar
