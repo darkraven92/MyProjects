@@ -85,3 +85,23 @@ def main():
     analysera_logg(filnamn, sokord)
 main()
 """
+import json
+
+def spara_anvandare(filnamn,data):
+    with open(filnamn,"w",encoding="utf-8") as f:
+        json.dump(data,f,indent=4)
+def ladda_anvandare(filnamn):
+    with open(filnamn,"r",encoding="utf-8") as f:
+        return json.load(f)
+
+def main():
+    anvandare = {
+    "alice": {"namn": "Alice", "alder": 28, "roller": ["admin", "utvecklare"]},
+    "bob": {"namn": "Bob", "alder": 34, "roller": ["anvandare"]},
+    }
+    filnamn = "workfile3.json"
+    spara_anvandare(filnamn,anvandare)
+    hamtad_data = ladda_anvandare(filnamn)
+    print("Inläst data: ")
+    print(hamtad_data)
+main()

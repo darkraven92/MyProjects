@@ -1,0 +1,17 @@
+{
+    "alice": {
+        "namn": "Alice",
+        "alder": 28,
+        "roller": [
+            "admin",
+            "utvecklare"
+        ]
+    },
+    "bob": {
+        "namn": "Bob",
+        "alder": 34,
+        "roller": [
+            "anvandare"
+        ]
+    }
+}
