@@ -85,6 +85,7 @@ def main():
     analysera_logg(filnamn, sokord)
 main()
 """
+"""
 import json
 
 def spara_anvandare(filnamn,data):
@@ -105,3 +106,4 @@ def main():
     print("Inläst data: ")
     print(hamtad_data)
 main()
+"""
