@@ -1,0 +1,6 @@
+width = int(input("Enter the width for the rectangle: "))
+print("O"*width)
+print("O"*width)
+print("O"*width)
+print("O"*width)
+print("O"*width)
