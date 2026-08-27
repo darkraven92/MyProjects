@@ -25,6 +25,6 @@ uint8_t gb_read8(GB_Context *ctx, uint16_t addr);
 void fallback_interpreter(GB_Context *ctx, uint8_t opcode);
 void record_pc(uint16_t pc);   // debug: ring-buffer of recent PCs
 void dump_pc_history(void);    // debug: print that ring buffer
-void ppu_render_frame(const char *path); // renders current VRAM BG layer to a PNG
+void ppu_render_frame(const char *path);   // renders current VRAM BG+Window+Sprites to a PNG
 
 #endif

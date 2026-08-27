@@ -1,5 +1,10 @@
 #include "runtime.h"
 #include <stdlib.h>
+#include <string.h>
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 
 uint8_t rom[0x100000]; // 1MB ROM Buffer (this cart is an 8Mbit/1MB MBC5 image)
 uint8_t wram_hram[0x10000];
@@ -19,6 +24,108 @@ static uint8_t ext_ram[0x20000];       // 128KB max - covers every MBC5 RAM size
 // Real Game Boy: 4194304 Hz CPU clock, 154 scanlines/frame, 456 cycles/line.
 #define CYCLES_PER_SCANLINE 456
 #define CYCLES_PER_FRAME (456UL * 154UL) // 70224
+
+// ---- Joypad ----------------------------------------------------------------
+// The GB joypad register (0xFF00) is a multiplexed read/write port.
+// The game writes bit 5 low to select action buttons (A,B,Select,Start) or
+// bit 4 low to select the d-pad (Right,Left,Up,Down). It then reads bits 3-0
+// which come back as 0=pressed, 1=not-pressed.
+//
+// We track two 4-bit nibbles of currently-held buttons, updated from stdin
+// in non-blocking raw mode once per frame, and return them when the game
+// reads 0xFF00 based on which group it selected.
+//
+// Key mapping:
+//   Arrow keys   -> D-pad
+//   Z            -> A button
+//   X            -> B button
+//   Enter        -> Start
+//   Backspace    -> Select
+
+static uint8_t joy_action = 0x0F;  // bits: Start|Select|B|A  (0=pressed)
+static uint8_t joy_dpad   = 0x0F;  // bits: Down|Up|Left|Right (0=pressed)
+static int joy_hold_frames = 0;    // how many more frames to hold current buttons
+
+static struct termios term_orig;
+static int term_raw = 0;
+
+static void joypad_restore_terminal(void) {
+    if (term_raw) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &term_orig);
+        term_raw = 0;
+    }
+}
+
+static void joypad_init(void) {
+    if (!isatty(STDIN_FILENO)) return;
+    tcgetattr(STDIN_FILENO, &term_orig);
+    struct termios raw = term_orig;
+    raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+    term_raw = 1;
+    atexit(joypad_restore_terminal);
+    printf("[JOY] Keyboard input active: Arrows=D-pad  Z=A  X=B  Enter=Start  Bksp=Select\n");
+}
+
+static void joypad_poll(void) {
+    if (!term_raw) return;
+
+    uint8_t prev_action = joy_action;
+    uint8_t prev_dpad   = joy_dpad;
+
+    // Only reset buttons if the hold timer has expired
+    if (joy_hold_frames <= 0) {
+        joy_action = 0x0F;
+        joy_dpad   = 0x0F;
+    } else {
+        joy_hold_frames--;
+    }
+
+    uint8_t buf[16];
+    int n;
+    while ((n = (int)read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
+        for (int i = 0; i < n; ) {
+            if (buf[i] == 0x1B && i + 2 < n && buf[i+1] == '[') {
+                switch (buf[i+2]) {
+                    case 'A': joy_dpad   &= ~0x04; break; // Up
+                    case 'B': joy_dpad   &= ~0x08; break; // Down
+                    case 'C': joy_dpad   &= ~0x01; break; // Right
+                    case 'D': joy_dpad   &= ~0x02; break; // Left
+                }
+                i += 3;
+            } else {
+                switch (buf[i]) {
+                    case 'z': case 'Z': joy_action &= ~0x01; break; // A
+                    case 'x': case 'X': joy_action &= ~0x02; break; // B
+                    case '\r': case '\n': joy_action &= ~0x08; break; // Start
+                    case 127: case '\b': joy_action &= ~0x04; break;  // Select
+                }
+                i++;
+            }
+        }
+    }
+
+    // If any new button was pressed, hold it for 8 frames so the game's
+    // debounce counter sees it consistently. Also fire a joypad interrupt.
+    if (joy_action != prev_action || joy_dpad != prev_dpad) {
+        joy_hold_frames = 8;
+        wram_hram[0xFF0F] |= 0x10; // Joypad interrupt (bit 4 of IF)
+    }
+}
+
+uint8_t joypad_read(uint8_t select_byte) {
+    // select_byte is what the game wrote to 0xFF00.
+    // Bit 5 low = action group selected; bit 4 low = dpad group selected.
+    // Bits 3-0 of the return value are the button states (0=pressed).
+    uint8_t result = 0xCF; // upper bits always 1, bits 3-0 default unpressed
+    if (!(select_byte & 0x20)) result = (result & 0xF0) | (joy_action & 0x0F);
+    if (!(select_byte & 0x10)) result = (result & 0xF0) | (joy_dpad   & 0x0F);
+    return result;
+}
 
 void load_rom(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -49,6 +156,13 @@ void gb_write8(GB_Context *ctx, uint16_t addr, uint8_t val) {
     }
 
     wram_hram[addr] = val;
+    if (addr == 0xFF00) {
+        // Game wrote the joypad select byte — store it so joypad_read can
+        // use it on the next read. The game typically writes then immediately
+        // reads 0xFF00, so we just keep the last-written value here.
+        wram_hram[0xFF00] = val;
+        return;
+    }
     if (addr >= 0xFF00 && getenv("GB_TRACE")) {
         printf("[IO WRITE] 0x%04X <- 0x%02X\n", addr, val);
     }
@@ -62,6 +176,9 @@ uint8_t gb_read8(GB_Context *ctx, uint16_t addr) {
         uint32_t bank = ((uint32_t)mbc5_rom_bank_hi << 8) | mbc5_rom_bank_lo;
         uint32_t off = bank * 0x4000 + (addr - 0x4000);
         return (off < sizeof(rom)) ? rom[off] : 0xFF;
+    }
+    if (addr == 0xFF00) {
+        return joypad_read(wram_hram[0xFF00]);
     }
     // LY (current scanline, 0-153): derived from real elapsed cycles rather
     // than just incrementing on every read, so it's actually tied to time -
@@ -94,6 +211,8 @@ int main() {
 
     printf("Starting Main Recompiled Execution Loop...\n");
 
+    joypad_init();
+
     int trap_dumped = 0;
     uint64_t next_vblank_cycles = CYCLES_PER_FRAME;
 
@@ -117,6 +236,9 @@ int main() {
         if (ctx.cycles >= next_vblank_cycles) {
             wram_hram[0xFF0F] |= 0x01;
             next_vblank_cycles += CYCLES_PER_FRAME;
+            // Poll joypad: holds buttons for 8 frames, fires joypad interrupt
+            // on new press so the game's debounce logic sees it reliably.
+            joypad_poll();
             static int frame_no = 0;
             frame_no++;
             if (getenv("GB_SCREENSHOT_EVERY_FRAME")) {

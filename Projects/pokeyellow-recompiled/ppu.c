@@ -140,6 +140,9 @@ static void write_png_grayscale(const char *path, int width, int height, const u
     fclose(f);
 }
 
+// Forward declaration - defined later in this file
+static void ppu_render_sprites(uint8_t *fb, uint8_t lcdc);
+
 // ---- Background-layer rendering --------------------------------------------
 
 void ppu_render_frame(const char *path) {
@@ -234,6 +237,105 @@ void ppu_render_frame(const char *path) {
         }
     }
 
+    // Composite sprites on top of background + window layers
+    ppu_render_sprites(fb, lcdc);
+
     write_png_grayscale(path, 160, 144, fb);
     free(fb);
+}
+
+// ---- OAM sprite rendering --------------------------------------------------
+//
+// The Game Boy holds up to 40 sprites in OAM (0xFE00-0xFE9F). Each entry is
+// 4 bytes: [Y_pos, X_pos, tile_index, attributes].
+//
+// Hardware rules we implement here:
+//   - Sprites are always 8x8 (or 8x16 when LCDC bit 2 is set).
+//   - Tile data always uses unsigned addressing from 0x8000 (unlike BG/Win
+//     which can use 0x9000-based signed addressing).
+//   - Color index 0 is transparent - those pixels don't overwrite the BG.
+//   - OBP0 (0xFF48) is used when attribute bit 4 is clear; OBP1 (0xFF49)
+//     when set. Color index 0 is always transparent in both palettes.
+//   - Attribute bit 5: X-flip. Attribute bit 6: Y-flip.
+//   - Attribute bit 7: BG priority. When set, sprite pixels with color
+//     index 1-3 are only drawn where the BG color index is 0 (i.e. the
+//     sprite goes *behind* non-transparent BG).
+//   - Hardware X/Y positions are offset: Y is 16 above screen top, X is 8
+//     left of screen left (so Y=16,X=8 puts a sprite at the top-left).
+//   - On real hardware only 10 sprites are drawn per scanline (priority by
+//     X then OAM order). We skip that limit since we're not scanline-
+//     accurate - all 40 are composited at once.
+//   - Z-ordering: lower OAM index = higher priority (drawn last so it wins).
+//     We draw high-index sprites first, low-index last (painter's algorithm).
+
+static void ppu_render_sprites(uint8_t *fb, uint8_t lcdc) {
+    if (!(lcdc & 0x02)) return; // sprites disabled
+
+    static const uint8_t shade[4] = {255, 170, 85, 0};
+    uint8_t obp0 = wram_hram[0xFF48];
+    uint8_t obp1 = wram_hram[0xFF49];
+    int tall = (lcdc & 0x04) != 0; // 8x16 mode
+    int sprite_h = tall ? 16 : 8;
+
+    // Build a per-pixel "background is non-zero color" mask so we can
+    // implement BG-priority correctly without re-decoding BG tiles.
+    // We encode the original BG color index (0-3) per pixel in a
+    // separate shadow buffer. We'll need to re-derive it from the fb
+    // grayscale value using the current BGP - simpler to just track it
+    // directly. We use a small stack buffer since this is called per-frame.
+    // Actually, since we only need to know "is bg color index 0 or not"
+    // we can derive it from the fb pixel value: shade[0]=255 means BG
+    // color index was 0 (white/transparent for priority purposes).
+    // This is correct for the standard DMG palette.
+
+    // Iterate sprites in reverse OAM order so lower-index sprites are
+    // painted last (win over higher-index in overlapping pixels).
+    for (int s = 39; s >= 0; s--) {
+        uint16_t oam_addr = 0xFE00 + s * 4;
+        int sy = (int)wram_hram[oam_addr + 0] - 16;
+        int sx = (int)wram_hram[oam_addr + 1] - 8;
+        uint8_t tile_idx = wram_hram[oam_addr + 2];
+        uint8_t attr = wram_hram[oam_addr + 3];
+
+        if (tall) tile_idx &= 0xFE; // In 8x16 mode the LSB of tile index is ignored
+
+        int x_flip = (attr & 0x20) != 0;
+        int y_flip = (attr & 0x40) != 0;
+        int bg_prio = (attr & 0x80) != 0;
+        uint8_t pal = (attr & 0x10) ? obp1 : obp0;
+
+        for (int row = 0; row < sprite_h; row++) {
+            int screen_y = sy + row;
+            if (screen_y < 0 || screen_y >= 144) continue;
+
+            int tile_row = y_flip ? (sprite_h - 1 - row) : row;
+            // In 8x16 mode the top tile is tile_idx, bottom tile is tile_idx+1
+            uint8_t this_tile = (tile_row < 8) ? tile_idx : (tile_idx + 1);
+            int fine_y = tile_row & 7;
+
+            uint16_t tile_addr = 0x8000 + this_tile * 16;
+            uint8_t b0 = wram_hram[tile_addr + fine_y * 2];
+            uint8_t b1 = wram_hram[tile_addr + fine_y * 2 + 1];
+
+            for (int col = 0; col < 8; col++) {
+                int screen_x = sx + col;
+                if (screen_x < 0 || screen_x >= 160) continue;
+
+                int bit = x_flip ? col : (7 - col);
+                int lo = (b0 >> bit) & 1;
+                int hi = (b1 >> bit) & 1;
+                int color_idx = (hi << 1) | lo;
+
+                if (color_idx == 0) continue; // transparent
+
+                // BG priority: if the attribute says "behind BG", only draw
+                // this sprite pixel where the BG pixel is color index 0
+                // (white = 255 with standard BGP 0xE4).
+                if (bg_prio && fb[screen_y * 160 + screen_x] != 255) continue;
+
+                int shade_idx = (pal >> (color_idx * 2)) & 3;
+                fb[screen_y * 160 + screen_x] = shade[shade_idx];
+            }
+        }
+    }
 }
