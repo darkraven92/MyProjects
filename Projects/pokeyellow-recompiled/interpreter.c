@@ -233,11 +233,13 @@ static void exec_cb(GB_Context *ctx, uint8_t sub_op) {
 static uint16_t pc_history[PC_HISTORY_LEN];
 static int pc_history_pos = 0;
 
+void record_pc(uint16_t pc) __attribute__((weak));
 void record_pc(uint16_t pc) {
     pc_history[pc_history_pos] = pc;
     pc_history_pos = (pc_history_pos + 1) % PC_HISTORY_LEN;
 }
 
+void dump_pc_history(void) __attribute__((weak));
 void dump_pc_history(void) {
     printf("[HISTORY] last %d PCs (oldest first, one per line):\n", PC_HISTORY_LEN);
     for (int i = 0; i < PC_HISTORY_LEN; i++) {

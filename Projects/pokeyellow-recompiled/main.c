@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/stat.h>
 
 uint8_t rom[0x100000]; // 1MB ROM Buffer (this cart is an 8Mbit/1MB MBC5 image)
 uint8_t wram_hram[0x10000];
@@ -45,6 +46,7 @@ static uint8_t ext_ram[0x20000];       // 128KB max - covers every MBC5 RAM size
 static uint8_t joy_action = 0x0F;  // bits: Start|Select|B|A  (0=pressed)
 static uint8_t joy_dpad   = 0x0F;  // bits: Down|Up|Left|Right (0=pressed)
 static int joy_hold_frames = 0;    // how many more frames to hold current buttons
+static int joy_fd = -1;            // file descriptor for input (pipe or tty)
 
 static struct termios term_orig;
 static int term_raw = 0;
@@ -57,6 +59,23 @@ static void joypad_restore_terminal(void) {
 }
 
 static void joypad_init(void) {
+    // Prefer a named pipe "input.pipe" in the current directory - this
+    // works even when stdin is not a tty (e.g. piped, redirected, or
+    // running in a non-interactive environment).
+    const char *pipe_path = "input.pipe";
+    // Create the pipe if it doesn't exist
+    if (access(pipe_path, F_OK) != 0) {
+        mkfifo(pipe_path, 0666);
+    }
+    // Open non-blocking so we don't stall waiting for a writer
+    joy_fd = open(pipe_path, O_RDONLY | O_NONBLOCK);
+    if (joy_fd >= 0) {
+        printf("[JOY] Input pipe ready: echo -n 's' > input.pipe  (s=Start a=A b=B arrows=dpad q=Select)\n");
+        printf("[JOY] Key map: s=Start  a=A  b=B  q=Select  w=Up  x=Down  d=Right  c=Left\n");
+        return;
+    }
+
+    // Fallback: try raw terminal stdin
     if (!isatty(STDIN_FILENO)) return;
     tcgetattr(STDIN_FILENO, &term_orig);
     struct termios raw = term_orig;
@@ -67,12 +86,13 @@ static void joypad_init(void) {
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
     term_raw = 1;
+    joy_fd = STDIN_FILENO;
     atexit(joypad_restore_terminal);
     printf("[JOY] Keyboard input active: Arrows=D-pad  Z=A  X=B  Enter=Start  Bksp=Select\n");
 }
 
 static void joypad_poll(void) {
-    if (!term_raw) return;
+    if (joy_fd < 0) return;
 
     uint8_t prev_action = joy_action;
     uint8_t prev_dpad   = joy_dpad;
@@ -87,43 +107,56 @@ static void joypad_poll(void) {
 
     uint8_t buf[16];
     int n;
-    while ((n = (int)read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        for (int i = 0; i < n; ) {
-            if (buf[i] == 0x1B && i + 2 < n && buf[i+1] == '[') {
+    while ((n = (int)read(joy_fd, buf, sizeof(buf))) > 0) {
+        for (int i = 0; i < n; i++) {
+            uint8_t ch = buf[i];
+            // Named pipe simple key map (single char per press)
+            // Also handle raw terminal escape sequences
+            if (ch == 0x1B && i + 2 < n && buf[i+1] == '[') {
                 switch (buf[i+2]) {
-                    case 'A': joy_dpad   &= ~0x04; break; // Up
-                    case 'B': joy_dpad   &= ~0x08; break; // Down
-                    case 'C': joy_dpad   &= ~0x01; break; // Right
-                    case 'D': joy_dpad   &= ~0x02; break; // Left
+                    case 'A': joy_dpad &= ~0x04; break; // Up
+                    case 'B': joy_dpad &= ~0x08; break; // Down
+                    case 'C': joy_dpad &= ~0x01; break; // Right
+                    case 'D': joy_dpad &= ~0x02; break; // Left
                 }
-                i += 3;
-            } else {
-                switch (buf[i]) {
-                    case 'z': case 'Z': joy_action &= ~0x01; break; // A
-                    case 'x': case 'X': joy_action &= ~0x02; break; // B
-                    case '\r': case '\n': joy_action &= ~0x08; break; // Start
-                    case 127: case '\b': joy_action &= ~0x04; break;  // Select
-                }
-                i++;
+                i += 2;
+            } else switch (ch) {
+                // Named pipe / SDL controls (single ASCII char)
+                case 's': case 'S': case '\r': case '\n':
+                    joy_action &= ~0x08; break; // Start  (action bit 3)
+                case 'a': case 'A':
+                    joy_action &= ~0x01; break; // A      (action bit 0)
+                case 'b': case 'B': case 'z': case 'Z':
+                    joy_action &= ~0x02; break; // B      (action bit 1)
+                case 'q': case 'Q': case 127: case '\b':
+                    joy_action &= ~0x04; break; // Select (action bit 2)
+                case 'w': case 'W':
+                    joy_dpad   &= ~0x04; break; // Up     (dpad bit 2)
+                case 'e': case 'E':
+                    joy_dpad   &= ~0x08; break; // Down   (dpad bit 3)
+                case 'f': case 'F':
+                    joy_dpad   &= ~0x01; break; // Right  (dpad bit 0)
+                case 'r': case 'R':
+                    joy_dpad   &= ~0x02; break; // Left   (dpad bit 1)
             }
         }
     }
 
-    // If any new button was pressed, hold it for 8 frames so the game's
-    // debounce counter sees it consistently. Also fire a joypad interrupt.
+    // If any new button was pressed, hold it for 10 frames and fire joypad interrupt
     if (joy_action != prev_action || joy_dpad != prev_dpad) {
-        joy_hold_frames = 8;
-        wram_hram[0xFF0F] |= 0x10; // Joypad interrupt (bit 4 of IF)
+        joy_hold_frames = 10;
+        wram_hram[0xFF0F] |= 0x10; // Joypad interrupt
     }
 }
 
 uint8_t joypad_read(uint8_t select_byte) {
     // select_byte is what the game wrote to 0xFF00.
-    // Bit 5 low = action group selected; bit 4 low = dpad group selected.
-    // Bits 3-0 of the return value are the button states (0=pressed).
-    uint8_t result = 0xCF; // upper bits always 1, bits 3-0 default unpressed
-    if (!(select_byte & 0x20)) result = (result & 0xF0) | (joy_action & 0x0F);
-    if (!(select_byte & 0x10)) result = (result & 0xF0) | (joy_dpad   & 0x0F);
+    // Bit 5 LOW = action buttons selected (A,B,Select,Start in bits 3-0)
+    // Bit 4 LOW = d-pad selected (Down,Up,Left,Right in bits 3-0)
+    // 0 = pressed, 1 = not pressed.
+    uint8_t result = 0xFF;
+    if (!(select_byte & 0x20)) result &= (0xF0 | (joy_action & 0x0F)); // action
+    if (!(select_byte & 0x10)) result &= (0xF0 | (joy_dpad   & 0x0F)); // dpad
     return result;
 }
 
@@ -156,10 +189,18 @@ void gb_write8(GB_Context *ctx, uint16_t addr, uint8_t val) {
     }
 
     wram_hram[addr] = val;
+    // OAM DMA transfer: writing to 0xFF46 triggers an immediate copy of
+    // 160 bytes from (val << 8) into OAM (0xFE00-0xFE9F).
+    // On real hardware this takes 160 microseconds and the CPU can only
+    // access HRAM during that time - we just do it instantly.
+    if (addr == 0xFF46) {
+        uint16_t src = (uint16_t)val << 8;
+        for (int i = 0; i < 0xA0; i++) {
+            wram_hram[0xFE00 + i] = gb_read8(ctx, src + i);
+        }
+        return;
+    }
     if (addr == 0xFF00) {
-        // Game wrote the joypad select byte — store it so joypad_read can
-        // use it on the next read. The game typically writes then immediately
-        // reads 0xFF00, so we just keep the last-written value here.
         wram_hram[0xFF00] = val;
         return;
     }
@@ -178,7 +219,12 @@ uint8_t gb_read8(GB_Context *ctx, uint16_t addr) {
         return (off < sizeof(rom)) ? rom[off] : 0xFF;
     }
     if (addr == 0xFF00) {
-        return joypad_read(wram_hram[0xFF00]);
+        uint8_t result = joypad_read(wram_hram[0xFF00]);
+        if (getenv("GB_JOY_TRACE") && result != 0xFF) {
+            printf("[JOY] read 0xFF00 (select=0x%02X) -> 0x%02X PC=0x%04X\n",
+                   wram_hram[0xFF00], result, ctx->pc);
+        }
+        return result;
     }
     // LY (current scanline, 0-153): derived from real elapsed cycles rather
     // than just incrementing on every read, so it's actually tied to time -
@@ -250,13 +296,26 @@ int main() {
                 char path[300];
                 snprintf(path, sizeof(path), "%s/sample_%05d.png", screenshot_dir, frame_no);
                 ppu_render_frame(path);
-                int nz_td = 0, nz_m0 = 0, nz_m1 = 0;
+                int nz_td = 0, nz_m0 = 0, nz_m1 = 0, nz_oam = 0;
                 for (int k = 0x8000; k < 0x9800; k++) if (wram_hram[k]) nz_td++;
                 for (int k = 0x9800; k < 0x9C00; k++) if (wram_hram[k]) nz_m0++;
                 for (int k = 0x9C00; k < 0xA000; k++) if (wram_hram[k]) nz_m1++;
-                printf("[PPU] frame=%d BGP=0x%02X LCDC=0x%02X WY=%d SCX=%d SCY=%d td=%d m0=%d m1=%d -> %s\n",
+                for (int k = 0xFE00; k < 0xFEA0; k++) if (wram_hram[k]) nz_oam++;
+                printf("[PPU] frame=%d BGP=0x%02X LCDC=0x%02X WY=%d SCX=%d SCY=%d td=%d m0=%d m1=%d oam=%d -> %s\n",
                        frame_no, wram_hram[0xFF47], wram_hram[0xFF40], wram_hram[0xFF4A],
-                       wram_hram[0xFF43], wram_hram[0xFF42], nz_td, nz_m0, nz_m1, path);
+                       wram_hram[0xFF43], wram_hram[0xFF42], nz_td, nz_m0, nz_m1, nz_oam, path);
+                if (getenv("GB_DUMP_OAM") && nz_oam > 0) {
+                    printf("[OAM] ");
+                    for (int s = 0; s < 40; s++) {
+                        uint8_t y = wram_hram[0xFE00 + s*4];
+                        uint8_t x = wram_hram[0xFE01 + s*4];
+                        uint8_t t = wram_hram[0xFE02 + s*4];
+                        uint8_t a = wram_hram[0xFE03 + s*4];
+                        if (y != 0 && y != 0xFF)
+                            printf("s%d:Y=%d,X=%d,T=%02X,A=%02X ", s, y-16, x-8, t, a);
+                    }
+                    printf("\n");
+                }
             }
         }
 
