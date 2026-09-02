@@ -1,19 +1,12 @@
 #include "nes_ppu.h"
 
-#include <algorithm>
 #include <array>
 #include <fstream>
-#include <stdexcept>
-#include <vector>
 
 namespace
 {
     constexpr uint8_t PPUSTATUS_VBLANK = 0x80;
 
-    // Standard-ish NES RGB palette.
-    //
-    // The NES has 64 palette entries.
-    // This is the palette we use for rendering.
     constexpr std::array<uint32_t, 64> NES_PALETTE =
     {
         0xFF545454, 0xFF001E74, 0xFF081090, 0xFF300088,
@@ -113,9 +106,13 @@ uint8_t NesPpu::cpuRead(uint16_t address)
         {
             const uint8_t value = ppuStatus;
 
-            // Reading PPUSTATUS clears VBlank
-            // and resets the address latch.
-            ppuStatus &= ~PPUSTATUS_VBLANK;
+            // Reading PPUSTATUS:
+            // - clears VBlank
+            // - resets $2005/$2006 latch
+            ppuStatus &= static_cast<uint8_t>(
+                ~PPUSTATUS_VBLANK
+            );
+
             addressLatch = false;
 
             return value;
@@ -136,35 +133,49 @@ uint8_t NesPpu::cpuRead(uint16_t address)
     }
 }
 
-void NesPpu::cpuWrite(uint16_t address, uint8_t value)
+void NesPpu::cpuWrite(
+    uint16_t address,
+    uint8_t value
+)
 {
     address = 0x2000 | (address & 0x0007);
 
     switch (address)
     {
         case 0x2000:
+        {
             ppuCtrl = value;
             break;
+        }
 
         case 0x2001:
+        {
             ppuMask = value;
             break;
+        }
 
         case 0x2002:
-            // PPUSTATUS is read-only.
+        {
+            // Read-only register.
             break;
+        }
 
         case 0x2003:
+        {
             // OAMADDR.
             // OAM is not implemented yet.
             break;
+        }
 
         case 0x2004:
+        {
             // OAMDATA.
             // OAM is not implemented yet.
             break;
+        }
 
         case 0x2005:
+        {
             if (!addressLatch)
             {
                 scrollX = value;
@@ -175,13 +186,18 @@ void NesPpu::cpuWrite(uint16_t address, uint8_t value)
                 scrollY = value;
                 addressLatch = false;
             }
+
             break;
+        }
 
         case 0x2006:
+        {
             if (!addressLatch)
             {
                 vramAddress =
-                    static_cast<uint16_t>(value & 0x3F) << 8;
+                    static_cast<uint16_t>(
+                        value & 0x3F
+                    ) << 8;
 
                 addressLatch = true;
             }
@@ -195,24 +211,33 @@ void NesPpu::cpuWrite(uint16_t address, uint8_t value)
 
                 addressLatch = false;
             }
+
             break;
+        }
 
         case 0x2007:
-            writeVram(vramAddress, value);
+        {
+            writeVram(
+                vramAddress,
+                value
+            );
+
             incrementVramAddress();
+
             break;
+        }
     }
 }
 
 void NesPpu::tick(uint32_t cpuCycles)
 {
-    // NES PPU runs approximately 3x the CPU clock.
+    // NES PPU runs at approximately 3x CPU frequency.
     const uint32_t addedPpuCycles =
         cpuCycles * 3;
 
     ppuCycles += addedPpuCycles;
 
-    while (ppuCycles >= 1)
+    while (ppuCycles > 0)
     {
         ppuCycles--;
 
@@ -227,17 +252,37 @@ void NesPpu::tick(uint32_t cpuCycles)
             {
                 // Start of VBlank.
                 ppuStatus |= PPUSTATUS_VBLANK;
+
+                // PPUCTRL bit 7 enables NMI during VBlank.
+                if (ppuCtrl & 0x80)
+                {
+                    nmiRequested = true;
+                }
             }
 
             if (ppuScanline >= 262)
             {
+                // New frame.
                 ppuScanline = 0;
 
-                // End of VBlank.
-                ppuStatus &= ~PPUSTATUS_VBLANK;
+                ppuStatus &= static_cast<uint8_t>(
+                    ~PPUSTATUS_VBLANK
+                );
             }
         }
     }
+}
+
+bool NesPpu::pollNmi()
+{
+    if (!nmiRequested)
+    {
+        return false;
+    }
+
+    nmiRequested = false;
+
+    return true;
 }
 
 void NesPpu::renderFrame()
@@ -298,12 +343,6 @@ void NesPpu::fillTestNametable()
 {
     nametableRam.fill(0);
 
-    // ------------------------------------------------------------
-    // Background tilemap
-    // ------------------------------------------------------------
-    //
-    // Use tiles from the real SMB CHR-ROM.
-    //
     for (int y = 0; y < 30; ++y)
     {
         for (int x = 0; x < 32; ++x)
@@ -321,19 +360,13 @@ void NesPpu::fillTestNametable()
         }
     }
 
-    // ------------------------------------------------------------
-    // Attribute table
-    // ------------------------------------------------------------
-    //
-    // Attribute table starts at $23C0.
-    //
-    // There are 64 attribute bytes.
-    // Every byte controls a 4x4 tile area,
-    // split into four 2x2 tile quadrants.
-    //
-    for (int attributeY = 0; attributeY < 8; ++attributeY)
+    for (int attributeY = 0;
+         attributeY < 8;
+         ++attributeY)
     {
-        for (int attributeX = 0; attributeX < 8; ++attributeX)
+        for (int attributeX = 0;
+             attributeX < 8;
+             ++attributeX)
         {
             uint8_t attribute = 0;
 
@@ -379,69 +412,49 @@ void NesPpu::fillTestNametable()
         }
     }
 
-    // ------------------------------------------------------------
-    // Palette RAM
-    // ------------------------------------------------------------
-    //
-    // Background universal color.
-    //
     paletteRam[0x00] = 0x0F;
 
-    // Background palette 0.
     paletteRam[0x01] = 0x16;
     paletteRam[0x02] = 0x27;
     paletteRam[0x03] = 0x18;
 
-    // Background palette 1.
     paletteRam[0x05] = 0x0F;
     paletteRam[0x06] = 0x30;
     paletteRam[0x07] = 0x21;
 
-    // Background palette 2.
     paletteRam[0x09] = 0x0F;
     paletteRam[0x0A] = 0x16;
     paletteRam[0x0B] = 0x27;
 
-    // Background palette 3.
     paletteRam[0x0D] = 0x0F;
     paletteRam[0x0E] = 0x30;
     paletteRam[0x0F] = 0x18;
 }
 
-uint8_t NesPpu::readVram(uint16_t address) const
+uint8_t NesPpu::readVram(
+    uint16_t address
+) const
 {
     address &= 0x3FFF;
 
-    // Pattern tables.
     if (address < 0x2000)
     {
         return chrRom[address];
     }
 
-    // Nametables.
     if (address < 0x3F00)
     {
-        uint16_t nametableAddress =
+        const uint16_t nametableAddress =
             address & 0x0FFF;
 
-        // For now we use the first nametable as the
-        // physical storage for all nametables.
-        nametableAddress &= 0x0FFF;
-
-        return nametableRam[nametableAddress];
+        return nametableRam[
+            nametableAddress
+        ];
     }
 
-    // Palette RAM.
     uint16_t paletteAddress =
         (address - 0x3F00) & 0x1F;
 
-    // Palette mirroring:
-    //
-    // $3F10 mirrors $3F00
-    // $3F14 mirrors $3F04
-    // $3F18 mirrors $3F08
-    // $3F1C mirrors $3F0C
-    //
     if (paletteAddress == 0x10)
         paletteAddress = 0x00;
 
@@ -454,7 +467,9 @@ uint8_t NesPpu::readVram(uint16_t address) const
     if (paletteAddress == 0x1C)
         paletteAddress = 0x0C;
 
-    return paletteRam[paletteAddress];
+    return paletteRam[
+        paletteAddress
+    ];
 }
 
 void NesPpu::writeVram(
@@ -464,24 +479,24 @@ void NesPpu::writeVram(
 {
     address &= 0x3FFF;
 
-    // CHR-ROM is read-only.
     if (address < 0x2000)
     {
+        // CHR-ROM is read-only.
         return;
     }
 
-    // Nametable RAM.
     if (address < 0x3F00)
     {
-        uint16_t nametableAddress =
+        const uint16_t nametableAddress =
             address & 0x0FFF;
 
-        nametableRam[nametableAddress] = value;
+        nametableRam[
+            nametableAddress
+        ] = value;
 
         return;
     }
 
-    // Palette RAM.
     uint16_t paletteAddress =
         (address - 0x3F00) & 0x1F;
 
@@ -497,19 +512,26 @@ void NesPpu::writeVram(
     if (paletteAddress == 0x1C)
         paletteAddress = 0x0C;
 
-    paletteRam[paletteAddress] =
-        value & 0x3F;
+    paletteRam[
+        paletteAddress
+    ] = value & 0x3F;
 }
 
 void NesPpu::incrementVramAddress()
 {
     if (ppuCtrl & 0x04)
     {
-        vramAddress += 32;
+        vramAddress =
+            static_cast<uint16_t>(
+                vramAddress + 32
+            );
     }
     else
     {
-        vramAddress += 1;
+        vramAddress =
+            static_cast<uint16_t>(
+                vramAddress + 1
+            );
     }
 
     vramAddress &= 0x3FFF;
@@ -535,10 +557,14 @@ uint8_t NesPpu::getChrPixel(
         );
 
     const uint8_t plane0 =
-        chrRom[tileAddress + y];
+        chrRom[
+            tileAddress + y
+        ];
 
     const uint8_t plane1 =
-        chrRom[tileAddress + 8 + y];
+        chrRom[
+            tileAddress + 8 + y
+        ];
 
     const int bit =
         7 - x;
@@ -560,8 +586,6 @@ uint8_t NesPpu::getBackgroundPaletteIndex(
     uint8_t pixelValue
 ) const
 {
-    // Color 0 in a tile is transparent and uses
-    // the universal background color.
     if (pixelValue == 0)
     {
         return 0;
@@ -581,9 +605,10 @@ uint8_t NesPpu::getBackgroundPaletteIndex(
         );
 
     const uint8_t attribute =
-        nametableRam[attributeAddress];
+        nametableRam[
+            attributeAddress
+        ];
 
-    // Determine which 2x2-tile quadrant we are in.
     const int quadrantX =
         (tileX % 4) / 2;
 
@@ -610,15 +635,19 @@ uint8_t NesPpu::getPaletteColorIndex(
 
     if (paletteIndex % 4 == 0)
     {
-        // Every background palette's color 0
-        // references universal background color.
         return paletteRam[0x00] & 0x3F;
     }
 
-    return paletteRam[paletteIndex] & 0x3F;
+    return paletteRam[
+        paletteIndex
+    ] & 0x3F;
 }
 
-uint32_t NesPpu::nesColor(uint8_t colorIndex)
+uint32_t NesPpu::nesColor(
+    uint8_t colorIndex
+)
 {
-    return NES_PALETTE[colorIndex & 0x3F];
+    return NES_PALETTE[
+        colorIndex & 0x3F
+    ];
 }

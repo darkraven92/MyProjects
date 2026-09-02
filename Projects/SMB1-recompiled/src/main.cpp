@@ -12,23 +12,10 @@
 
 namespace
 {
-    std::string hex16(uint16_t value)
-    {
-        std::ostringstream stream;
-        stream
-            << "$"
-            << std::uppercase
-            << std::hex
-            << std::setw(4)
-            << std::setfill('0')
-            << value;
-
-        return stream.str();
-    }
-
     std::string hex8(uint8_t value)
     {
         std::ostringstream stream;
+
         stream
             << "$"
             << std::uppercase
@@ -39,11 +26,27 @@ namespace
 
         return stream.str();
     }
+
+    std::string hex16(uint16_t value)
+    {
+        std::ostringstream stream;
+
+        stream
+            << "$"
+            << std::uppercase
+            << std::hex
+            << std::setw(4)
+            << std::setfill('0')
+            << value;
+
+        return stream.str();
+    }
 }
 
 int main()
 {
-    const char* romPath = "smb.nes";
+    const char* romPath =
+        "smb.nes";
 
     NesMemory memory;
     NesPpu ppu;
@@ -76,7 +79,7 @@ int main()
     memory.connectPpu(&ppu);
 
     // ------------------------------------------------------------
-    // Start CPU at SMB reset vector
+    // CPU reset
     // ------------------------------------------------------------
 
     cpu.reset();
@@ -168,19 +171,16 @@ int main()
     }
 
     // ------------------------------------------------------------
-    // Main loop
+    // Execution
     // ------------------------------------------------------------
 
     bool running = true;
 
     uint64_t instructionCount = 0;
+    uint64_t nmiCount = 0;
 
     while (running)
     {
-        // --------------------------------------------------------
-        // Input / window events
-        // --------------------------------------------------------
-
         SDL_Event event;
 
         while (SDL_PollEvent(&event))
@@ -200,13 +200,11 @@ int main()
         }
 
         // --------------------------------------------------------
-        // Execute a chunk of the real SMB CPU code
+        // Execute CPU instructions.
+        //
+        // We keep the old chunked approach for now, but NMI is
+        // checked between each instruction.
         // --------------------------------------------------------
-        //
-        // We deliberately execute only a chunk per frame.
-        // This lets us see the resulting PPU state instead
-        // of immediately running millions of instructions.
-        //
 
         constexpr int InstructionsPerFrame = 5000;
 
@@ -216,16 +214,34 @@ int main()
         {
             try
             {
-                const uint16_t oldPc = cpu.pc;
+                // ------------------------------------------------
+                // PPU -> CPU NMI
+                // ------------------------------------------------
 
-                const uint32_t cycles =
-                    cpu.step();
+                if (ppu.pollNmi())
+                {
+                    cpu.nmi();
+
+                    nmiCount++;
+
+                    if ((nmiCount % 60) == 0)
+                    {
+                        std::cout
+                            << "NMI count: "
+                            << nmiCount
+                            << "  PC: "
+                            << hex16(cpu.pc)
+                            << '\n';
+                    }
+                }
+
+                // ------------------------------------------------
+                // Execute one SMB instruction
+                // ------------------------------------------------
+
+                cpu.step();
 
                 instructionCount++;
-
-                // ------------------------------------------------
-                // Occasional CPU progress output
-                // ------------------------------------------------
 
                 if ((instructionCount % 100000) == 0)
                 {
@@ -240,22 +256,24 @@ int main()
                         << hex8(cpu.x)
                         << "  Y: "
                         << hex8(cpu.y)
-                        << "  cycles: "
-                        << cycles
+                        << "  SP: "
+                        << hex8(cpu.sp)
+                        << "  STATUS: "
+                        << hex8(cpu.status)
                         << '\n';
                 }
 
-                // Prevent an accidental infinite loop from
-                // completely freezing the graphical debugger.
-                if (instructionCount > 5000000)
+                // ------------------------------------------------
+                // Safety limit
+                // ------------------------------------------------
+
+                if (instructionCount >= 5000000)
                 {
                     std::cout
                         << "Instruction limit reached.\n";
 
                     running = false;
                 }
-
-                (void)oldPc;
             }
             catch (const std::exception& exception)
             {
@@ -272,7 +290,7 @@ int main()
         }
 
         // --------------------------------------------------------
-        // Render PPU state
+        // Render current PPU state
         // --------------------------------------------------------
 
         ppu.renderFrame();
@@ -305,12 +323,17 @@ int main()
     }
 
     // ------------------------------------------------------------
-    // Shutdown
+    // Results
     // ------------------------------------------------------------
 
     std::cout
         << "\nTotal instructions executed: "
         << instructionCount
+        << '\n';
+
+    std::cout
+        << "Total NMIs: "
+        << nmiCount
         << '\n';
 
     std::cout

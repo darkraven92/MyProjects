@@ -56,11 +56,71 @@ void NesCpu::reset()
         FLAG_UNUSED;
 
     pc =
-        static_cast<uint16_t>(read(0xFFFC)) |
-        static_cast<uint16_t>(read(0xFFFD)) << 8;
+        static_cast<uint16_t>(
+            read(0xFFFC)
+        ) |
+        static_cast<uint16_t>(
+            read(0xFFFD)
+        ) << 8;
 }
 
-uint8_t NesCpu::read(uint16_t address)
+void NesCpu::nmi()
+{
+    // Push PC high byte.
+    push(
+        static_cast<uint8_t>(
+            pc >> 8
+        )
+    );
+
+    // Push PC low byte.
+    push(
+        static_cast<uint8_t>(
+            pc & 0xFF
+        )
+    );
+
+    // Push processor status.
+    //
+    // Hardware NMI pushes the status with
+    // the Break flag clear and Unused set.
+    uint8_t pushedStatus =
+        status;
+
+    pushedStatus &=
+        static_cast<uint8_t>(
+            ~FLAG_BREAK
+        );
+
+    pushedStatus |=
+        FLAG_UNUSED;
+
+    push(
+        pushedStatus
+    );
+
+    // Disable maskable interrupts.
+    setFlag(
+        FLAG_INTERRUPT,
+        true
+    );
+
+    // NMI vector at $FFFA/$FFFB.
+    pc =
+        static_cast<uint16_t>(
+            read(0xFFFA)
+        ) |
+        static_cast<uint16_t>(
+            read(0xFFFB)
+        ) << 8;
+
+    // NMI takes 7 CPU cycles.
+    memory.tick(7);
+}
+
+uint8_t NesCpu::read(
+    uint16_t address
+)
 {
     return memory.read(address);
 }
@@ -70,7 +130,10 @@ void NesCpu::write(
     uint8_t value
 )
 {
-    memory.write(address, value);
+    memory.write(
+        address,
+        value
+    );
 }
 
 uint8_t NesCpu::fetchByte()
@@ -91,14 +154,22 @@ uint16_t NesCpu::fetchWord()
     const uint8_t high =
         fetchByte();
 
-    return static_cast<uint16_t>(low) |
-           (static_cast<uint16_t>(high) << 8);
+    return static_cast<uint16_t>(
+        low
+    ) |
+    (
+        static_cast<uint16_t>(
+            high
+        ) << 8
+    );
 }
 
 void NesCpu::push(uint8_t value)
 {
     write(
-        static_cast<uint16_t>(0x0100 | sp),
+        static_cast<uint16_t>(
+            0x0100 | sp
+        ),
         value
     );
 
@@ -110,7 +181,9 @@ uint8_t NesCpu::pull()
     sp++;
 
     return read(
-        static_cast<uint16_t>(0x0100 | sp)
+        static_cast<uint16_t>(
+            0x0100 | sp
+        )
     );
 }
 
@@ -125,16 +198,23 @@ void NesCpu::setFlag(
     }
     else
     {
-        status &= static_cast<uint8_t>(~flag);
+        status &=
+            static_cast<uint8_t>(
+                ~flag
+            );
     }
 }
 
-bool NesCpu::getFlag(uint8_t flag) const
+bool NesCpu::getFlag(
+    uint8_t flag
+) const
 {
     return (status & flag) != 0;
 }
 
-void NesCpu::setZeroNegativeFlags(uint8_t value)
+void NesCpu::setZeroNegativeFlags(
+    uint8_t value
+)
 {
     setFlag(
         FLAG_ZERO,
@@ -238,6 +318,33 @@ uint32_t NesCpu::step()
         }
 
         // --------------------------------------------------------
+        // LDY
+        // --------------------------------------------------------
+
+        case 0xA0: // LDY #imm
+        {
+            y = fetchByte();
+
+            setZeroNegativeFlags(y);
+
+            cycles = 2;
+            break;
+        }
+
+        case 0xAC: // LDY abs
+        {
+            const uint16_t address =
+                fetchWord();
+
+            y = read(address);
+
+            setZeroNegativeFlags(y);
+
+            cycles = 4;
+            break;
+        }
+
+        // --------------------------------------------------------
         // ORA
         // --------------------------------------------------------
 
@@ -323,8 +430,14 @@ uint32_t NesCpu::step()
                 );
 
             const uint16_t base =
-                static_cast<uint16_t>(low) |
-                (static_cast<uint16_t>(high) << 8);
+                static_cast<uint16_t>(
+                    low
+                ) |
+                (
+                    static_cast<uint16_t>(
+                        high
+                    ) << 8
+                );
 
             const uint16_t address =
                 static_cast<uint16_t>(
@@ -386,20 +499,6 @@ uint32_t NesCpu::step()
             x = fetchByte();
 
             setZeroNegativeFlags(x);
-
-            cycles = 2;
-            break;
-        }
-
-        // --------------------------------------------------------
-        // LDY
-        // --------------------------------------------------------
-
-        case 0xA0: // LDY #imm
-        {
-            y = fetchByte();
-
-            setZeroNegativeFlags(y);
 
             cycles = 2;
             break;
@@ -517,7 +616,9 @@ uint32_t NesCpu::step()
             );
 
             setZeroNegativeFlags(
-                static_cast<uint8_t>(result)
+                static_cast<uint8_t>(
+                    result
+                )
             );
 
             cycles = 2;
@@ -543,7 +644,9 @@ uint32_t NesCpu::step()
             );
 
             setZeroNegativeFlags(
-                static_cast<uint8_t>(result)
+                static_cast<uint8_t>(
+                    result
+                )
             );
 
             cycles = 2;
@@ -569,7 +672,9 @@ uint32_t NesCpu::step()
             );
 
             setZeroNegativeFlags(
-                static_cast<uint8_t>(result)
+                static_cast<uint8_t>(
+                    result
+                )
             );
 
             cycles = 2;
@@ -772,8 +877,14 @@ uint32_t NesCpu::step()
                 pull();
 
             pc =
-                static_cast<uint16_t>(low) |
-                (static_cast<uint16_t>(high) << 8);
+                static_cast<uint16_t>(
+                    low
+                ) |
+                (
+                    static_cast<uint16_t>(
+                        high
+                    ) << 8
+                );
 
             pc++;
 

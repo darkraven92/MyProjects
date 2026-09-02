@@ -821,11 +821,9 @@ CMakeFiles/Mario.dir/src/nes_ppu.cpp.o: /home/ludvig/Programming/Projects/SMB1-r
   /usr/include/bits/wchar.h \
   /usr/include/bits/wctype-wchar.h \
   /usr/include/bits/wordsize.h \
-  /usr/include/c++/16/algorithm \
   /usr/include/c++/16/array \
   /usr/include/c++/16/backward/binders.h \
   /usr/include/c++/16/bit \
-  /usr/include/c++/16/bits/algorithmfwd.h \
   /usr/include/c++/16/bits/alloc_traits.h \
   /usr/include/c++/16/bits/allocator.h \
   /usr/include/c++/16/bits/basic_ios.h \
@@ -875,28 +873,20 @@ CMakeFiles/Mario.dir/src/nes_ppu.cpp.o: /home/ludvig/Programming/Projects/SMB1-r
   /usr/include/c++/16/bits/stdexcept_except.h \
   /usr/include/c++/16/bits/stdexcept_throw.h \
   /usr/include/c++/16/bits/stdexcept_throwfwd.h \
-  /usr/include/c++/16/bits/stl_algo.h \
   /usr/include/c++/16/bits/stl_algobase.h \
-  /usr/include/c++/16/bits/stl_bvector.h \
   /usr/include/c++/16/bits/stl_construct.h \
   /usr/include/c++/16/bits/stl_function.h \
-  /usr/include/c++/16/bits/stl_heap.h \
   /usr/include/c++/16/bits/stl_iterator.h \
   /usr/include/c++/16/bits/stl_iterator_base_funcs.h \
   /usr/include/c++/16/bits/stl_iterator_base_types.h \
   /usr/include/c++/16/bits/stl_pair.h \
-  /usr/include/c++/16/bits/stl_tempbuf.h \
-  /usr/include/c++/16/bits/stl_uninitialized.h \
-  /usr/include/c++/16/bits/stl_vector.h \
   /usr/include/c++/16/bits/streambuf.tcc \
   /usr/include/c++/16/bits/streambuf_iterator.h \
   /usr/include/c++/16/bits/string_view.tcc \
   /usr/include/c++/16/bits/stringfwd.h \
-  /usr/include/c++/16/bits/uniform_int_dist.h \
   /usr/include/c++/16/bits/uses_allocator.h \
   /usr/include/c++/16/bits/uses_allocator_args.h \
   /usr/include/c++/16/bits/utility.h \
-  /usr/include/c++/16/bits/vector.tcc \
   /usr/include/c++/16/bits/version.h \
   /usr/include/c++/16/cctype \
   /usr/include/c++/16/cerrno \
@@ -924,8 +914,6 @@ CMakeFiles/Mario.dir/src/nes_ppu.cpp.o: /home/ludvig/Programming/Projects/SMB1-r
   /usr/include/c++/16/istream \
   /usr/include/c++/16/new \
   /usr/include/c++/16/ostream \
-  /usr/include/c++/16/pstl/execution_defs.h \
-  /usr/include/c++/16/pstl/glue_algorithm_defs.h \
   /usr/include/c++/16/pstl/pstl_config.h \
   /usr/include/c++/16/stdexcept \
   /usr/include/c++/16/streambuf \
@@ -935,7 +923,6 @@ CMakeFiles/Mario.dir/src/nes_ppu.cpp.o: /home/ludvig/Programming/Projects/SMB1-r
   /usr/include/c++/16/tuple \
   /usr/include/c++/16/type_traits \
   /usr/include/c++/16/typeinfo \
-  /usr/include/c++/16/vector \
   /usr/include/c++/16/x86_64-pc-linux-gnu/bits/atomic_word.h \
   /usr/include/c++/16/x86_64-pc-linux-gnu/bits/basic_file.h \
   /usr/include/c++/16/x86_64-pc-linux-gnu/bits/c++allocator.h \
@@ -1034,16 +1021,6 @@ CMakeFiles/Mario.dir/src/nes_cpu.cpp.o:
 
 /usr/lib/Scrt1.o:
 
-/usr/include/c++/16/vector:
-
-/usr/include/c++/16/bits/uniform_int_dist.h:
-
-/usr/include/c++/16/bits/stl_algo.h:
-
-/usr/include/c++/16/bits/algorithmfwd.h:
-
-/usr/include/c++/16/algorithm:
-
 /home/ludvig/Programming/Projects/SMB1-recompiled/src/nes_ppu.cpp:
 
 /usr/include/c++/16/bits/fstream.tcc:
@@ -1085,8 +1062,6 @@ CMakeFiles/Mario.dir/src/nes_cpu.cpp.o:
 /usr/include/features-time64.h:
 
 /usr/include/errno.h:
-
-/usr/include/c++/16/bits/stl_tempbuf.h:
 
 /usr/include/ctype.h:
 
@@ -1216,8 +1191,6 @@ CMakeFiles/Mario.dir/src/nes_cpu.cpp.o:
 
 /usr/include/asm-generic/int-ll64.h:
 
-/usr/include/c++/16/bits/stl_vector.h:
-
 /usr/include/asm-generic/errno.h:
 
 /usr/include/alloca.h:
@@ -1266,8 +1239,6 @@ CMakeFiles/Mario.dir/src/nes_cpu.cpp.o:
 
 /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_endian.h:
 
-/usr/include/c++/16/bits/vector.tcc:
-
 /usr/include/bits/floatn.h:
 
 /usr/include/bits/time.h:
@@ -1299,8 +1270,6 @@ CMakeFiles/Mario.dir/src/nes_cpu.cpp.o:
 /usr/include/c++/16/bits/move.h:
 
 /home/ludvig/Programming/Projects/SMB1-recompiled/src/nes_cpu.h:
-
-/usr/include/c++/16/pstl/glue_algorithm_defs.h:
 
 /usr/include/c++/16/debug/assertions.h:
 
@@ -1338,11 +1307,7 @@ CMakeFiles/Mario.dir/src/nes_cpu.cpp.o:
 
 /usr/include/c++/16/bits/uses_allocator_args.h:
 
-/usr/include/c++/16/bits/stl_uninitialized.h:
-
 /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_pen.h:
-
-/usr/include/c++/16/pstl/execution_defs.h:
 
 /usr/include/c++/16/bits/allocator.h:
 
@@ -1473,8 +1438,6 @@ CMakeFiles/Mario.dir/src/main.cpp.o:
 /usr/include/c++/16/bits/cxxabi_forced.h:
 
 /usr/include/c++/16/cwctype:
-
-/usr/include/c++/16/bits/stl_heap.h:
 
 /usr/include/c++/16/bits/codecvt.h:
 
@@ -1619,8 +1582,6 @@ CMakeFiles/Mario.dir/src/main.cpp.o:
 /usr/include/c++/16/cwchar:
 
 /usr/include/c++/16/type_traits:
-
-/usr/include/c++/16/bits/stl_bvector.h:
 
 /usr/include/asm-generic/types.h:
 

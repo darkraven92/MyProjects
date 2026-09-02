@@ -25,14 +25,18 @@ public:
     // Advance PPU timing.
     void tick(uint32_t cpuCycles);
 
-    // Render the current PPU state.
+    // Check whether the PPU has requested an NMI.
+    //
+    // Returns true once and clears the pending request.
+    bool pollNmi();
+
+    // Render the current PPU state into the framebuffer.
     void renderFrame();
 
     const std::array<uint32_t, ScreenWidth * ScreenHeight>&
     getFramebuffer() const;
 
     // Temporary test helper.
-    // Creates a complete background using the real SMB CHR-ROM.
     void fillTestNametable();
 
 private:
@@ -52,7 +56,7 @@ private:
     // $2002 - PPUSTATUS
     uint8_t ppuStatus = 0;
 
-    // $2005
+    // $2005 - PPUSCROLL
     uint8_t scrollX = 0;
     uint8_t scrollY = 0;
 
@@ -61,8 +65,12 @@ private:
 
     bool addressLatch = false;
 
-    // Simplified timing for now.
+    // Set when VBlank begins and PPUCTRL bit 7 is enabled.
+    bool nmiRequested = false;
+
+    // Simplified PPU timing.
     uint64_t ppuCycles = 0;
+
     uint16_t ppuScanline = 0;
     uint16_t ppuCycle = 0;
 
