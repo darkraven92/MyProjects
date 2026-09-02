@@ -1,0 +1,8 @@
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/CMakeFiles/Mario.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/CMakeFiles/edit_cache.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/CMakeFiles/rebuild_cache.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL/CMakeFiles/SDL3-shared.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL/CMakeFiles/SDL3_test.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL/CMakeFiles/SDL_uclibc.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL/CMakeFiles/edit_cache.dir
+/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL/CMakeFiles/rebuild_cache.dir

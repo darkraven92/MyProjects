@@ -1,0 +1,1 @@
+/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/Mario.dir/link.d CMakeFiles/Mario.dir/src/main.cpp.o CMakeFiles/Mario.dir/src/nes_memory.cpp.o CMakeFiles/Mario.dir/src/nes_cpu.cpp.o CMakeFiles/Mario.dir/src/nes_ppu.cpp.o -o Mario  -Wl,-rpath,/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL vendored/SDL/libSDL3.so.0.5.0

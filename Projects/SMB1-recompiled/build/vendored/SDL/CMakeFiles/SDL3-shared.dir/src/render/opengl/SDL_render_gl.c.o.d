@@ -1,0 +1,23 @@
+vendored/SDL/CMakeFiles/SDL3-shared.dir/src/render/opengl/SDL_render_gl.c.o: \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/SDL_render_gl.c \
+ /usr/include/stdc-predef.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/SDL_internal.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../../video/SDL_sysvideo.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_vulkan.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_stdinc.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_error.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_video.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_begin_code.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_close_code.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../../video/SDL_surface_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../../video/SDL_blit.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_opengl.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_platform.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_opengl_glext.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/16/include/stdint.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../SDL_sysrender.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../../video/SDL_surface_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../SDL_yuv_sw_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/SDL_shaders_gl.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/../../video/SDL_pixels_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengl/SDL_glfuncs.h

@@ -1,0 +1,26 @@
+vendored/SDL/CMakeFiles/SDL3-shared.dir/src/render/opengles/SDL_render_gles.c.o: \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/SDL_render_gles.c \
+ /usr/include/stdc-predef.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/SDL_internal.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_hints.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../../video/SDL_sysvideo.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_vulkan.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_stdinc.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_error.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_video.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_begin_code.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_close_code.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../../video/SDL_surface_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../../video/SDL_blit.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_opengles.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/include/SDL3/SDL_platform_defines.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/video/khronos/GLES/gl.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/video/khronos/GLES/glplatform.h \
+ /usr/include/KHR/khrplatform.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/16/include/stdint.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/video/khronos/GLES/glext.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../SDL_sysrender.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../../video/SDL_surface_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../SDL_yuv_sw_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/../../SDL_utils_c.h \
+ /home/ludvig/Programming/Projects/SMB1-recompiled/vendored/SDL/src/render/opengles/SDL_glesfuncs.h

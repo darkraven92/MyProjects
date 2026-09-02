@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/ludvig/Programming/Projects/SMB1-recompiled/build/cmake_install.cmake",
+		"/home/ludvig/Programming/Projects/SMB1-recompiled/build/vendored/SDL/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
