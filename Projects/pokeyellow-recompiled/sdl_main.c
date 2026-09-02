@@ -280,7 +280,85 @@ static void render_to_texture(SDL_Texture *tex) {
     SDL_UpdateTexture(tex, NULL, fb, 160 * sizeof(uint32_t));
 }
 
-// ---- main ------------------------------------------------------------------
+// ---- XP bar overlay --------------------------------------------------------
+// Drawn on top of the game's own rendered frame using SDL rectangles,
+// positioned just below the player's HP bar in the battle HUD.
+//
+// RAM addresses (Pokemon Yellow / Gen 1):
+//   0xD057: wIsInBattle  (0=overworld, 1=wild, 2=trainer)
+//   0xD014: wBattleMonSpecies
+//   0xD026: wBattleMonExp    (3 bytes, big-endian)
+//   0xD035: wBattleMonLevel
+//   0xCC2F: wPlayerMonNumber (active party slot, 0-based)
+//   0xD17E + slot*44: exp growth group (0=MedFast,1=Slow,2=MedSlow,3=Fast)
+
+static uint32_t exp_for_level(int level, int group) {
+    // Returns total exp needed to REACH `level` (i.e. exp at start of level)
+    if (level <= 1) return 0;
+    uint32_t n = (uint32_t)level;
+    switch (group) {
+        case 0: // Medium-Fast: n^3
+            return n * n * n;
+        case 1: // Slow: 5n^3 / 4
+            return 5 * n * n * n / 4;
+        case 2: // Medium-Slow: 6n^3/5 - 15n^2 + 100n - 140
+            return (6 * n * n * n / 5) - (15 * n * n) + (100 * n) - 140;
+        case 3: // Fast: 4n^3 / 5
+            return 4 * n * n * n / 5;
+        default:
+            return n * n * n;
+    }
+}
+
+static void draw_xp_bar(SDL_Renderer *ren) {
+    // Only draw during battle - check both the battle flag AND that a
+    // battle mon species is loaded (prevents showing in overworld)
+    uint8_t in_battle = wram_hram[0xD057];
+    uint8_t battle_species = wram_hram[0xD014];
+    if (!in_battle || !battle_species) return;
+
+    uint8_t level = wram_hram[0xD035];
+    if (level >= 100) return; // no XP bar at max level
+
+    // Current exp (3 bytes big-endian)
+    uint32_t cur_exp = ((uint32_t)wram_hram[0xD026] << 16)
+                     | ((uint32_t)wram_hram[0xD027] << 8)
+                     |  (uint32_t)wram_hram[0xD028];
+
+    // Get exp growth group from the active party slot
+    uint8_t slot      = wram_hram[0xCC2F];
+    uint8_t exp_group = wram_hram[0xD17E + slot * 44];
+
+    uint32_t exp_this  = exp_for_level(level,     exp_group);
+    uint32_t exp_next  = exp_for_level(level + 1, exp_group);
+    uint32_t exp_range = exp_next - exp_this;
+    uint32_t exp_into  = (cur_exp > exp_this) ? (cur_exp - exp_this) : 0;
+
+    // Bar position measured from actual screenshot pixel analysis:
+    // Player HP bar: game y=81, x=100, width=48
+    // XP bar sits at y=85 (clear row just below HP bar border),
+    // matching the HP bar's x and width exactly.
+    const int BAR_X = 100;
+    const int BAR_Y = 85;
+    const int BAR_W = 48;
+    const int BAR_H = 2;
+
+    // Background (darkest shade)
+    SDL_SetRenderDrawColor(ren, 8, 24, 32, 255);
+    SDL_Rect bg = { BAR_X, BAR_Y, BAR_W, BAR_H };
+    SDL_RenderFillRect(ren, &bg);
+
+    // Filled portion in Gen2-style blue
+    int fill = (exp_range > 0) ? (int)((uint64_t)exp_into * BAR_W / exp_range) : 0;
+    if (fill > BAR_W) fill = BAR_W;
+    if (fill > 0) {
+        SDL_SetRenderDrawColor(ren, 0, 144, 248, 255);
+        SDL_Rect filled = { BAR_X, BAR_Y, fill, BAR_H };
+        SDL_RenderFillRect(ren, &filled);
+    }
+}
+
+
 
 int main(int argc, char **argv) {
     const char *rom_path = "pokemon_yellow.gb";
@@ -316,16 +394,17 @@ int main(int argc, char **argv) {
     uint64_t next_vblank = CYCLES_PER_FRAME;
     int running = 1;
     int screenshot_no = 0;
+    int fast_forward = 0;
     Uint32 last_save_ticks = SDL_GetTicks();
 
-    // Steps per SDL frame: tune so emulation runs at roughly real GB speed.
-    // Real GB: 4194304 Hz / 60fps = ~69905 cycles/frame.
-    // Each step is roughly 4-8 cycles on average. 12000 steps/SDL-frame
-    // is a comfortable starting point (runs fast but not blurry).
-    const int STEPS_PER_RENDER = 16000;
-
+    // Normal speed: ~16000 steps per SDL frame (~60fps game speed)
+    // Fast forward: 4x multiplier, renderer skips frames for performance
+    const int STEPS_NORMAL = 16000;
+    const int STEPS_FAST   = 16000 * 4;
+    const int FF_MULTIPLIER = 4; // render every Nth frame during fast-forward
     printf("Pokemon Yellow Recompiled\n");
-    printf("Controls: Arrows=Dpad  Z=A  X=B  Enter=Start  Backspace=Select  F1=Screenshot  Escape=Quit\n");
+    printf("Controls: Arrows=Dpad  Z=A  X=B  Enter=Start  Backspace=Select\n");
+    printf("          Tab=Fast Forward (4x)  F1=Screenshot  Escape=Quit\n");
 
     while (running) {
         // Handle SDL events
@@ -334,6 +413,7 @@ int main(int argc, char **argv) {
             if (ev.type == SDL_QUIT) { running = 0; break; }
             if (ev.type == SDL_KEYDOWN) {
                 if (ev.key.keysym.sym == SDLK_ESCAPE) { running = 0; break; }
+                if (ev.key.keysym.sym == SDLK_TAB)    { fast_forward = 1; }
                 if (ev.key.keysym.sym == SDLK_F1) {
                     char path[64];
                     snprintf(path, sizeof(path), "screenshot_%03d.png", ++screenshot_no);
@@ -342,11 +422,16 @@ int main(int argc, char **argv) {
                 }
                 handle_key(ev.key.keysym.sym, 1);
             }
-            if (ev.type == SDL_KEYUP) handle_key(ev.key.keysym.sym, 0);
+            if (ev.type == SDL_KEYUP) {
+                if (ev.key.keysym.sym == SDLK_TAB) { fast_forward = 0; }
+                handle_key(ev.key.keysym.sym, 0);
+            }
         }
 
+        int steps = fast_forward ? STEPS_FAST : STEPS_NORMAL;
+
         // Run emulation for a batch of steps
-        for (int i = 0; i < STEPS_PER_RENDER && running; i++) {
+        for (int i = 0; i < steps && running; i++) {
             // VBlank trigger
             if (ctx.cycles >= next_vblank) {
                 wram_hram[0xFF0F] |= 0x01;
@@ -381,11 +466,21 @@ int main(int argc, char **argv) {
             last_save_ticks = now;
         }
 
-        // Render to window
-        render_to_texture(tex);
-        SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, tex, NULL, NULL);
-        SDL_RenderPresent(ren);
+        // Skip rendering every other frame during fast-forward so the GPU
+        // isn't the bottleneck — the emulation still runs at full 4x speed.
+        static int ff_frame = 0;
+        ff_frame++;
+        if (!fast_forward || (ff_frame % FF_MULTIPLIER == 0)) {
+            render_to_texture(tex);
+            SDL_RenderClear(ren);
+            SDL_RenderCopy(ren, tex, NULL, NULL);
+            draw_xp_bar(ren);  // XP bar overlay on top of game frame
+            // Show a small ">>" indicator in the title bar during fast-forward
+            SDL_SetWindowTitle(win, fast_forward
+                ? "Pokemon Yellow - Recompiled  [>>  4x]"
+                : "Pokemon Yellow - Recompiled");
+            SDL_RenderPresent(ren);
+        }
     }
 
     SDL_DestroyTexture(tex);
