@@ -1,0 +1,205 @@
+{
+  "name": "Joana Horde 1-6 - Valley of Trials",
+  "source": "Joana's Vanilla 1-60 Horde Leveling Guide v1.28",
+  "faction": "Horde",
+  "race": "Orc",
+  "class": "Warrior",
+  "mapId": 1,
+  "startLevel": 1,
+  "endLevel": 6,
+  "steps": [
+    {
+      "sequence": 1,
+      "id": "accept-your-place-in-the-world",
+      "action": "AcceptQuest",
+      "questIds": [4641],
+      "questNames": ["Your Place in the World"],
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 2,
+      "id": "turn-in-your-place-in-the-world",
+      "action": "TurnInQuest",
+      "questIds": [4641],
+      "questNames": ["Your Place in the World"],
+      "guideCoordinate": { "x": 42, "y": 68 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 3,
+      "id": "accept-cutting-teeth",
+      "action": "AcceptQuest",
+      "questIds": [788],
+      "questNames": ["Cutting Teeth"],
+      "guideCoordinate": { "x": 42, "y": 68 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 4,
+      "id": "reach-level-2-while-cutting-teeth",
+      "action": "ReachLevel",
+      "questIds": [],
+      "questNames": [],
+      "allowedCreatureIds": [3098],
+      "requiredLevel": 2,
+      "automationState": "MetadataOnly"
+    },
+    {
+      "sequence": 5,
+      "id": "accept-sarkoth",
+      "action": "AcceptQuest",
+      "questIds": [790],
+      "questNames": ["Sarkoth"],
+      "guideCoordinate": { "x": 40, "y": 62 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 6,
+      "id": "complete-sarkoth",
+      "action": "CompleteQuest",
+      "questIds": [790],
+      "questNames": ["Sarkoth"],
+      "allowedCreatureIds": [3281],
+      "guideCoordinate": { "x": 40, "y": 66 },
+      "automationState": "NeedsObjectiveResolution"
+    },
+    {
+      "sequence": 7,
+      "id": "turn-in-sarkoth",
+      "action": "TurnInQuest",
+      "questIds": [790],
+      "questNames": ["Sarkoth"],
+      "guideCoordinate": { "x": 40, "y": 66 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 8,
+      "id": "accept-sarkoth-part-2",
+      "action": "AcceptQuest",
+      "questIds": [804],
+      "questNames": ["Sarkoth Part 2"],
+      "guideCoordinate": { "x": 40, "y": 66 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 9,
+      "id": "complete-cutting-teeth",
+      "action": "CompleteQuest",
+      "questIds": [788],
+      "questNames": ["Cutting Teeth"],
+      "allowedCreatureIds": [3098],
+      "automationState": "NeedsObjectiveResolution"
+    },
+    {
+      "sequence": 10,
+      "id": "return-to-gornek",
+      "action": "Travel",
+      "guideCoordinate": { "x": 42, "y": 68 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 11,
+      "id": "turn-in-sarkoth-part-2-and-cutting-teeth",
+      "action": "TurnInQuest",
+      "questIds": [804, 788],
+      "questNames": ["Sarkoth Part 2", "Cutting Teeth"],
+      "guideCoordinate": { "x": 42, "y": 68 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 12,
+      "id": "accept-etched-tablet-and-sting",
+      "action": "AcceptQuest",
+      "questIds": [3087, 789],
+      "questNames": ["Etched Tablet", "Sting of the Scorpid"],
+      "guideCoordinate": { "x": 42, "y": 68 },
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 13,
+      "id": "turn-in-etched-tablet",
+      "action": "TurnInQuest",
+      "questIds": [3087],
+      "questNames": ["Etched Tablet"],
+      "guideCoordinate": { "x": 43, "y": 69 },
+      "automationState": "NeedsWorldPosition"
+    },
+    {
+      "sequence": 14,
+      "id": "train-warrior",
+      "action": "TrainClass",
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 15,
+      "id": "accept-valley-quest-group",
+      "action": "AcceptQuest",
+      "questIds": [792, 4402, 5441],
+      "questNames": ["Vile Familiars", "Galgar's Cactus Apple Surprise", "Lazy Peons"],
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 16,
+      "id": "complete-valley-quest-group",
+      "action": "CompleteQuest",
+      "questIds": [789, 792, 4402, 5441],
+      "questNames": ["Sting of the Scorpid", "Vile Familiars", "Galgar's Cactus Apple Surprise", "Lazy Peons"],
+      "allowedCreatureIds": [3101, 3124],
+      "automationState": "NeedsObjectiveResolution"
+    },
+    {
+      "sequence": 17,
+      "id": "turn-in-valley-quest-group",
+      "action": "TurnInQuest",
+      "questIds": [789, 792, 4402, 5441],
+      "questNames": ["Sting of the Scorpid", "Vile Familiars", "Galgar's Cactus Apple Surprise", "Lazy Peons"],
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 18,
+      "id": "accept-cave-quests",
+      "action": "AcceptQuest",
+      "questIds": [794, 6394],
+      "questNames": ["Burning Blade Medallion", "Thazz'ril's Pick"],
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 19,
+      "id": "complete-cave-quests",
+      "action": "CompleteQuest",
+      "questIds": [794, 6394],
+      "questNames": ["Burning Blade Medallion", "Thazz'ril's Pick"],
+      "allowedCreatureIds": [3183],
+      "guideCoordinate": { "x": 44, "y": 56 },
+      "automationState": "NeedsObjectiveResolution"
+    },
+    {
+      "sequence": 20,
+      "id": "hearth-to-valley-of-trials",
+      "action": "UseHearthstone",
+      "automationState": "MetadataOnly"
+    },
+    {
+      "sequence": 21,
+      "id": "turn-in-cave-quests",
+      "action": "TurnInQuest",
+      "questIds": [794, 6394],
+      "questNames": ["Burning Blade Medallion", "Thazz'ril's Pick"],
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 22,
+      "id": "accept-report-to-senjin",
+      "action": "AcceptQuest",
+      "questIds": [805],
+      "questNames": ["Report to Sen'jin Village"],
+      "automationState": "NeedsNpcResolution"
+    },
+    {
+      "sequence": 23,
+      "id": "leave-valley-of-trials",
+      "action": "Travel",
+      "automationState": "NeedsWorldPosition"
+    }
+  ]
+}
