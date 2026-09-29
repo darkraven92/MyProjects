@@ -1725,7 +1725,8 @@ namespace Bot
 
         void RecordDeath(
             const Objects::WorldState& world,
-            std::uint64_t tick)
+            std::uint64_t tick,
+            const Navigation::NavPoint& deathPosition)
         {
             (void)tick;
             if (deathEpisodeRecorded_)
@@ -1735,10 +1736,7 @@ namespace Bot
             dangerMemory_.ObserveLevel(world.player.level);
             dangerMemory_.RecordDeath(
                 MapId,
-                Navigation::NavPoint{
-                    world.player.x,
-                    world.player.y,
-                    world.player.z},
+                deathPosition,
                 world.player.level);
             postDeathEscapePending_ = true;
             dangerEscapeActive_ = false;

@@ -788,15 +788,32 @@ namespace Bot
                 // Phase 14G.4.2 death / corpse recovery
                 // =====================================
 
+                if (TemporaryGrindModeEnabled)
+                    deathRecovery.ObserveClearlyAlivePosition(world);
+
+                const bool ghostBootstrap =
+                    TemporaryGrindModeEnabled &&
+                    world.player.health == 1 &&
+                    deathRecovery.ConfirmGhostWhileIdle(world, tick);
+
                 if (TemporaryGrindModeEnabled &&
                     (deathRecovery.IsActive() ||
-                     (world.player.maxHealth > 0 && world.player.health == 0)))
+                     deathRecovery.IsFailed() ||
+                     (world.player.maxHealth > 0 && world.player.health == 0) ||
+                     ghostBootstrap))
                 {
                     deathRecoveryOwnedTick = true;
 
-                    if (!deathRecovery.IsActive())
+                    if (deathRecovery.State() == DeathRecoveryState::Idle)
                     {
-                        grindMode.RecordDeath(world, tick);
+                        Navigation::NavPoint deathRecordPosition{
+                            world.player.x, world.player.y, world.player.z};
+                        if (!ghostBootstrap ||
+                            deathRecovery.LastClearlyAlivePosition(deathRecordPosition))
+                        {
+                            grindMode.RecordDeath(
+                                world, tick, deathRecordPosition);
+                        }
 
                         combat.SuspendForDeathRecovery(
                             world.player,
@@ -810,7 +827,8 @@ namespace Bot
                         if (!deathRecovery.Start(
                                 world,
                                 tick,
-                                GrindModeController::MapIdValue()))
+                                GrindModeController::MapIdValue(),
+                                ghostBootstrap))
                         {
                             Debug::Logger::Info(
                                 "DEATH RECOVERY 14G.4.2: start deferred; retrying from next live world snapshot.");

@@ -31,7 +31,8 @@ namespace Bot
         RoutingToCorpse,
         WaitingForReclaim,
         WaitingForAlive,
-        Done
+        Done,
+        Failed
     };
 
     class DeathRecoveryController
@@ -61,6 +62,8 @@ namespace Bot
 
         DeathRecoveryState state_ = DeathRecoveryState::Idle;
         Navigation::NavPoint deathPosition_{};
+        Navigation::NavPoint lastClearlyAlivePosition_{};
+        bool haveLastClearlyAlivePosition_ = false;
         std::uint32_t mapId_ = 1;
 
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> corpseNavigator_{};
@@ -68,6 +71,8 @@ namespace Bot
         std::uint64_t stateStartedTick_ = 0;
         std::uint64_t nextActionTick_ = 0;
         std::uint64_t nextProbeTick_ = 0;
+        std::uint64_t nextIdleProbeTick_ = 0;
+        std::uint64_t idleGhostConfirmedTick_ = 0;
         std::uint64_t lastStatusTick_ = 0;
 
         int releaseAttempts_ = 0;
@@ -88,6 +93,7 @@ namespace Bot
         // Phase 14G.4.2.1: resurrection must never be inferred merely from
         // health becoming non-zero during the asynchronous spirit-release transition.
         bool ghostConfirmedThisRecovery_ = false;
+        bool bootstrappedFromGhost_ = false;
         bool retrieveCommandIssuedThisRecovery_ = false;
         int aliveProbeStreak_ = 0;
 
@@ -100,6 +106,7 @@ namespace Bot
                 case DeathRecoveryState::Idle: return "Idle";
                 case DeathRecoveryState::ReleasingSpirit: return "ReleasingSpirit";
                 case DeathRecoveryState::WaitingForGhost: return "WaitingForGhost";
+                case DeathRecoveryState::Failed: return "Failed";
                 case DeathRecoveryState::RoutingToCorpse: return "RoutingToCorpse";
                 case DeathRecoveryState::WaitingForReclaim: return "WaitingForReclaim";
                 case DeathRecoveryState::WaitingForAlive: return "WaitingForAlive";
@@ -428,18 +435,81 @@ namespace Bot
         }
 
     public:
+        void ObserveClearlyAlivePosition(const Objects::WorldState& world)
+        {
+            if (state_ != DeathRecoveryState::Idle ||
+                !DeathRecoveryPolicy::ShouldRememberClearlyAlivePosition(
+                    world.player.valid,
+                    world.player.health,
+                    world.player.maxHealth) ||
+                !std::isfinite(world.player.x) ||
+                !std::isfinite(world.player.y) ||
+                !std::isfinite(world.player.z))
+            {
+                return;
+            }
+
+            lastClearlyAlivePosition_ = Navigation::NavPoint{
+                world.player.x, world.player.y, world.player.z};
+            haveLastClearlyAlivePosition_ = true;
+        }
+
+        bool ConfirmGhostWhileIdle(
+            const Objects::WorldState& world,
+            std::uint64_t tick)
+        {
+            if (state_ != DeathRecoveryState::Idle ||
+                !DeathRecoveryPolicy::ShouldProbeIdleGhost(
+                    world.player.valid,
+                    world.player.health,
+                    world.player.maxHealth) ||
+                tick < nextIdleProbeTick_)
+            {
+                return false;
+            }
+
+            nextIdleProbeTick_ = tick + DeathRecoveryPolicy::ProbeIntervalTicks;
+            GhostProbe probe{};
+            if (!ProbeGhostState(probe))
+                return false;
+
+            if (DeathRecoveryPolicy::CanBootstrapFromGhost(
+                    world.player.valid,
+                    world.player.health,
+                    world.player.maxHealth,
+                    probe.valid,
+                    probe.isGhost))
+            {
+                lastProbe_ = probe;
+                idleGhostConfirmedTick_ = tick;
+                return true;
+            }
+
+            lastProbe_ = probe;
+            return false;
+        }
+
         bool Start(
             const Objects::WorldState& world,
             std::uint64_t tick,
-            std::uint32_t mapId)
+            std::uint32_t mapId,
+            bool ghostBootstrap = false)
         {
             if (state_ != DeathRecoveryState::Idle)
                 return false;
 
+            const bool confirmedGhost =
+                ghostBootstrap && idleGhostConfirmedTick_ == tick &&
+                DeathRecoveryPolicy::CanBootstrapFromGhost(
+                    world.player.valid,
+                    world.player.health,
+                    world.player.maxHealth,
+                    lastProbe_.valid,
+                    lastProbe_.isGhost);
             if (!DeathRecoveryPolicy::CanStartFromDeath(
                     world.player.valid,
                     world.player.health,
-                    world.player.maxHealth))
+                    world.player.maxHealth) && !confirmedGhost)
             {
                 return false;
             }
@@ -452,12 +522,24 @@ namespace Bot
                 return false;
             }
 
+            const auto entry = DeathRecoveryPolicy::EntryFor(
+                confirmedGhost, haveLastClearlyAlivePosition_);
+            if (entry == DeathRecoveryPolicy::EntryState::FailedMissingAnchor)
+            {
+                MovementController::HoldPosition(world.player);
+                Debug::Logger::Info(
+                    "ROBUSTNESS 14G.4.3.1: GHOST OWNERSHIP BOOTSTRAP corpsePosition=unknown");
+                Debug::Logger::Info(
+                    "ROBUSTNESS 14G.4.3.1: GHOST OWNERSHIP BOOTSTRAP FAILED; no clearly-alive anchor, corpse routing and reclaim disabled until bot restart.");
+                SetState(DeathRecoveryState::Failed, tick);
+                return true;
+            }
+
             mapId_ = mapId;
-            deathPosition_ = Navigation::NavPoint{
-                world.player.x,
-                world.player.y,
-                world.player.z
-            };
+            deathPosition_ = confirmedGhost
+                ? lastClearlyAlivePosition_
+                : Navigation::NavPoint{
+                    world.player.x, world.player.y, world.player.z};
 
             releaseAttempts_ = 0;
             retrieveAttempts_ = 0;
@@ -472,27 +554,42 @@ namespace Bot
                 world.player.x, world.player.y, world.player.z};
             havePhysicalProgressPosition_ = true;
             nextActionTick_ = tick;
-            nextProbeTick_ = tick;
+            nextProbeTick_ = confirmedGhost
+                ? tick + DeathRecoveryPolicy::ProbeIntervalTicks : tick;
             lastStatusTick_ = tick;
-            ghostConfirmedThisRecovery_ = false;
+            ghostConfirmedThisRecovery_ = confirmedGhost;
+            bootstrappedFromGhost_ = confirmedGhost;
             retrieveCommandIssuedThisRecovery_ = false;
             aliveProbeStreak_ = 0;
-            lastProbe_ = GhostProbe{};
+            if (!confirmedGhost)
+                lastProbe_ = GhostProbe{};
             corpseNavigator_.reset();
 
             MovementController::HoldPosition(world.player);
 
             Debug::Logger::Info("================================");
-            Debug::Logger::Info("DEATH RECOVERY 14G.4.2: PLAYER DEAD -> CORPSE RUN OWNERSHIP");
+            if (confirmedGhost)
+            {
+                Debug::Logger::Info(
+                    "ROBUSTNESS 14G.4.3.1: GHOST OWNERSHIP BOOTSTRAP corpsePosition=last clearly-alive position");
+            }
+            else
+            {
+                Debug::Logger::Info("DEATH RECOVERY 14G.4.2: PLAYER DEAD -> CORPSE RUN OWNERSHIP");
+            }
             Debug::Logger::Info(
                 "deathPosition=(" + Float(deathPosition_.x) + "," +
                 Float(deathPosition_.y) + "," + Float(deathPosition_.z) + ") mapId=" +
                 std::to_string(mapId_));
             Debug::Logger::Info(
-                "Policy: ReleaseSpirit -> verify ghost -> NavMesh corpse route -> wait reclaim delay -> RetrieveCorpse -> verify alive.");
+                confirmedGhost
+                    ? "Policy: confirmed ghost -> NavMesh corpse route -> wait reclaim delay -> RetrieveCorpse -> verify alive."
+                    : "Policy: ReleaseSpirit -> verify ghost -> NavMesh corpse route -> wait reclaim delay -> RetrieveCorpse -> verify alive.");
             Debug::Logger::Info("================================");
 
-            SetState(DeathRecoveryState::ReleasingSpirit, tick);
+            SetState(entry == DeathRecoveryPolicy::EntryState::WaitingForGhost
+                ? DeathRecoveryState::WaitingForGhost
+                : DeathRecoveryState::ReleasingSpirit, tick);
             return true;
         }
 
@@ -501,7 +598,8 @@ namespace Bot
             std::uint64_t tick)
         {
             if (state_ == DeathRecoveryState::Idle ||
-                state_ == DeathRecoveryState::Done)
+                state_ == DeathRecoveryState::Done ||
+                state_ == DeathRecoveryState::Failed)
             {
                 return;
             }
@@ -562,7 +660,8 @@ namespace Bot
                     SetState(DeathRecoveryState::WaitingForGhost, tick);
                     nextActionTick_ = tick;
                 }
-                else if (DeathRecoveryPolicy::ShouldRetryAction(tick, nextActionTick_))
+                else if (DeathRecoveryPolicy::CanAttemptSpiritRelease(
+                             bootstrappedFromGhost_, tick, nextActionTick_))
                 {
                     const bool issued = ExecuteLuaAction(
                         "if RepopMe then RepopMe(); end;",
@@ -617,7 +716,8 @@ namespace Bot
                         }
                     }
                 }
-                else if (DeathRecoveryPolicy::ShouldRetryAction(tick, nextActionTick_))
+                else if (DeathRecoveryPolicy::CanAttemptSpiritRelease(
+                             bootstrappedFromGhost_, tick, nextActionTick_))
                 {
                     if (releaseAttempts_ >=
                         DeathRecoveryPolicy::MaximumReleaseAttemptsPerCycle)
@@ -860,9 +960,13 @@ namespace Bot
             corpseNavigator_.reset();
             state_ = DeathRecoveryState::Idle;
             deathPosition_ = Navigation::NavPoint{};
+            lastClearlyAlivePosition_ = Navigation::NavPoint{};
+            haveLastClearlyAlivePosition_ = false;
             stateStartedTick_ = 0;
             nextActionTick_ = 0;
             nextProbeTick_ = 0;
+            nextIdleProbeTick_ = 0;
+            idleGhostConfirmedTick_ = 0;
             lastStatusTick_ = 0;
             releaseAttempts_ = 0;
             retrieveAttempts_ = 0;
@@ -876,6 +980,7 @@ namespace Bot
             deadStateStalls_ = 0;
             reclaimPrecisionRecoveries_ = 0;
             ghostConfirmedThisRecovery_ = false;
+            bootstrappedFromGhost_ = false;
             retrieveCommandIssuedThisRecovery_ = false;
             aliveProbeStreak_ = 0;
             lastProbe_ = GhostProbe{};
@@ -886,9 +991,18 @@ namespace Bot
         bool IsActive() const
         {
             return state_ != DeathRecoveryState::Idle &&
-                   state_ != DeathRecoveryState::Done;
+                   state_ != DeathRecoveryState::Done &&
+                   state_ != DeathRecoveryState::Failed;
         }
         bool IsDone() const { return state_ == DeathRecoveryState::Done; }
+        bool IsFailed() const { return state_ == DeathRecoveryState::Failed; }
+        bool LastClearlyAlivePosition(Navigation::NavPoint& position) const
+        {
+            if (!haveLastClearlyAlivePosition_)
+                return false;
+            position = lastClearlyAlivePosition_;
+            return true;
+        }
         int Recoveries() const { return recoveries_; }
         int ReleaseAttempts() const { return releaseAttempts_; }
         int RetrieveAttempts() const { return retrieveAttempts_; }

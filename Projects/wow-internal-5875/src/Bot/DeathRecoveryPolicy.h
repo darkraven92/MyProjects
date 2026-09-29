@@ -6,6 +6,13 @@ namespace Bot
 {
     struct DeathRecoveryPolicy
     {
+        enum class EntryState
+        {
+            ReleasingSpirit,
+            WaitingForGhost,
+            FailedMissingAnchor
+        };
+
         static constexpr std::uint64_t ProbeIntervalTicks = 4;          // ~1 s
         static constexpr std::uint64_t ActionRetryTicks = 8;            // ~2 s
         static constexpr std::uint64_t RouteRetryTicks = 8;             // ~2 s
@@ -20,12 +27,50 @@ namespace Bot
         static constexpr float GeneratedApproachArrivalDistance = 8.0f;
         static constexpr float ReclaimDistance = 32.0f;
 
+        static bool ShouldRememberClearlyAlivePosition(
+            bool playerValid,
+            std::uint32_t health,
+            std::uint32_t maxHealth)
+        {
+            return playerValid && maxHealth > 0 && health > 1;
+        }
+
+        static bool ShouldProbeIdleGhost(
+            bool playerValid,
+            std::uint32_t health,
+            std::uint32_t maxHealth)
+        {
+            return playerValid && maxHealth > 0 && health == 1;
+        }
+
         static bool CanStartFromDeath(
             bool playerValid,
             std::uint32_t health,
             std::uint32_t maxHealth)
         {
             return playerValid && maxHealth > 0 && health == 0;
+        }
+
+        static bool CanBootstrapFromGhost(
+            bool playerValid,
+            std::uint32_t health,
+            std::uint32_t maxHealth,
+            bool probeValid,
+            bool isGhost)
+        {
+            return ShouldProbeIdleGhost(playerValid, health, maxHealth) &&
+                probeValid && isGhost;
+        }
+
+        static EntryState EntryFor(
+            bool confirmedGhost,
+            bool haveClearlyAlivePosition)
+        {
+            if (!confirmedGhost)
+                return EntryState::ReleasingSpirit;
+            return haveClearlyAlivePosition
+                ? EntryState::WaitingForGhost
+                : EntryState::FailedMissingAnchor;
         }
 
         static bool AliveAfterCorpseRun(
@@ -66,6 +111,15 @@ namespace Bot
             std::uint64_t nextActionTick)
         {
             return tick >= nextActionTick;
+        }
+
+        static bool CanAttemptSpiritRelease(
+            bool bootstrappedFromGhost,
+            std::uint64_t tick,
+            std::uint64_t nextActionTick)
+        {
+            return !bootstrappedFromGhost &&
+                ShouldRetryAction(tick, nextActionTick);
         }
     };
 }
