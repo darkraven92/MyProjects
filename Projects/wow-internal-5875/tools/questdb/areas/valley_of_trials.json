@@ -1,0 +1,12 @@
+{
+  "id": "valley_of_trials",
+  "name": "Valley of Trials",
+  "map_id": 1,
+  "bounds": {
+    "min_x": -800.0,
+    "max_x": 0.0,
+    "min_y": -4525.0,
+    "max_y": -4000.0
+  },
+  "notes": "Phase 12A bootstrap boundary used only to discover quest-giver spawns. Runtime navigation must still use NavMesh and live ObjectManager positions."
+}

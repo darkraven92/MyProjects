@@ -1,0 +1,7 @@
+build/
+.phase-backups/
+tools/questdb/__pycache__/
+*.pyc
+data/state/
+.cache/
+data/questdb/vanilla.sqlite

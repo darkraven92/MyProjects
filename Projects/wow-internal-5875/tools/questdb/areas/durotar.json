@@ -1,0 +1,29 @@
+{
+  "id": "durotar_orc_warrior_1_12",
+  "name": "Durotar - Orc Warrior 1-12",
+  "map_id": 1,
+  "bounds": {
+    "min_x": -3500.0,
+    "max_x": 2500.0,
+    "min_y": -7000.0,
+    "max_y": -3000.0
+  },
+  "zone_or_sort_ids": [14],
+  "additional_quest_ids": [2383],
+  "route_group": "None",
+  "priority": 600,
+  "travel_report_exit_distance": 300.0,
+  "quest_overrides": {
+    "794": {"route_group": "BurningBladeCoven", "priority": 750},
+    "6394": {"route_group": "BurningBladeCoven", "priority": 650},
+    "805": {"route_group": "SenjinRoad", "priority": 100, "hub_exit": true},
+
+    "786": {"route_group": "SenjinVillage", "priority": 690, "hub_unlock_quest_id": 805, "late_wave": true},
+    "808": {"route_group": "EchoIsles", "priority": 770, "hub_unlock_quest_id": 805},
+    "817": {"route_group": "EchoIsles", "priority": 740, "hub_unlock_quest_id": 805},
+    "818": {"route_group": "SenjinCoast", "priority": 760, "hub_unlock_quest_id": 805},
+    "826": {"route_group": "EchoIsles", "priority": 790, "hub_unlock_quest_id": 805},
+    "823": {"route_group": "RazorHillRoad", "priority": 100, "hub_unlock_quest_id": 805, "hub_exit": true}
+  },
+  "notes": "Phase 13B zone pack. All Vanilla quests whose ZoneOrSort is Durotar (14) are exported for an Orc Warrior, with the Warrior parchment quest unioned explicitly. Live quest dialogs remain authoritative. Unsupported objective patterns are catalogued but not auto-accepted. Navigation remains NavMesh/live-object driven. Phase 13C.2.1 marks quest 786 as late-wave so Sen'jin XP/rewards can be banked before the Kolkar centaur objective."
+}

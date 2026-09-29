@@ -1,0 +1,45 @@
+Area: Durotar - Orc Warrior 1-12
+Quest profiles: 32
+Automatable with current generic executors: 21
+Needs executor/data work: 11
+
+Supported quests:
+    784  L 3/ 7  Vanquish the Betrayers
+    786  L 5/ 8  Thwarting Kolkar Aggression
+    791  L 4/ 7  Carry Your Weight
+    806  L 4/12  Dark Storms
+    808  L 4/ 9  Minshina's Skull
+    809  L 4/13  Ak'Zeloth
+    813  L 7/ 9  Finding the Antidote
+    815  L 6/ 8  Break a Few Eggs
+    816  L 8/11  Lost But Not Forgotten
+    817  L 5/ 8  Practical Prey
+    818  L 5/ 7  A Solvent Spirit
+    823  L 4/ 7  Report to Orgnil
+    825  L 3/ 8  From The Wreckage....
+    826  L 4/10  Zalazane
+    827  L 4/12  Skull Rock
+    828  L 4/12  Margoz
+    834  L 7/ 9  Winds in the Desert
+    835  L 7/11  Securing the Lines
+    837  L 6/10  Encroachment
+    924  L 9/14  The Demon Seed
+    926  L 1/14  Flawed Power Stone
+
+Needs executor/data work:
+    812  L 7/ 9  Need for a Cure :: objective 1 unsupported/unresolved
+    829  L 4/12  Neeru Fireblade :: objective 1 unsupported/unresolved
+    830  L 1/ 7  The Admiral's Orders :: missing giver relation; objective 1 unsupported/unresolved
+    831  L 1/ 7  The Admiral's Orders :: objective 1 unsupported/unresolved
+    832  L 4/12  Burning Shadows :: missing giver relation
+    840  L10/12  Conscript of the Horde :: objective 1 unsupported/unresolved
+    842  L10/12  Crossroads Conscription :: objective 1 unsupported/unresolved
+   2161  L 1/ 5  A Peon's Burden :: objective 1 unsupported/unresolved
+   2383  L 1/ 1  Simple Parchment :: objective 1 unsupported/unresolved
+   7664  L60/ 1  Ivory Raptor Replacement :: objective 1 unsupported/unresolved
+   7665  L60/ 1  Red Raptor Replacement :: objective 1 unsupported/unresolved
+
+Hub-exit/report quests inferred from QuestDB distance:
+    809  Ak'Zeloth  giver=3216 turnin=3521
+    823  Report to Orgnil  giver=3188 turnin=3142
+    828  Margoz  giver=3142 turnin=3208

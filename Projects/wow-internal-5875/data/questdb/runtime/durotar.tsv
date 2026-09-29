@@ -1,0 +1,967 @@
+# wow-internal questdb runtime catalog v2
+# area=durotar_orc_warrior_1_12	map=1	class=warrior	race=orc
+Q	784	Vanquish the Betrayers	3	0	3139	3139	3	KillMob	3128	0	0	10	Kul Tiras Sailor	None	600	-1	0	0	0	7	0	825	0	1	supported	0
+G	784	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
+T	784	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
+O	784	0	1	0	KillMob	3128	0	0	10	Kul Tiras Sailor	-1	0
+OS	784	0	1	-262.554	-5188.37	21.1489	28.0	QuestDB objective 1 spawn 1
+OS	784	0	1	-273.242	-4919.18	27.1867	28.0	QuestDB objective 1 spawn 2
+OS	784	0	1	-277.769	-5146.6	21.436	28.0	QuestDB objective 1 spawn 3
+OS	784	0	1	-64.1312	-4982.18	19.6142	28.0	QuestDB objective 1 spawn 4
+OS	784	0	1	-51.3995	-4961.7	21.4127	28.0	QuestDB objective 1 spawn 5
+OS	784	0	1	-220.082	-4908.83	26.9168	28.0	QuestDB objective 1 spawn 6
+OS	784	0	1	-312.365	-5070.01	21.6341	28.0	QuestDB objective 1 spawn 7
+OS	784	0	1	-64.9716	-4961.5	21.4108	28.0	QuestDB objective 1 spawn 8
+OS	784	0	1	-182.394	-4942.46	21.1166	28.0	QuestDB objective 1 spawn 9
+OS	784	0	1	-58.7476	-4955.55	21.4143	28.0	QuestDB objective 1 spawn 10
+OS	784	0	1	-253.261	-4945.05	23.1006	28.0	QuestDB objective 1 spawn 11
+OS	784	0	1	-128.271	-4958.23	20.2083	28.0	QuestDB objective 1 spawn 12
+OS	784	0	1	-209.532	-4982.4	21.5041	28.0	QuestDB objective 1 spawn 13
+OS	784	0	1	-255.313	-5010.76	22.1318	28.0	QuestDB objective 1 spawn 14
+OS	784	0	1	-87.4879	-4920.75	18.605	28.0	QuestDB objective 1 spawn 15
+OS	784	0	1	-259.423	-5018.76	22.1559	28.0	QuestDB objective 1 spawn 16
+OS	784	0	1	-119.671	-4988.08	19.4948	28.0	QuestDB objective 1 spawn 17
+OS	784	0	1	-192.284	-4996.99	22.5548	28.0	QuestDB objective 1 spawn 18
+OS	784	0	1	-243.801	-4996.51	21.3111	28.0	QuestDB objective 1 spawn 19
+OS	784	0	1	-208.333	-5025.0	21.7622	28.0	QuestDB objective 1 spawn 20
+OS	784	0	1	-7.65502	-4982.83	13.485	28.0	QuestDB objective 1 spawn 21
+OS	784	0	1	-18.868	-4917.26	16.7475	28.0	QuestDB objective 1 spawn 22
+OS	784	0	1	-48.0292	-5080.86	10.2239	28.0	QuestDB objective 1 spawn 23
+OS	784	0	1	-193.487	-5039.54	21.1663	28.0	QuestDB objective 1 spawn 24
+OS	784	0	1	-47.2603	-5019.83	13.3476	28.0	QuestDB objective 1 spawn 25
+OS	784	0	1	-85.9882	-5052.96	16.3209	28.0	QuestDB objective 1 spawn 26
+OS	784	0	1	-266.264	-5126.95	24.3417	28.0	QuestDB objective 1 spawn 27
+OS	784	0	1	-218.587	-5056.1	21.2766	28.0	QuestDB objective 1 spawn 28
+OS	784	0	1	-272.464	-5110.77	25.2435	28.0	QuestDB objective 1 spawn 29
+O	784	1	2	1	KillMob	3129	0	0	8	Kul Tiras Marine	-1	0
+OS	784	1	1	-312.696	-5145.91	21.4262	28.0	QuestDB objective 2 spawn 1
+OS	784	1	1	-284.439	-5174.54	21.2768	28.0	QuestDB objective 2 spawn 2
+OS	784	1	1	-78.0601	-5110.51	17.0959	28.0	QuestDB objective 2 spawn 3
+OS	784	1	1	-120.032	-5131.44	21.6015	28.0	QuestDB objective 2 spawn 4
+OS	784	1	1	-146.828	-5106.02	21.3111	28.0	QuestDB objective 2 spawn 5
+OS	784	1	1	-178.005	-5108.49	22.1404	28.0	QuestDB objective 2 spawn 6
+OS	784	1	1	-191.936	-5113.18	22.104	28.0	QuestDB objective 2 spawn 7
+OS	784	1	1	-149.138	-5035.27	21.9753	28.0	QuestDB objective 2 spawn 8
+OS	784	1	1	-141.465	-5003.08	22.1861	28.0	QuestDB objective 2 spawn 9
+OS	784	1	1	-151.218	-5087.12	21.4715	28.0	QuestDB objective 2 spawn 10
+OS	784	1	1	-87.9146	-5018.34	16.5591	28.0	QuestDB objective 2 spawn 11
+OS	784	1	1	-252.393	-5118.68	42.6406	28.0	QuestDB objective 2 spawn 12
+OS	784	1	1	-252.959	-5104.31	41.3467	28.0	QuestDB objective 2 spawn 13
+OS	784	1	1	17.5113	-4951.48	14.3885	28.0	QuestDB objective 2 spawn 14
+OS	784	1	1	-242.195	-5114.24	25.2436	28.0	QuestDB objective 2 spawn 15
+OS	784	1	1	-253.491	-5052.29	21.317	28.0	QuestDB objective 2 spawn 16
+OS	784	1	1	-230.719	-5125.15	42.4774	28.0	QuestDB objective 2 spawn 17
+OS	784	1	1	-191.896	-5092.67	22.1366	28.0	QuestDB objective 2 spawn 18
+O	784	2	3	2	KillMob	3192	0	0	1	Lieutenant Benedict	-1	0
+OS	784	2	1	-245.52	-5119.95	42.6406	28.0	QuestDB objective 3 spawn 1
+S	784	1	-262.554	-5188.37	21.1489	28.0	QuestDB objective spawn 1
+S	784	1	-273.242	-4919.18	27.1867	28.0	QuestDB objective spawn 2
+S	784	1	-277.769	-5146.6	21.436	28.0	QuestDB objective spawn 3
+S	784	1	-64.1312	-4982.18	19.6142	28.0	QuestDB objective spawn 4
+S	784	1	-51.3995	-4961.7	21.4127	28.0	QuestDB objective spawn 5
+S	784	1	-220.082	-4908.83	26.9168	28.0	QuestDB objective spawn 6
+S	784	1	-312.365	-5070.01	21.6341	28.0	QuestDB objective spawn 7
+S	784	1	-64.9716	-4961.5	21.4108	28.0	QuestDB objective spawn 8
+S	784	1	-182.394	-4942.46	21.1166	28.0	QuestDB objective spawn 9
+S	784	1	-58.7476	-4955.55	21.4143	28.0	QuestDB objective spawn 10
+S	784	1	-253.261	-4945.05	23.1006	28.0	QuestDB objective spawn 11
+S	784	1	-128.271	-4958.23	20.2083	28.0	QuestDB objective spawn 12
+S	784	1	-209.532	-4982.4	21.5041	28.0	QuestDB objective spawn 13
+S	784	1	-255.313	-5010.76	22.1318	28.0	QuestDB objective spawn 14
+S	784	1	-87.4879	-4920.75	18.605	28.0	QuestDB objective spawn 15
+S	784	1	-259.423	-5018.76	22.1559	28.0	QuestDB objective spawn 16
+S	784	1	-119.671	-4988.08	19.4948	28.0	QuestDB objective spawn 17
+S	784	1	-192.284	-4996.99	22.5548	28.0	QuestDB objective spawn 18
+S	784	1	-243.801	-4996.51	21.3111	28.0	QuestDB objective spawn 19
+S	784	1	-208.333	-5025.0	21.7622	28.0	QuestDB objective spawn 20
+S	784	1	-7.65502	-4982.83	13.485	28.0	QuestDB objective spawn 21
+S	784	1	-18.868	-4917.26	16.7475	28.0	QuestDB objective spawn 22
+S	784	1	-48.0292	-5080.86	10.2239	28.0	QuestDB objective spawn 23
+S	784	1	-193.487	-5039.54	21.1663	28.0	QuestDB objective spawn 24
+S	784	1	-47.2603	-5019.83	13.3476	28.0	QuestDB objective spawn 25
+S	784	1	-85.9882	-5052.96	16.3209	28.0	QuestDB objective spawn 26
+S	784	1	-266.264	-5126.95	24.3417	28.0	QuestDB objective spawn 27
+S	784	1	-218.587	-5056.1	21.2766	28.0	QuestDB objective spawn 28
+S	784	1	-272.464	-5110.77	25.2435	28.0	QuestDB objective spawn 29
+D	784	1	-262.554	-5188.37	21.1489	28.0	QuestDB primary objective seed
+Q	786	Thwarting Kolkar Aggression	5	0	3140	3140	3	InteractGameObject	0	0	3189	1	Attack Plan: Valley of Trials	SenjinVillage	690	10	0	805	0	8	0	0	0	1	supported	1
+G	786	1	-774.774	-4830.36	19.8326	5.0	QuestDB giver spawn 1
+T	786	1	-774.774	-4830.36	19.8326	5.0	QuestDB turn-in spawn 1
+O	786	0	1	0	InteractGameObject	0	0	3189	1	Attack Plan: Valley of Trials	10	0
+OS	786	0	1	-1056.98	-4596.39	25.8219	8.0	QuestDB objective 1 spawn 1
+O	786	1	2	1	InteractGameObject	0	0	3190	1	Attack Plan: Sen'jin Village	10	0
+OS	786	1	1	-917.836	-4482.29	29.5817	8.0	QuestDB objective 2 spawn 1
+O	786	2	3	2	InteractGameObject	0	0	3192	1	Attack Plan: Orgrimmar	10	0
+OS	786	2	1	-974.429	-4406.92	29.2641	8.0	QuestDB objective 3 spawn 1
+S	786	1	-1056.98	-4596.39	25.8219	8.0	QuestDB objective spawn 1
+D	786	1	-1056.98	-4596.39	25.8219	8.0	QuestDB primary objective seed
+Q	791	Carry Your Weight	4	0	3147	3147	1	CollectItemFromMob	3119	4870	0	8	Kolkar Drudge	None	600	-1	0	0	0	7	0	0	0	1	supported	0
+G	791	1	384.743	-4600.13	76.1716	5.0	QuestDB giver spawn 1
+T	791	1	384.743	-4600.13	76.1716	5.0	QuestDB turn-in spawn 1
+O	791	0	1	0	CollectItemFromMob	3119	4870	0	8	Kolkar Drudge	-1	0
+OS	791	0	1	-987.174	-4676.82	26.8719	28.0	QuestDB objective 1 spawn 1
+OS	791	0	1	-1019.16	-4725.93	14.7198	28.0	QuestDB objective 1 spawn 2
+OS	791	0	1	-1028.79	-4506.35	25.8569	28.0	QuestDB objective 1 spawn 3
+OS	791	0	1	-928.932	-4505.76	29.6424	28.0	QuestDB objective 1 spawn 4
+OS	791	0	1	-1012.65	-4600.56	25.663	28.0	QuestDB objective 1 spawn 5
+OS	791	0	1	-1030.65	-4432.2	26.1578	28.0	QuestDB objective 1 spawn 6
+OS	791	0	1	-1011.17	-4511.45	25.7319	28.0	QuestDB objective 1 spawn 7
+OS	791	0	1	-959.571	-4608.54	25.6792	28.0	QuestDB objective 1 spawn 8
+OS	791	0	1	-994.767	-4418.23	29.374	28.0	QuestDB objective 1 spawn 9
+OS	791	0	1	-887.45	-4713.57	25.6345	28.0	QuestDB objective 1 spawn 10
+OS	791	0	1	-1027.43	-4589.02	26.4615	28.0	QuestDB objective 1 spawn 11
+OS	791	0	1	-1005.58	-4766.97	12.6655	28.0	QuestDB objective 1 spawn 12
+OS	791	0	1	-1054.21	-4745.53	16.6612	28.0	QuestDB objective 1 spawn 13
+OS	791	0	1	-999.198	-4554.26	25.6802	28.0	QuestDB objective 1 spawn 14
+OS	791	0	1	-984.816	-4503.66	26.8016	28.0	QuestDB objective 1 spawn 15
+OS	791	0	1	-984.496	-4614.14	25.4188	28.0	QuestDB objective 1 spawn 16
+OS	791	0	1	-964.186	-4481.59	25.8882	28.0	QuestDB objective 1 spawn 17
+OS	791	0	1	-1083.06	-4716.26	15.5697	28.0	QuestDB objective 1 spawn 18
+OS	791	0	1	-916.154	-4749.1	21.2628	28.0	QuestDB objective 1 spawn 19
+S	791	1	-987.174	-4676.82	26.8719	28.0	QuestDB objective spawn 1
+S	791	1	-1019.16	-4725.93	14.7198	28.0	QuestDB objective spawn 2
+S	791	1	-1028.79	-4506.35	25.8569	28.0	QuestDB objective spawn 3
+S	791	1	-928.932	-4505.76	29.6424	28.0	QuestDB objective spawn 4
+S	791	1	-1012.65	-4600.56	25.663	28.0	QuestDB objective spawn 5
+S	791	1	-1030.65	-4432.2	26.1578	28.0	QuestDB objective spawn 6
+S	791	1	-1011.17	-4511.45	25.7319	28.0	QuestDB objective spawn 7
+S	791	1	-959.571	-4608.54	25.6792	28.0	QuestDB objective spawn 8
+S	791	1	-994.767	-4418.23	29.374	28.0	QuestDB objective spawn 9
+S	791	1	-887.45	-4713.57	25.6345	28.0	QuestDB objective spawn 10
+S	791	1	-1027.43	-4589.02	26.4615	28.0	QuestDB objective spawn 11
+S	791	1	-1005.58	-4766.97	12.6655	28.0	QuestDB objective spawn 12
+S	791	1	-1054.21	-4745.53	16.6612	28.0	QuestDB objective spawn 13
+S	791	1	-999.198	-4554.26	25.6802	28.0	QuestDB objective spawn 14
+S	791	1	-984.816	-4503.66	26.8016	28.0	QuestDB objective spawn 15
+S	791	1	-984.496	-4614.14	25.4188	28.0	QuestDB objective spawn 16
+S	791	1	-964.186	-4481.59	25.8882	28.0	QuestDB objective spawn 17
+S	791	1	-1083.06	-4716.26	15.5697	28.0	QuestDB objective spawn 18
+S	791	1	-916.154	-4749.1	21.2628	28.0	QuestDB objective spawn 19
+D	791	1	-987.174	-4676.82	26.8719	28.0	QuestDB primary objective seed
+Q	806	Dark Storms	4	0	3142	3142	1	CollectItemFromMob	3203	4869	0	1	Fizzle Darkstorm	None	600	-1	0	0	0	12	823	0	0	1	supported	0
+G	806	1	287.265	-4724.88	13.2142	5.0	QuestDB giver spawn 1
+T	806	1	287.265	-4724.88	13.2142	5.0	QuestDB turn-in spawn 1
+O	806	0	1	0	CollectItemFromMob	3203	4869	0	1	Fizzle Darkstorm	-1	0
+OS	806	0	1	868.614	-4189.56	-14.0285	28.0	QuestDB objective 1 spawn 1
+S	806	1	868.614	-4189.56	-14.0285	28.0	QuestDB objective spawn 1
+D	806	1	868.614	-4189.56	-14.0285	28.0	QuestDB primary objective seed
+Q	808	Minshina's Skull	4	0	3188	3188	1	CollectWorldItem	0	4864	3237	1	Imprisoned Darkspear	EchoIsles	770	3	2424	805	0	9	0	0	0	1	supported	0
+G	808	1	-825.636	-4920.76	19.7409	5.0	QuestDB giver spawn 1
+T	808	1	-825.636	-4920.76	19.7409	5.0	QuestDB turn-in spawn 1
+O	808	0	1	0	CollectWorldItem	0	4864	3237	1	Imprisoned Darkspear	3	2424
+OS	808	0	1	-1288.12	-5529.06	15.2078	22.0	QuestDB objective 1 spawn 1
+OS	808	0	1	-1286.09	-5528.13	15.2078	22.0	QuestDB objective 1 spawn 2
+OS	808	0	1	-1287.27	-5528.13	15.2078	22.0	QuestDB objective 1 spawn 3
+OS	808	0	1	-1287.74	-5527.71	15.2078	22.0	QuestDB objective 1 spawn 4
+OS	808	0	1	-1286.97	-5529.07	15.2078	22.0	QuestDB objective 1 spawn 5
+OS	808	0	1	-1287.25	-5530.0	15.2078	22.0	QuestDB objective 1 spawn 6
+OS	808	0	1	-1287.58	-5528.78	15.2078	22.0	QuestDB objective 1 spawn 7
+S	808	1	-1288.12	-5529.06	15.2078	22.0	QuestDB objective spawn 1
+S	808	1	-1286.09	-5528.13	15.2078	22.0	QuestDB objective spawn 2
+S	808	1	-1287.27	-5528.13	15.2078	22.0	QuestDB objective spawn 3
+S	808	1	-1287.74	-5527.71	15.2078	22.0	QuestDB objective spawn 4
+S	808	1	-1286.97	-5529.07	15.2078	22.0	QuestDB objective spawn 5
+S	808	1	-1287.25	-5530.0	15.2078	22.0	QuestDB objective spawn 6
+S	808	1	-1287.58	-5528.78	15.2078	22.0	QuestDB objective spawn 7
+D	808	1	-1288.12	-5529.06	15.2078	22.0	QuestDB primary objective seed
+Q	809	Ak'Zeloth	4	0	3216	3521	0	TravelReport	3521	0	0	1	Ak'Zeloth	None	100	-1	0	0	1	13	829	924	0	1	supported	0
+G	809	1	1800.66	-4374.51	-17.3475	5.0	QuestDB giver spawn 1
+T	809	1	256.258	-3693.95	26.4771	5.0	QuestDB turn-in spawn 1
+Q	812	Need for a Cure	7	0	3190	3190	1	Unknown	0	4904	0	1	item 4904	None	600	-1	0	0	0	9	0	0	0	0	objective 1 unsupported/unresolved	0
+G	812	1	1152.64	-4159.0	20.236	5.0	QuestDB giver spawn 1
+T	812	1	1152.64	-4159.0	20.236	5.0	QuestDB turn-in spawn 1
+O	812	0	1	0	Unknown	0	4904	0	1	item 4904	-1	0
+Q	813	Finding the Antidote	7	0	3189	3189	1	CollectItemFromMob	3127	4886	0	4	Venomtail Scorpid	None	600	-1	0	0	0	9	-812	0	0	1	supported	0
+G	813	1	1772.72	-4343.18	-7.81578	5.0	QuestDB giver spawn 1
+T	813	1	1772.72	-4343.18	-7.81578	5.0	QuestDB turn-in spawn 1
+O	813	0	1	0	CollectItemFromMob	3127	4886	0	4	Venomtail Scorpid	-1	0
+OS	813	0	1	1294.18	-4970.53	2.84001	28.0	QuestDB objective 1 spawn 1
+OS	813	0	1	1064.04	-4212.57	18.9224	28.0	QuestDB objective 1 spawn 2
+OS	813	0	1	806.07	-3877.45	18.5046	28.0	QuestDB objective 1 spawn 3
+OS	813	0	1	1182.86	-4022.2	15.451	28.0	QuestDB objective 1 spawn 4
+OS	813	0	1	-81.0895	-3828.82	32.4952	28.0	QuestDB objective 1 spawn 5
+OS	813	0	1	143.211	-3883.41	39.5411	28.0	QuestDB objective 1 spawn 6
+OS	813	0	1	855.374	-3909.67	19.9425	28.0	QuestDB objective 1 spawn 7
+OS	813	0	1	1286.64	-4905.52	11.2412	28.0	QuestDB objective 1 spawn 8
+OS	813	0	1	1146.68	-4188.94	22.8695	28.0	QuestDB objective 1 spawn 9
+OS	813	0	1	18.7356	-3814.1	34.054	28.0	QuestDB objective 1 spawn 10
+OS	813	0	1	149.93	-3850.0	34.6387	28.0	QuestDB objective 1 spawn 11
+OS	813	0	1	1209.35	-4184.02	24.3287	28.0	QuestDB objective 1 spawn 12
+OS	813	0	1	23.2439	-3947.88	47.391	28.0	QuestDB objective 1 spawn 13
+OS	813	0	1	1081.5	-4183.44	20.8084	28.0	QuestDB objective 1 spawn 14
+OS	813	0	1	716.864	-3924.58	14.8461	28.0	QuestDB objective 1 spawn 15
+OS	813	0	1	1013.18	-4013.28	26.567	28.0	QuestDB objective 1 spawn 16
+OS	813	0	1	1086.31	-4336.55	24.309	28.0	QuestDB objective 1 spawn 17
+OS	813	0	1	1390.54	-4783.11	26.4654	28.0	QuestDB objective 1 spawn 18
+OS	813	0	1	-155.267	-3907.38	45.5747	28.0	QuestDB objective 1 spawn 19
+OS	813	0	1	49.6605	-3968.14	46.4412	28.0	QuestDB objective 1 spawn 20
+OS	813	0	1	1165.86	-4266.76	21.9886	28.0	QuestDB objective 1 spawn 21
+OS	813	0	1	1218.23	-4293.08	21.3825	28.0	QuestDB objective 1 spawn 22
+OS	813	0	1	1162.1	-4923.65	16.607	28.0	QuestDB objective 1 spawn 23
+OS	813	0	1	1159.91	-4067.91	16.9003	28.0	QuestDB objective 1 spawn 24
+OS	813	0	1	1393.98	-4838.57	19.1535	28.0	QuestDB objective 1 spawn 25
+OS	813	0	1	922.277	-3898.09	19.328	28.0	QuestDB objective 1 spawn 26
+OS	813	0	1	1186.25	-4625.29	18.4965	28.0	QuestDB objective 1 spawn 27
+OS	813	0	1	28.6475	-3901.26	44.2482	28.0	QuestDB objective 1 spawn 28
+OS	813	0	1	-45.3741	-3882.7	46.9387	28.0	QuestDB objective 1 spawn 29
+OS	813	0	1	-89.5839	-3908.08	48.8087	28.0	QuestDB objective 1 spawn 30
+OS	813	0	1	1361.13	-4797.83	26.937	28.0	QuestDB objective 1 spawn 31
+OS	813	0	1	641.999	-3838.74	21.2052	28.0	QuestDB objective 1 spawn 32
+OS	813	0	1	1100.8	-4152.94	17.1562	28.0	QuestDB objective 1 spawn 33
+OS	813	0	1	84.8203	-3917.05	43.5674	28.0	QuestDB objective 1 spawn 34
+OS	813	0	1	742.509	-3893.23	19.4178	28.0	QuestDB objective 1 spawn 35
+OS	813	0	1	52.057	-3855.7	37.6042	28.0	QuestDB objective 1 spawn 36
+OS	813	0	1	1096.01	-3979.64	19.9407	28.0	QuestDB objective 1 spawn 37
+OS	813	0	1	1211.74	-4131.34	23.4459	28.0	QuestDB objective 1 spawn 38
+OS	813	0	1	1030.95	-4047.37	18.5481	28.0	QuestDB objective 1 spawn 39
+OS	813	0	1	-186.969	-3862.59	32.9047	28.0	QuestDB objective 1 spawn 40
+OS	813	0	1	1256.58	-4793.38	20.5	28.0	QuestDB objective 1 spawn 41
+OS	813	0	1	1270.69	-4917.01	9.88924	28.0	QuestDB objective 1 spawn 42
+OS	813	0	1	1185.49	-4016.61	16.5608	28.0	QuestDB objective 1 spawn 43
+OS	813	0	1	1191.04	-4591.65	18.4584	28.0	QuestDB objective 1 spawn 44
+OS	813	0	1	1382.05	-4917.68	7.82264	28.0	QuestDB objective 1 spawn 45
+OS	813	0	1	1149.78	-4282.23	21.1547	28.0	QuestDB objective 1 spawn 46
+OS	813	0	1	1160.42	-4286.0	20.983	28.0	QuestDB objective 1 spawn 47
+OS	813	0	1	1210.1	-4283.0	22.527	28.0	QuestDB objective 1 spawn 48
+S	813	1	1294.18	-4970.53	2.84001	28.0	QuestDB objective spawn 1
+S	813	1	1064.04	-4212.57	18.9224	28.0	QuestDB objective spawn 2
+S	813	1	806.07	-3877.45	18.5046	28.0	QuestDB objective spawn 3
+S	813	1	1182.86	-4022.2	15.451	28.0	QuestDB objective spawn 4
+S	813	1	-81.0895	-3828.82	32.4952	28.0	QuestDB objective spawn 5
+S	813	1	143.211	-3883.41	39.5411	28.0	QuestDB objective spawn 6
+S	813	1	855.374	-3909.67	19.9425	28.0	QuestDB objective spawn 7
+S	813	1	1286.64	-4905.52	11.2412	28.0	QuestDB objective spawn 8
+S	813	1	1146.68	-4188.94	22.8695	28.0	QuestDB objective spawn 9
+S	813	1	18.7356	-3814.1	34.054	28.0	QuestDB objective spawn 10
+S	813	1	149.93	-3850.0	34.6387	28.0	QuestDB objective spawn 11
+S	813	1	1209.35	-4184.02	24.3287	28.0	QuestDB objective spawn 12
+S	813	1	23.2439	-3947.88	47.391	28.0	QuestDB objective spawn 13
+S	813	1	1081.5	-4183.44	20.8084	28.0	QuestDB objective spawn 14
+S	813	1	716.864	-3924.58	14.8461	28.0	QuestDB objective spawn 15
+S	813	1	1013.18	-4013.28	26.567	28.0	QuestDB objective spawn 16
+S	813	1	1086.31	-4336.55	24.309	28.0	QuestDB objective spawn 17
+S	813	1	1390.54	-4783.11	26.4654	28.0	QuestDB objective spawn 18
+S	813	1	-155.267	-3907.38	45.5747	28.0	QuestDB objective spawn 19
+S	813	1	49.6605	-3968.14	46.4412	28.0	QuestDB objective spawn 20
+S	813	1	1165.86	-4266.76	21.9886	28.0	QuestDB objective spawn 21
+S	813	1	1218.23	-4293.08	21.3825	28.0	QuestDB objective spawn 22
+S	813	1	1162.1	-4923.65	16.607	28.0	QuestDB objective spawn 23
+S	813	1	1159.91	-4067.91	16.9003	28.0	QuestDB objective spawn 24
+S	813	1	1393.98	-4838.57	19.1535	28.0	QuestDB objective spawn 25
+S	813	1	922.277	-3898.09	19.328	28.0	QuestDB objective spawn 26
+S	813	1	1186.25	-4625.29	18.4965	28.0	QuestDB objective spawn 27
+S	813	1	28.6475	-3901.26	44.2482	28.0	QuestDB objective spawn 28
+S	813	1	-45.3741	-3882.7	46.9387	28.0	QuestDB objective spawn 29
+S	813	1	-89.5839	-3908.08	48.8087	28.0	QuestDB objective spawn 30
+S	813	1	1361.13	-4797.83	26.937	28.0	QuestDB objective spawn 31
+S	813	1	641.999	-3838.74	21.2052	28.0	QuestDB objective spawn 32
+S	813	1	1100.8	-4152.94	17.1562	28.0	QuestDB objective spawn 33
+S	813	1	84.8203	-3917.05	43.5674	28.0	QuestDB objective spawn 34
+S	813	1	742.509	-3893.23	19.4178	28.0	QuestDB objective spawn 35
+S	813	1	52.057	-3855.7	37.6042	28.0	QuestDB objective spawn 36
+S	813	1	1096.01	-3979.64	19.9407	28.0	QuestDB objective spawn 37
+S	813	1	1211.74	-4131.34	23.4459	28.0	QuestDB objective spawn 38
+S	813	1	1030.95	-4047.37	18.5481	28.0	QuestDB objective spawn 39
+S	813	1	-186.969	-3862.59	32.9047	28.0	QuestDB objective spawn 40
+S	813	1	1256.58	-4793.38	20.5	28.0	QuestDB objective spawn 41
+S	813	1	1270.69	-4917.01	9.88924	28.0	QuestDB objective spawn 42
+S	813	1	1185.49	-4016.61	16.5608	28.0	QuestDB objective spawn 43
+S	813	1	1191.04	-4591.65	18.4584	28.0	QuestDB objective spawn 44
+S	813	1	1382.05	-4917.68	7.82264	28.0	QuestDB objective spawn 45
+S	813	1	1149.78	-4282.23	21.1547	28.0	QuestDB objective spawn 46
+S	813	1	1160.42	-4286.0	20.983	28.0	QuestDB objective spawn 47
+S	813	1	1210.1	-4283.0	22.527	28.0	QuestDB objective spawn 48
+D	813	1	1294.18	-4970.53	2.84001	28.0	QuestDB primary objective seed
+Q	815	Break a Few Eggs	6	0	3191	3191	1	CollectWorldItem	0	4890	3240	3	Taillasher Eggs	None	600	3	2495	0	0	8	0	0	0	1	supported	0
+G	815	1	312.099	-4664.95	16.4254	5.0	QuestDB giver spawn 1
+T	815	1	312.099	-4664.95	16.4254	5.0	QuestDB turn-in spawn 1
+O	815	0	1	0	CollectWorldItem	0	4890	3240	3	Taillasher Eggs	3	2495
+OS	815	0	1	-821.378	-5646.5	5.34579	22.0	QuestDB objective 1 spawn 1
+OS	815	0	1	-1582.71	-5246.67	5.48106	22.0	QuestDB objective 1 spawn 2
+OS	815	0	1	-1254.91	-5582.25	7.67776	22.0	QuestDB objective 1 spawn 3
+OS	815	0	1	-1520.69	-5293.85	7.05261	22.0	QuestDB objective 1 spawn 4
+OS	815	0	1	-1312.84	-5571.7	7.27235	22.0	QuestDB objective 1 spawn 5
+OS	815	0	1	-671.754	-5647.71	9.29216	22.0	QuestDB objective 1 spawn 6
+OS	815	0	1	-1096.89	-5395.87	11.1797	22.0	QuestDB objective 1 spawn 7
+OS	815	0	1	-725.509	-5577.85	26.8711	22.0	QuestDB objective 1 spawn 8
+OS	815	0	1	-774.9	-5376.08	4.16603	22.0	QuestDB objective 1 spawn 9
+OS	815	0	1	-708.66	-5506.35	8.04669	22.0	QuestDB objective 1 spawn 10
+OS	815	0	1	-1091.36	-5623.13	4.18125	22.0	QuestDB objective 1 spawn 11
+OS	815	0	1	-953.294	-5207.47	3.64188	22.0	QuestDB objective 1 spawn 12
+OS	815	0	1	-1112.72	-5152.75	0.909302	22.0	QuestDB objective 1 spawn 13
+OS	815	0	1	-1352.6	-5123.35	1.75954	22.0	QuestDB objective 1 spawn 14
+S	815	1	-821.378	-5646.5	5.34579	22.0	QuestDB objective spawn 1
+S	815	1	-1582.71	-5246.67	5.48106	22.0	QuestDB objective spawn 2
+S	815	1	-1254.91	-5582.25	7.67776	22.0	QuestDB objective spawn 3
+S	815	1	-1520.69	-5293.85	7.05261	22.0	QuestDB objective spawn 4
+S	815	1	-1312.84	-5571.7	7.27235	22.0	QuestDB objective spawn 5
+S	815	1	-671.754	-5647.71	9.29216	22.0	QuestDB objective spawn 6
+S	815	1	-1096.89	-5395.87	11.1797	22.0	QuestDB objective spawn 7
+S	815	1	-725.509	-5577.85	26.8711	22.0	QuestDB objective spawn 8
+S	815	1	-774.9	-5376.08	4.16603	22.0	QuestDB objective spawn 9
+S	815	1	-708.66	-5506.35	8.04669	22.0	QuestDB objective spawn 10
+S	815	1	-1091.36	-5623.13	4.18125	22.0	QuestDB objective spawn 11
+S	815	1	-953.294	-5207.47	3.64188	22.0	QuestDB objective spawn 12
+S	815	1	-1112.72	-5152.75	0.909302	22.0	QuestDB objective spawn 13
+S	815	1	-1352.6	-5123.35	1.75954	22.0	QuestDB objective spawn 14
+D	815	1	-821.378	-5646.5	5.34579	22.0	QuestDB primary objective seed
+Q	816	Lost But Not Forgotten	8	0	3193	3193	1	CollectItemFromMob	3110	4891	0	1	Dreadmaw Crocolisk	None	600	-1	0	0	0	11	0	0	0	1	supported	0
+G	816	1	742.385	-4241.65	18.762	5.0	QuestDB giver spawn 1
+T	816	1	742.385	-4241.65	18.762	5.0	QuestDB turn-in spawn 1
+O	816	0	1	0	CollectItemFromMob	3110	4891	0	1	Dreadmaw Crocolisk	-1	0
+OS	816	0	1	887.155	-3811.98	15.4663	28.0	QuestDB objective 1 spawn 1
+OS	816	0	1	585.592	-3777.59	16.7543	28.0	QuestDB objective 1 spawn 2
+OS	816	0	1	670.287	-3787.67	15.7302	28.0	QuestDB objective 1 spawn 3
+OS	816	0	1	52.5152	-3765.47	16.4437	28.0	QuestDB objective 1 spawn 4
+OS	816	0	1	747.129	-3825.58	19.4839	28.0	QuestDB objective 1 spawn 5
+OS	816	0	1	852.626	-3797.39	16.3928	28.0	QuestDB objective 1 spawn 6
+OS	816	0	1	214.049	-3739.18	15.7797	28.0	QuestDB objective 1 spawn 7
+OS	816	0	1	-106.542	-3804.4	20.9084	28.0	QuestDB objective 1 spawn 8
+OS	816	0	1	-87.1646	-3787.89	17.2615	28.0	QuestDB objective 1 spawn 9
+OS	816	0	1	144.051	-3753.78	17.4501	28.0	QuestDB objective 1 spawn 10
+OS	816	0	1	940.631	-3825.67	17.1279	28.0	QuestDB objective 1 spawn 11
+OS	816	0	1	425.915	-3817.55	19.5345	28.0	QuestDB objective 1 spawn 12
+OS	816	0	1	3.92897	-3745.33	13.8359	28.0	QuestDB objective 1 spawn 13
+OS	816	0	1	-210.053	-3845.67	20.401	28.0	QuestDB objective 1 spawn 14
+OS	816	0	1	-274.501	-3850.62	16.3609	28.0	QuestDB objective 1 spawn 15
+OS	816	0	1	786.578	-3790.09	16.6458	28.0	QuestDB objective 1 spawn 16
+OS	816	0	1	-42.1534	-3747.41	16.613	28.0	QuestDB objective 1 spawn 17
+OS	816	0	1	810.259	-3828.33	18.2792	28.0	QuestDB objective 1 spawn 18
+OS	816	0	1	-173.849	-3827.64	21.4363	28.0	QuestDB objective 1 spawn 19
+OS	816	0	1	1024.93	-3891.26	18.1148	28.0	QuestDB objective 1 spawn 20
+OS	816	0	1	916.199	-3850.16	18.8256	28.0	QuestDB objective 1 spawn 21
+OS	816	0	1	111.849	-3777.91	20.556	28.0	QuestDB objective 1 spawn 22
+OS	816	0	1	1029.46	-3909.23	18.2572	28.0	QuestDB objective 1 spawn 23
+OS	816	0	1	247.797	-3785.48	24.2875	28.0	QuestDB objective 1 spawn 24
+OS	816	0	1	1070.63	-3882.36	17.0437	28.0	QuestDB objective 1 spawn 25
+OS	816	0	1	-27.7077	-3793.91	24.634	28.0	QuestDB objective 1 spawn 26
+OS	816	0	1	185.579	-3767.86	17.1535	28.0	QuestDB objective 1 spawn 27
+OS	816	0	1	982.749	-3850.66	16.2294	28.0	QuestDB objective 1 spawn 28
+OS	816	0	1	499.038	-3779.24	17.1513	28.0	QuestDB objective 1 spawn 29
+OS	816	0	1	-348.614	-3888.38	16.8497	28.0	QuestDB objective 1 spawn 30
+OS	816	0	1	670.975	-3782.76	15.8008	28.0	QuestDB objective 1 spawn 31
+OS	816	0	1	850.161	-3790.45	16.3887	28.0	QuestDB objective 1 spawn 32
+OS	816	0	1	579.723	-3768.4	16.6287	28.0	QuestDB objective 1 spawn 33
+OS	816	0	1	-653.088	-3961.34	17.0594	28.0	QuestDB objective 1 spawn 34
+OS	816	0	1	901.132	-3779.37	15.6839	28.0	QuestDB objective 1 spawn 35
+OS	816	0	1	-520.066	-3942.33	22.8473	28.0	QuestDB objective 1 spawn 36
+OS	816	0	1	-345.174	-3891.57	16.5222	28.0	QuestDB objective 1 spawn 37
+OS	816	0	1	1201.58	-3906.99	15.8521	28.0	QuestDB objective 1 spawn 38
+OS	816	0	1	1250.89	-3922.28	15.1088	28.0	QuestDB objective 1 spawn 39
+OS	816	0	1	-592.96	-3953.02	16.5175	28.0	QuestDB objective 1 spawn 40
+OS	816	0	1	1049.17	-3840.36	15.0622	28.0	QuestDB objective 1 spawn 41
+OS	816	0	1	566.883	-3729.24	20.1244	28.0	QuestDB objective 1 spawn 42
+OS	816	0	1	201.138	-3748.54	15.0297	28.0	QuestDB objective 1 spawn 43
+OS	816	0	1	-713.083	-3997.5	15.4585	28.0	QuestDB objective 1 spawn 44
+OS	816	0	1	-384.928	-3911.26	15.787	28.0	QuestDB objective 1 spawn 45
+OS	816	0	1	-146.488	-3781.52	14.2056	28.0	QuestDB objective 1 spawn 46
+OS	816	0	1	251.447	-3780.23	21.2629	28.0	QuestDB objective 1 spawn 47
+OS	816	0	1	12.6142	-3732.27	17.2314	28.0	QuestDB objective 1 spawn 48
+OS	816	0	1	-214.576	-3853.52	21.3208	28.0	QuestDB objective 1 spawn 49
+S	816	1	887.155	-3811.98	15.4663	28.0	QuestDB objective spawn 1
+S	816	1	585.592	-3777.59	16.7543	28.0	QuestDB objective spawn 2
+S	816	1	670.287	-3787.67	15.7302	28.0	QuestDB objective spawn 3
+S	816	1	52.5152	-3765.47	16.4437	28.0	QuestDB objective spawn 4
+S	816	1	747.129	-3825.58	19.4839	28.0	QuestDB objective spawn 5
+S	816	1	852.626	-3797.39	16.3928	28.0	QuestDB objective spawn 6
+S	816	1	214.049	-3739.18	15.7797	28.0	QuestDB objective spawn 7
+S	816	1	-106.542	-3804.4	20.9084	28.0	QuestDB objective spawn 8
+S	816	1	-87.1646	-3787.89	17.2615	28.0	QuestDB objective spawn 9
+S	816	1	144.051	-3753.78	17.4501	28.0	QuestDB objective spawn 10
+S	816	1	940.631	-3825.67	17.1279	28.0	QuestDB objective spawn 11
+S	816	1	425.915	-3817.55	19.5345	28.0	QuestDB objective spawn 12
+S	816	1	3.92897	-3745.33	13.8359	28.0	QuestDB objective spawn 13
+S	816	1	-210.053	-3845.67	20.401	28.0	QuestDB objective spawn 14
+S	816	1	-274.501	-3850.62	16.3609	28.0	QuestDB objective spawn 15
+S	816	1	786.578	-3790.09	16.6458	28.0	QuestDB objective spawn 16
+S	816	1	-42.1534	-3747.41	16.613	28.0	QuestDB objective spawn 17
+S	816	1	810.259	-3828.33	18.2792	28.0	QuestDB objective spawn 18
+S	816	1	-173.849	-3827.64	21.4363	28.0	QuestDB objective spawn 19
+S	816	1	1024.93	-3891.26	18.1148	28.0	QuestDB objective spawn 20
+S	816	1	916.199	-3850.16	18.8256	28.0	QuestDB objective spawn 21
+S	816	1	111.849	-3777.91	20.556	28.0	QuestDB objective spawn 22
+S	816	1	1029.46	-3909.23	18.2572	28.0	QuestDB objective spawn 23
+S	816	1	247.797	-3785.48	24.2875	28.0	QuestDB objective spawn 24
+S	816	1	1070.63	-3882.36	17.0437	28.0	QuestDB objective spawn 25
+S	816	1	-27.7077	-3793.91	24.634	28.0	QuestDB objective spawn 26
+S	816	1	185.579	-3767.86	17.1535	28.0	QuestDB objective spawn 27
+S	816	1	982.749	-3850.66	16.2294	28.0	QuestDB objective spawn 28
+S	816	1	499.038	-3779.24	17.1513	28.0	QuestDB objective spawn 29
+S	816	1	-348.614	-3888.38	16.8497	28.0	QuestDB objective spawn 30
+S	816	1	670.975	-3782.76	15.8008	28.0	QuestDB objective spawn 31
+S	816	1	850.161	-3790.45	16.3887	28.0	QuestDB objective spawn 32
+S	816	1	579.723	-3768.4	16.6287	28.0	QuestDB objective spawn 33
+S	816	1	-653.088	-3961.34	17.0594	28.0	QuestDB objective spawn 34
+S	816	1	901.132	-3779.37	15.6839	28.0	QuestDB objective spawn 35
+S	816	1	-520.066	-3942.33	22.8473	28.0	QuestDB objective spawn 36
+S	816	1	-345.174	-3891.57	16.5222	28.0	QuestDB objective spawn 37
+S	816	1	1201.58	-3906.99	15.8521	28.0	QuestDB objective spawn 38
+S	816	1	1250.89	-3922.28	15.1088	28.0	QuestDB objective spawn 39
+S	816	1	-592.96	-3953.02	16.5175	28.0	QuestDB objective spawn 40
+S	816	1	1049.17	-3840.36	15.0622	28.0	QuestDB objective spawn 41
+S	816	1	566.883	-3729.24	20.1244	28.0	QuestDB objective spawn 42
+S	816	1	201.138	-3748.54	15.0297	28.0	QuestDB objective spawn 43
+S	816	1	-713.083	-3997.5	15.4585	28.0	QuestDB objective spawn 44
+S	816	1	-384.928	-3911.26	15.787	28.0	QuestDB objective spawn 45
+S	816	1	-146.488	-3781.52	14.2056	28.0	QuestDB objective spawn 46
+S	816	1	251.447	-3780.23	21.2629	28.0	QuestDB objective spawn 47
+S	816	1	12.6142	-3732.27	17.2314	28.0	QuestDB objective spawn 48
+S	816	1	-214.576	-3853.52	21.3208	28.0	QuestDB objective spawn 49
+D	816	1	887.155	-3811.98	15.4663	28.0	QuestDB primary objective seed
+Q	817	Practical Prey	5	0	3194	3194	1	CollectItemFromMob	3121	4892	0	4	Durotar Tiger	EchoIsles	740	-1	0	805	0	8	0	0	0	1	supported	0
+G	817	1	-797.523	-4921.17	22.9571	5.0	QuestDB giver spawn 1
+T	817	1	-797.523	-4921.17	22.9571	5.0	QuestDB turn-in spawn 1
+O	817	0	1	0	CollectItemFromMob	3121	4892	0	4	Durotar Tiger	-1	0
+OS	817	0	1	-1553.21	-5350.96	4.72484	28.0	QuestDB objective 1 spawn 1
+OS	817	0	1	-1584.37	-5307.1	9.23512	28.0	QuestDB objective 1 spawn 2
+OS	817	0	1	-744.585	-5611.71	24.5514	28.0	QuestDB objective 1 spawn 3
+OS	817	0	1	-1614.27	-5287.68	7.52334	28.0	QuestDB objective 1 spawn 4
+OS	817	0	1	-648.184	-5618.89	7.47856	28.0	QuestDB objective 1 spawn 5
+OS	817	0	1	-1022.93	-5614.99	4.98502	28.0	QuestDB objective 1 spawn 6
+OS	817	0	1	-1047.05	-5383.41	8.13052	28.0	QuestDB objective 1 spawn 7
+OS	817	0	1	-1312.22	-5379.77	1.86377	28.0	QuestDB objective 1 spawn 8
+OS	817	0	1	-780.59	-5680.04	7.83769	28.0	QuestDB objective 1 spawn 9
+OS	817	0	1	-757.669	-5651.24	15.7503	28.0	QuestDB objective 1 spawn 10
+OS	817	0	1	-684.319	-5516.27	5.70708	28.0	QuestDB objective 1 spawn 11
+OS	817	0	1	-1621.3	-5345.82	7.22336	28.0	QuestDB objective 1 spawn 12
+OS	817	0	1	-1383.46	-5082.28	1.35365	28.0	QuestDB objective 1 spawn 13
+OS	817	0	1	-1020.3	-5413.44	3.54369	28.0	QuestDB objective 1 spawn 14
+OS	817	0	1	-788.724	-5623.24	13.0798	28.0	QuestDB objective 1 spawn 15
+OS	817	0	1	-1546.26	-5262.28	6.85467	28.0	QuestDB objective 1 spawn 16
+OS	817	0	1	-1181.88	-5618.09	5.26861	28.0	QuestDB objective 1 spawn 17
+OS	817	0	1	-793.014	-5540.35	4.6598	28.0	QuestDB objective 1 spawn 18
+OS	817	0	1	-1186.91	-5380.54	8.47154	28.0	QuestDB objective 1 spawn 19
+OS	817	0	1	-1056.33	-5446.19	8.03804	28.0	QuestDB objective 1 spawn 20
+OS	817	0	1	-1286.12	-5415.65	5.032	28.0	QuestDB objective 1 spawn 21
+OS	817	0	1	-1012.25	-5144.59	2.50305	28.0	QuestDB objective 1 spawn 22
+OS	817	0	1	-1092.71	-5170.71	1.18827	28.0	QuestDB objective 1 spawn 23
+OS	817	0	1	-1177.98	-5114.76	3.25374	28.0	QuestDB objective 1 spawn 24
+OS	817	0	1	-1127.64	-5126.02	3.52817	28.0	QuestDB objective 1 spawn 25
+OS	817	0	1	-1319.94	-5180.0	1.356	28.0	QuestDB objective 1 spawn 26
+OS	817	0	1	-1350.45	-5215.19	3.8588	28.0	QuestDB objective 1 spawn 27
+OS	817	0	1	-1384.28	-5185.67	2.32902	28.0	QuestDB objective 1 spawn 28
+OS	817	0	1	-1411.09	-5210.54	4.25019	28.0	QuestDB objective 1 spawn 29
+OS	817	0	1	-1413.26	-5152.44	2.84778	28.0	QuestDB objective 1 spawn 30
+S	817	1	-1553.21	-5350.96	4.72484	28.0	QuestDB objective spawn 1
+S	817	1	-1584.37	-5307.1	9.23512	28.0	QuestDB objective spawn 2
+S	817	1	-744.585	-5611.71	24.5514	28.0	QuestDB objective spawn 3
+S	817	1	-1614.27	-5287.68	7.52334	28.0	QuestDB objective spawn 4
+S	817	1	-648.184	-5618.89	7.47856	28.0	QuestDB objective spawn 5
+S	817	1	-1022.93	-5614.99	4.98502	28.0	QuestDB objective spawn 6
+S	817	1	-1047.05	-5383.41	8.13052	28.0	QuestDB objective spawn 7
+S	817	1	-1312.22	-5379.77	1.86377	28.0	QuestDB objective spawn 8
+S	817	1	-780.59	-5680.04	7.83769	28.0	QuestDB objective spawn 9
+S	817	1	-757.669	-5651.24	15.7503	28.0	QuestDB objective spawn 10
+S	817	1	-684.319	-5516.27	5.70708	28.0	QuestDB objective spawn 11
+S	817	1	-1621.3	-5345.82	7.22336	28.0	QuestDB objective spawn 12
+S	817	1	-1383.46	-5082.28	1.35365	28.0	QuestDB objective spawn 13
+S	817	1	-1020.3	-5413.44	3.54369	28.0	QuestDB objective spawn 14
+S	817	1	-788.724	-5623.24	13.0798	28.0	QuestDB objective spawn 15
+S	817	1	-1546.26	-5262.28	6.85467	28.0	QuestDB objective spawn 16
+S	817	1	-1181.88	-5618.09	5.26861	28.0	QuestDB objective spawn 17
+S	817	1	-793.014	-5540.35	4.6598	28.0	QuestDB objective spawn 18
+S	817	1	-1186.91	-5380.54	8.47154	28.0	QuestDB objective spawn 19
+S	817	1	-1056.33	-5446.19	8.03804	28.0	QuestDB objective spawn 20
+S	817	1	-1286.12	-5415.65	5.032	28.0	QuestDB objective spawn 21
+S	817	1	-1012.25	-5144.59	2.50305	28.0	QuestDB objective spawn 22
+S	817	1	-1092.71	-5170.71	1.18827	28.0	QuestDB objective spawn 23
+S	817	1	-1177.98	-5114.76	3.25374	28.0	QuestDB objective spawn 24
+S	817	1	-1127.64	-5126.02	3.52817	28.0	QuestDB objective spawn 25
+S	817	1	-1319.94	-5180.0	1.356	28.0	QuestDB objective spawn 26
+S	817	1	-1350.45	-5215.19	3.8588	28.0	QuestDB objective spawn 27
+S	817	1	-1384.28	-5185.67	2.32902	28.0	QuestDB objective spawn 28
+S	817	1	-1411.09	-5210.54	4.25019	28.0	QuestDB objective spawn 29
+S	817	1	-1413.26	-5152.44	2.84778	28.0	QuestDB objective spawn 30
+D	817	1	-1553.21	-5350.96	4.72484	28.0	QuestDB primary objective seed
+Q	818	A Solvent Spirit	5	0	3304	3304	2	CollectItemFromMob	3103	4887	0	4	Makrura Clacker	SenjinCoast	760	-1	0	805	0	7	0	0	0	1	supported	0
+G	818	1	-813.994	-4920.57	19.4341	5.0	QuestDB giver spawn 1
+T	818	1	-813.994	-4920.57	19.4341	5.0	QuestDB turn-in spawn 1
+O	818	0	1	0	CollectItemFromMob	3103	4887	0	4	Makrura Clacker	-1	0
+OS	818	0	1	52.0649	-5411.03	-21.5256	28.0	QuestDB objective 1 spawn 1
+OS	818	0	1	-1452.73	-5251.27	-2.38763	28.0	QuestDB objective 1 spawn 2
+OS	818	0	1	-1220.34	-5682.19	-3.91232	28.0	QuestDB objective 1 spawn 3
+OS	818	0	1	-914.995	-5647.28	-8.62248	28.0	QuestDB objective 1 spawn 4
+OS	818	0	1	-1092.15	-5689.7	-1.77134	28.0	QuestDB objective 1 spawn 5
+OS	818	0	1	-1024.7	-5228.54	-7.43464	28.0	QuestDB objective 1 spawn 6
+OS	818	0	1	-145.727	-5347.04	-15.5414	28.0	QuestDB objective 1 spawn 7
+OS	818	0	1	-843.956	-5703.44	-2.45975	28.0	QuestDB objective 1 spawn 8
+OS	818	0	1	-1320.08	-5659.41	-4.26491	28.0	QuestDB objective 1 spawn 9
+OS	818	0	1	-1587.39	-5183.62	-2.90685	28.0	QuestDB objective 1 spawn 10
+OS	818	0	1	-310.844	-5319.98	-10.4259	28.0	QuestDB objective 1 spawn 11
+OS	818	0	1	-178.758	-5291.73	-6.77493	28.0	QuestDB objective 1 spawn 12
+OS	818	0	1	-1416.87	-5090.03	-3.21669	28.0	QuestDB objective 1 spawn 13
+OS	818	0	1	-1280.95	-5085.2	-4.87893	28.0	QuestDB objective 1 spawn 14
+OS	818	0	1	-744.021	-5118.75	-0.680583	28.0	QuestDB objective 1 spawn 15
+OS	818	0	1	-1087.16	-5080.06	-3.05925	28.0	QuestDB objective 1 spawn 16
+OS	818	0	1	-911.796	-5594.51	-10.0736	28.0	QuestDB objective 1 spawn 17
+OS	818	0	1	-918.012	-5190.05	-1.41376	28.0	QuestDB objective 1 spawn 18
+OS	818	0	1	89.062	-5380.92	-15.7342	28.0	QuestDB objective 1 spawn 19
+OS	818	0	1	-8.08803	-5412.46	-13.7311	28.0	QuestDB objective 1 spawn 20
+OS	818	0	1	18.1143	-5320.35	-21.7979	28.0	QuestDB objective 1 spawn 21
+OS	818	0	1	-747.651	-5190.88	-9.43668	28.0	QuestDB objective 1 spawn 22
+OS	818	0	1	-619.458	-5245.9	-13.7097	28.0	QuestDB objective 1 spawn 23
+OS	818	0	1	-252.989	-5315.19	-7.42286	28.0	QuestDB objective 1 spawn 24
+OS	818	0	1	-913.74	-5521.05	-2.1964	28.0	QuestDB objective 1 spawn 25
+OS	818	0	1	293.246	-5217.67	-14.8444	28.0	QuestDB objective 1 spawn 26
+OS	818	0	1	-125.069	-5381.75	-20.7173	28.0	QuestDB objective 1 spawn 27
+OS	818	0	1	291.451	-5284.86	-16.5794	28.0	QuestDB objective 1 spawn 28
+OS	818	0	1	-751.566	-5752.4	-6.41139	28.0	QuestDB objective 1 spawn 29
+OS	818	0	1	-93.9309	-5426.42	-16.5996	28.0	QuestDB objective 1 spawn 30
+OS	818	0	1	379.342	-5247.86	-18.7021	28.0	QuestDB objective 1 spawn 31
+OS	818	0	1	-911.47	-5379.71	-3.0263	28.0	QuestDB objective 1 spawn 32
+OS	818	0	1	220.364	-5285.17	-10.3533	28.0	QuestDB objective 1 spawn 33
+OS	818	0	1	-345.864	-5282.59	-9.81598	28.0	QuestDB objective 1 spawn 34
+OS	818	0	1	-555.171	-5250.68	-13.7383	28.0	QuestDB objective 1 spawn 35
+OS	818	0	1	-1256.84	-5110.69	-2.76829	28.0	QuestDB objective 1 spawn 36
+OS	818	0	1	-1184.38	-4748.11	-8.84738	28.0	QuestDB objective 1 spawn 37
+OS	818	0	1	14.311	-5219.2	-13.0752	28.0	QuestDB objective 1 spawn 38
+OS	818	0	1	-1183.86	-4680.59	-10.2516	28.0	QuestDB objective 1 spawn 39
+OS	818	0	1	-1012.46	-4994.26	-6.20651	28.0	QuestDB objective 1 spawn 40
+OS	818	0	1	151.385	-5280.08	-10.2197	28.0	QuestDB objective 1 spawn 41
+O	818	1	2	1	CollectItemFromMob	3106	4888	0	8	Pygmy Surf Crawler	-1	0
+OS	818	1	1	-117.738	-5334.21	-17.56	28.0	QuestDB objective 2 spawn 1
+OS	818	1	1	-343.063	-5313.09	-11.1287	28.0	QuestDB objective 2 spawn 2
+OS	818	1	1	257.787	-5265.34	-15.4273	28.0	QuestDB objective 2 spawn 3
+OS	818	1	1	-76.1168	-5453.05	-28.3831	28.0	QuestDB objective 2 spawn 4
+OS	818	1	1	210.615	-5317.22	-15.0752	28.0	QuestDB objective 2 spawn 5
+OS	818	1	1	116.822	-5299.04	-14.484	28.0	QuestDB objective 2 spawn 6
+OS	818	1	1	-128.692	-5289.08	-9.75062	28.0	QuestDB objective 2 spawn 7
+OS	818	1	1	-244.156	-5275.92	-6.42236	28.0	QuestDB objective 2 spawn 8
+OS	818	1	1	-785.422	-5122.69	-2.48281	28.0	QuestDB objective 2 spawn 9
+OS	818	1	1	-76.0647	-5224.97	-7.04592	28.0	QuestDB objective 2 spawn 10
+OS	818	1	1	-969.564	-5039.14	-4.73749	28.0	QuestDB objective 2 spawn 11
+OS	818	1	1	-1116.24	-4844.35	-5.00127	28.0	QuestDB objective 2 spawn 12
+OS	818	1	1	41.1562	-5185.72	-8.72162	28.0	QuestDB objective 2 spawn 13
+OS	818	1	1	249.011	-5303.71	-14.8436	28.0	QuestDB objective 2 spawn 14
+OS	818	1	1	115.517	-5197.6	-14.76	28.0	QuestDB objective 2 spawn 15
+OS	818	1	1	-368.552	-5204.55	1.60823	28.0	QuestDB objective 2 spawn 16
+OS	818	1	1	14.0715	-5446.72	-25.3549	28.0	QuestDB objective 2 spawn 17
+OS	818	1	1	-120.58	-5305.61	-11.0429	28.0	QuestDB objective 2 spawn 18
+OS	818	1	1	-130.132	-5392.05	-18.3684	28.0	QuestDB objective 2 spawn 19
+OS	818	1	1	-10.1825	-5282.24	-12.3681	28.0	QuestDB objective 2 spawn 20
+OS	818	1	1	217.904	-5151.4	-1.13319	28.0	QuestDB objective 2 spawn 21
+OS	818	1	1	-35.1875	-5185.78	-6.03879	28.0	QuestDB objective 2 spawn 22
+OS	818	1	1	-657.209	-5185.14	-2.7149	28.0	QuestDB objective 2 spawn 23
+OS	818	1	1	69.8332	-5423.17	-28.5528	28.0	QuestDB objective 2 spawn 24
+OS	818	1	1	415.779	-5213.34	-15.7766	28.0	QuestDB objective 2 spawn 25
+OS	818	1	1	145.836	-5349.61	-10.6658	28.0	QuestDB objective 2 spawn 26
+OS	818	1	1	282.905	-5152.91	0.894415	28.0	QuestDB objective 2 spawn 27
+OS	818	1	1	-396.503	-5279.09	-11.1467	28.0	QuestDB objective 2 spawn 28
+OS	818	1	1	-206.62	-5343.49	-8.28776	28.0	QuestDB objective 2 spawn 29
+OS	818	1	1	-1115.69	-4787.79	2.79105	28.0	QuestDB objective 2 spawn 30
+OS	818	1	1	-1118.72	-4748.75	1.60479	28.0	QuestDB objective 2 spawn 31
+OS	818	1	1	-1151.48	-4718.65	-7.07198	28.0	QuestDB objective 2 spawn 32
+OS	818	1	1	263.487	-5184.92	-8.68706	28.0	QuestDB objective 2 spawn 33
+OS	818	1	1	-1117.79	-4813.51	-0.318909	28.0	QuestDB objective 2 spawn 34
+OS	818	1	1	-1121.4	-4723.77	0.891993	28.0	QuestDB objective 2 spawn 35
+OS	818	1	1	-1153.62	-4687.12	-5.44698	28.0	QuestDB objective 2 spawn 36
+OS	818	1	1	-1009.4	-4890.24	1.63781	28.0	QuestDB objective 2 spawn 37
+OS	818	1	1	-1021.34	-4915.17	-3.78212	28.0	QuestDB objective 2 spawn 38
+OS	818	1	1	-1150.91	-4852.97	-9.56159	28.0	QuestDB objective 2 spawn 39
+OS	818	1	1	-1073.27	-4881.63	-3.47997	28.0	QuestDB objective 2 spawn 40
+OS	818	1	1	-980.695	-4951.13	2.18266	28.0	QuestDB objective 2 spawn 41
+OS	818	1	1	-985.224	-4987.36	-0.373544	28.0	QuestDB objective 2 spawn 42
+OS	818	1	1	-943.098	-4986.07	6.46365	28.0	QuestDB objective 2 spawn 43
+OS	818	1	1	82.8563	-5284.09	-21.841	28.0	QuestDB objective 2 spawn 44
+OS	818	1	1	88.5314	-5352.77	-12.5145	28.0	QuestDB objective 2 spawn 45
+OS	818	1	1	-1015.59	-4946.77	-4.43157	28.0	QuestDB objective 2 spawn 46
+OS	818	1	1	80.2951	-5152.26	-1.02294	28.0	QuestDB objective 2 spawn 47
+OS	818	1	1	-1082.13	-4850.85	3.17436	28.0	QuestDB objective 2 spawn 48
+OS	818	1	1	-987.052	-4920.34	0.995402	28.0	QuestDB objective 2 spawn 49
+OS	818	1	1	149.939	-5152.86	1.02443	28.0	QuestDB objective 2 spawn 50
+OS	818	1	1	-1088.46	-4820.06	4.84342	28.0	QuestDB objective 2 spawn 51
+S	818	1	52.0649	-5411.03	-21.5256	28.0	QuestDB objective spawn 1
+S	818	1	-1452.73	-5251.27	-2.38763	28.0	QuestDB objective spawn 2
+S	818	1	-1220.34	-5682.19	-3.91232	28.0	QuestDB objective spawn 3
+S	818	1	-914.995	-5647.28	-8.62248	28.0	QuestDB objective spawn 4
+S	818	1	-1092.15	-5689.7	-1.77134	28.0	QuestDB objective spawn 5
+S	818	1	-1024.7	-5228.54	-7.43464	28.0	QuestDB objective spawn 6
+S	818	1	-145.727	-5347.04	-15.5414	28.0	QuestDB objective spawn 7
+S	818	1	-843.956	-5703.44	-2.45975	28.0	QuestDB objective spawn 8
+S	818	1	-1320.08	-5659.41	-4.26491	28.0	QuestDB objective spawn 9
+S	818	1	-1587.39	-5183.62	-2.90685	28.0	QuestDB objective spawn 10
+S	818	1	-310.844	-5319.98	-10.4259	28.0	QuestDB objective spawn 11
+S	818	1	-178.758	-5291.73	-6.77493	28.0	QuestDB objective spawn 12
+S	818	1	-1416.87	-5090.03	-3.21669	28.0	QuestDB objective spawn 13
+S	818	1	-1280.95	-5085.2	-4.87893	28.0	QuestDB objective spawn 14
+S	818	1	-744.021	-5118.75	-0.680583	28.0	QuestDB objective spawn 15
+S	818	1	-1087.16	-5080.06	-3.05925	28.0	QuestDB objective spawn 16
+S	818	1	-911.796	-5594.51	-10.0736	28.0	QuestDB objective spawn 17
+S	818	1	-918.012	-5190.05	-1.41376	28.0	QuestDB objective spawn 18
+S	818	1	89.062	-5380.92	-15.7342	28.0	QuestDB objective spawn 19
+S	818	1	-8.08803	-5412.46	-13.7311	28.0	QuestDB objective spawn 20
+S	818	1	18.1143	-5320.35	-21.7979	28.0	QuestDB objective spawn 21
+S	818	1	-747.651	-5190.88	-9.43668	28.0	QuestDB objective spawn 22
+S	818	1	-619.458	-5245.9	-13.7097	28.0	QuestDB objective spawn 23
+S	818	1	-252.989	-5315.19	-7.42286	28.0	QuestDB objective spawn 24
+S	818	1	-913.74	-5521.05	-2.1964	28.0	QuestDB objective spawn 25
+S	818	1	293.246	-5217.67	-14.8444	28.0	QuestDB objective spawn 26
+S	818	1	-125.069	-5381.75	-20.7173	28.0	QuestDB objective spawn 27
+S	818	1	291.451	-5284.86	-16.5794	28.0	QuestDB objective spawn 28
+S	818	1	-751.566	-5752.4	-6.41139	28.0	QuestDB objective spawn 29
+S	818	1	-93.9309	-5426.42	-16.5996	28.0	QuestDB objective spawn 30
+S	818	1	379.342	-5247.86	-18.7021	28.0	QuestDB objective spawn 31
+S	818	1	-911.47	-5379.71	-3.0263	28.0	QuestDB objective spawn 32
+S	818	1	220.364	-5285.17	-10.3533	28.0	QuestDB objective spawn 33
+S	818	1	-345.864	-5282.59	-9.81598	28.0	QuestDB objective spawn 34
+S	818	1	-555.171	-5250.68	-13.7383	28.0	QuestDB objective spawn 35
+S	818	1	-1256.84	-5110.69	-2.76829	28.0	QuestDB objective spawn 36
+S	818	1	-1184.38	-4748.11	-8.84738	28.0	QuestDB objective spawn 37
+S	818	1	14.311	-5219.2	-13.0752	28.0	QuestDB objective spawn 38
+S	818	1	-1183.86	-4680.59	-10.2516	28.0	QuestDB objective spawn 39
+S	818	1	-1012.46	-4994.26	-6.20651	28.0	QuestDB objective spawn 40
+S	818	1	151.385	-5280.08	-10.2197	28.0	QuestDB objective spawn 41
+D	818	1	52.0649	-5411.03	-21.5256	28.0	QuestDB primary objective seed
+Q	823	Report to Orgnil	4	0	3188	3142	0	TravelReport	3142	0	0	1	Orgnil Soulscar	RazorHillRoad	100	-1	0	805	1	7	0	0	0	1	supported	0
+G	823	1	-825.636	-4920.76	19.7409	5.0	QuestDB giver spawn 1
+T	823	1	287.265	-4724.88	13.2142	5.0	QuestDB turn-in spawn 1
+Q	825	From The Wreckage....	3	0	3139	3139	1	CollectWorldItem	0	4863	3236	3	Gnomish Toolbox	None	600	3	2422	0	0	8	784	0	0	1	supported	0
+G	825	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
+T	825	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
+O	825	0	1	0	CollectWorldItem	0	4863	3236	3	Gnomish Toolbox	3	2422
+OS	825	0	1	-80.2491	-5386.02	-14.9874	22.0	QuestDB objective 1 spawn 1
+OS	825	0	1	-147.682	-5237.83	-6.18887	22.0	QuestDB objective 1 spawn 2
+OS	825	0	1	-170.603	-5208.94	-0.663438	22.0	QuestDB objective 1 spawn 3
+OS	825	0	1	-177.198	-5254.17	-4.94838	22.0	QuestDB objective 1 spawn 4
+OS	825	0	1	315.632	-5237.54	-18.0577	22.0	QuestDB objective 1 spawn 5
+OS	825	0	1	308.689	-5249.91	-16.8152	22.0	QuestDB objective 1 spawn 6
+OS	825	0	1	338.307	-5247.66	-19.7419	22.0	QuestDB objective 1 spawn 7
+OS	825	0	1	45.4952	-5377.44	-10.3705	22.0	QuestDB objective 1 spawn 8
+OS	825	0	1	36.2552	-5341.58	-14.4376	22.0	QuestDB objective 1 spawn 9
+OS	825	0	1	-330.449	-5244.87	-9.12052	22.0	QuestDB objective 1 spawn 10
+OS	825	0	1	-301.783	-5263.56	-7.68225	22.0	QuestDB objective 1 spawn 11
+OS	825	0	1	-326.884	-5268.09	-8.12469	22.0	QuestDB objective 1 spawn 12
+OS	825	0	1	-175.51	-5323.93	-11.4115	22.0	QuestDB objective 1 spawn 13
+OS	825	0	1	-212.003	-5309.14	-8.11049	22.0	QuestDB objective 1 spawn 14
+OS	825	0	1	-239.48	-5306.62	4.16666	22.0	QuestDB objective 1 spawn 15
+OS	825	0	1	192.444	-5231.79	-9.86024	22.0	QuestDB objective 1 spawn 16
+OS	825	0	1	177.122	-5242.0	-8.53427	22.0	QuestDB objective 1 spawn 17
+OS	825	0	1	186.37	-5259.7	-7.22174	22.0	QuestDB objective 1 spawn 18
+OS	825	0	1	-76.2622	-5358.88	-19.4791	22.0	QuestDB objective 1 spawn 19
+OS	825	0	1	-60.0938	-5336.67	-20.281	22.0	QuestDB objective 1 spawn 20
+S	825	1	-80.2491	-5386.02	-14.9874	22.0	QuestDB objective spawn 1
+S	825	1	-147.682	-5237.83	-6.18887	22.0	QuestDB objective spawn 2
+S	825	1	-170.603	-5208.94	-0.663438	22.0	QuestDB objective spawn 3
+S	825	1	-177.198	-5254.17	-4.94838	22.0	QuestDB objective spawn 4
+S	825	1	315.632	-5237.54	-18.0577	22.0	QuestDB objective spawn 5
+S	825	1	308.689	-5249.91	-16.8152	22.0	QuestDB objective spawn 6
+S	825	1	338.307	-5247.66	-19.7419	22.0	QuestDB objective spawn 7
+S	825	1	45.4952	-5377.44	-10.3705	22.0	QuestDB objective spawn 8
+S	825	1	36.2552	-5341.58	-14.4376	22.0	QuestDB objective spawn 9
+S	825	1	-330.449	-5244.87	-9.12052	22.0	QuestDB objective spawn 10
+S	825	1	-301.783	-5263.56	-7.68225	22.0	QuestDB objective spawn 11
+S	825	1	-326.884	-5268.09	-8.12469	22.0	QuestDB objective spawn 12
+S	825	1	-175.51	-5323.93	-11.4115	22.0	QuestDB objective spawn 13
+S	825	1	-212.003	-5309.14	-8.11049	22.0	QuestDB objective spawn 14
+S	825	1	-239.48	-5306.62	4.16666	22.0	QuestDB objective spawn 15
+S	825	1	192.444	-5231.79	-9.86024	22.0	QuestDB objective spawn 16
+S	825	1	177.122	-5242.0	-8.53427	22.0	QuestDB objective spawn 17
+S	825	1	186.37	-5259.7	-7.22174	22.0	QuestDB objective spawn 18
+S	825	1	-76.2622	-5358.88	-19.4791	22.0	QuestDB objective spawn 19
+S	825	1	-60.0938	-5336.67	-20.281	22.0	QuestDB objective spawn 20
+D	825	1	-80.2491	-5386.02	-14.9874	22.0	QuestDB primary objective seed
+Q	826	Zalazane	4	0	3188	3188	3	KillMob	3207	0	0	8	Hexed Troll	EchoIsles	790	-1	0	805	0	10	0	0	0	1	supported	0
+G	826	1	-825.636	-4920.76	19.7409	5.0	QuestDB giver spawn 1
+T	826	1	-825.636	-4920.76	19.7409	5.0	QuestDB turn-in spawn 1
+O	826	0	1	0	KillMob	3207	0	0	8	Hexed Troll	-1	0
+OS	826	0	1	-1134.72	-5544.55	10.623	28.0	QuestDB objective 1 spawn 1
+OS	826	0	1	-1141.04	-5542.15	7.372	28.0	QuestDB objective 1 spawn 2
+OS	826	0	1	-1125.52	-5573.58	9.90778	28.0	QuestDB objective 1 spawn 3
+OS	826	0	1	-1144.54	-5566.72	9.90789	28.0	QuestDB objective 1 spawn 4
+OS	826	0	1	-1136.2	-5563.91	9.90795	28.0	QuestDB objective 1 spawn 5
+OS	826	0	1	-1317.58	-5520.55	4.22827	28.0	QuestDB objective 1 spawn 6
+OS	826	0	1	-1251.06	-5582.51	8.08332	28.0	QuestDB objective 1 spawn 7
+OS	826	0	1	-1220.26	-5552.95	5.53587	28.0	QuestDB objective 1 spawn 8
+OS	826	0	1	-1221.02	-5512.09	5.60975	28.0	QuestDB objective 1 spawn 9
+OS	826	0	1	-1187.5	-5512.5	5.6852	28.0	QuestDB objective 1 spawn 10
+OS	826	0	1	-1152.97	-5446.21	8.70802	28.0	QuestDB objective 1 spawn 11
+OS	826	0	1	-1138.31	-5597.88	7.61002	28.0	QuestDB objective 1 spawn 12
+OS	826	0	1	-1248.95	-5480.5	5.21741	28.0	QuestDB objective 1 spawn 13
+OS	826	0	1	-1287.27	-5481.16	4.22497	28.0	QuestDB objective 1 spawn 14
+OS	826	0	1	-1118.81	-5485.68	7.90532	28.0	QuestDB objective 1 spawn 15
+O	826	1	2	1	KillMob	3206	0	0	8	Voodoo Troll	-1	0
+OS	826	1	1	-1165.43	-5588.42	13.7373	28.0	QuestDB objective 2 spawn 1
+OS	826	1	1	-1285.31	-5508.77	8.46731	28.0	QuestDB objective 2 spawn 2
+OS	826	1	1	-1243.89	-5513.5	9.4805	28.0	QuestDB objective 2 spawn 3
+OS	826	1	1	-1253.65	-5534.9	5.25236	28.0	QuestDB objective 2 spawn 4
+OS	826	1	1	-1270.25	-5516.54	4.98094	28.0	QuestDB objective 2 spawn 5
+OS	826	1	1	-1135.93	-5585.65	10.5047	28.0	QuestDB objective 2 spawn 6
+OS	826	1	1	-1110.47	-5447.91	9.71767	28.0	QuestDB objective 2 spawn 7
+OS	826	1	1	-1102.46	-5526.49	11.773	28.0	QuestDB objective 2 spawn 8
+OS	826	1	1	-1094.85	-5579.36	11.1797	28.0	QuestDB objective 2 spawn 9
+OS	826	1	1	-1084.12	-5548.47	10.2811	28.0	QuestDB objective 2 spawn 10
+OS	826	1	1	-1247.7	-5448.08	5.47132	28.0	QuestDB objective 2 spawn 11
+OS	826	1	1	-1264.6	-5498.64	4.98397	28.0	QuestDB objective 2 spawn 12
+OS	826	1	1	-1251.9	-5508.89	5.85606	28.0	QuestDB objective 2 spawn 13
+O	826	2	1	2	CollectItemFromMob	3205	4866	0	1	Zalazane	-1	0
+OS	826	2	1	-1286.96	-5534.33	15.202	28.0	QuestDB objective 3 spawn 1
+S	826	1	-1134.72	-5544.55	10.623	28.0	QuestDB objective spawn 1
+S	826	1	-1141.04	-5542.15	7.372	28.0	QuestDB objective spawn 2
+S	826	1	-1125.52	-5573.58	9.90778	28.0	QuestDB objective spawn 3
+S	826	1	-1144.54	-5566.72	9.90789	28.0	QuestDB objective spawn 4
+S	826	1	-1136.2	-5563.91	9.90795	28.0	QuestDB objective spawn 5
+S	826	1	-1317.58	-5520.55	4.22827	28.0	QuestDB objective spawn 6
+S	826	1	-1251.06	-5582.51	8.08332	28.0	QuestDB objective spawn 7
+S	826	1	-1220.26	-5552.95	5.53587	28.0	QuestDB objective spawn 8
+S	826	1	-1221.02	-5512.09	5.60975	28.0	QuestDB objective spawn 9
+S	826	1	-1187.5	-5512.5	5.6852	28.0	QuestDB objective spawn 10
+S	826	1	-1152.97	-5446.21	8.70802	28.0	QuestDB objective spawn 11
+S	826	1	-1138.31	-5597.88	7.61002	28.0	QuestDB objective spawn 12
+S	826	1	-1248.95	-5480.5	5.21741	28.0	QuestDB objective spawn 13
+S	826	1	-1287.27	-5481.16	4.22497	28.0	QuestDB objective spawn 14
+S	826	1	-1118.81	-5485.68	7.90532	28.0	QuestDB objective spawn 15
+D	826	1	-1134.72	-5544.55	10.623	28.0	QuestDB primary objective seed
+Q	827	Skull Rock	4	0	3208	3208	1	CollectItemFromMob	3195	4871	0	6	Burning Blade Thug	None	600	-1	0	0	0	12	828	0	0	1	supported	0
+G	827	1	1102.09	-4945.36	15.6857	5.0	QuestDB giver spawn 1
+T	827	1	1102.09	-4945.36	15.6857	5.0	QuestDB turn-in spawn 1
+O	827	0	1	0	CollectItemFromMob	3195	4871	0	6	Burning Blade Thug	-1	0
+OS	827	0	1	781.005	-4772.92	36.7114	28.0	QuestDB objective 1 spawn 1
+OS	827	0	1	776.376	-4756.83	37.4377	28.0	QuestDB objective 1 spawn 2
+OS	827	0	1	823.937	-4747.32	36.0367	28.0	QuestDB objective 1 spawn 3
+OS	827	0	1	858.907	-4786.1	37.0383	28.0	QuestDB objective 1 spawn 4
+OS	827	0	1	828.064	-4766.75	36.8359	28.0	QuestDB objective 1 spawn 5
+OS	827	0	1	779.311	-4738.29	38.5627	28.0	QuestDB objective 1 spawn 6
+S	827	1	781.005	-4772.92	36.7114	28.0	QuestDB objective spawn 1
+S	827	1	776.376	-4756.83	37.4377	28.0	QuestDB objective spawn 2
+S	827	1	823.937	-4747.32	36.0367	28.0	QuestDB objective spawn 3
+S	827	1	858.907	-4786.1	37.0383	28.0	QuestDB objective spawn 4
+S	827	1	828.064	-4766.75	36.8359	28.0	QuestDB objective spawn 5
+S	827	1	779.311	-4738.29	38.5627	28.0	QuestDB objective spawn 6
+D	827	1	781.005	-4772.92	36.7114	28.0	QuestDB primary objective seed
+Q	828	Margoz	4	0	3142	3208	0	TravelReport	3208	0	0	1	Margoz	None	100	-1	0	0	1	12	806	827	0	1	supported	0
+G	828	1	287.265	-4724.88	13.2142	5.0	QuestDB giver spawn 1
+T	828	1	1102.09	-4945.36	15.6857	5.0	QuestDB turn-in spawn 1
+Q	829	Neeru Fireblade	4	0	3208	3216	1	Unknown	0	6658	0	1	item 6658	None	600	-1	0	0	0	12	827	809	0	0	objective 1 unsupported/unresolved	0
+G	829	1	1102.09	-4945.36	15.6857	5.0	QuestDB giver spawn 1
+T	829	1	1800.66	-4374.51	-17.3475	5.0	QuestDB turn-in spawn 1
+O	829	0	1	0	Unknown	0	6658	0	1	item 6658	-1	0
+Q	830	The Admiral's Orders	1	0	0	3139	1	Unknown	0	4883	0	1	item 4883	None	600	-1	0	0	0	7	0	831	0	0	missing giver relation; objective 1 unsupported/unresolved	0
+T	830	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
+O	830	0	1	0	Unknown	0	4883	0	1	item 4883	-1	0
+Q	831	The Admiral's Orders	1	0	3139	3230	1	Unknown	0	4883	0	1	item 4883	None	600	-1	0	0	0	7	830	0	0	0	objective 1 unsupported/unresolved	0
+G	831	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
+T	831	1	1939.05	-4133.25	40.9998	5.0	QuestDB turn-in spawn 1
+O	831	0	1	0	Unknown	0	4883	0	1	item 4883	-1	0
+Q	832	Burning Shadows	4	0	0	3216	1	CollectItemFromMob	3204	4903	0	1	Gazz'uz	None	600	-1	0	0	0	12	0	0	0	0	missing giver relation	0
+T	832	1	1800.66	-4374.51	-17.3475	5.0	QuestDB turn-in spawn 1
+O	832	0	1	0	CollectItemFromMob	3204	4903	0	1	Gazz'uz	-1	0
+OS	832	0	1	1454.2	-4701.82	-2.62193	28.0	QuestDB objective 1 spawn 1
+OS	832	0	1	1470.49	-4706.11	2.22037	28.0	QuestDB objective 1 spawn 2
+OS	832	0	1	1497.54	-4744.14	18.0121	28.0	QuestDB objective 1 spawn 3
+OS	832	0	1	1465.78	-4683.74	6.62599	28.0	QuestDB objective 1 spawn 4
+S	832	1	1454.2	-4701.82	-2.62193	28.0	QuestDB objective spawn 1
+S	832	1	1470.49	-4706.11	2.22037	28.0	QuestDB objective spawn 2
+S	832	1	1497.54	-4744.14	18.0121	28.0	QuestDB objective spawn 3
+S	832	1	1465.78	-4683.74	6.62599	28.0	QuestDB objective spawn 4
+D	832	1	1454.2	-4701.82	-2.62193	28.0	QuestDB primary objective seed
+Q	834	Winds in the Desert	7	0	3293	3293	1	CollectWorldItem	0	4918	3290	5	Stolen Supply Sack	None	600	3	2491	0	0	9	0	835	0	1	supported	0
+G	834	1	999.763	-4414.4	14.4718	5.0	QuestDB giver spawn 1
+T	834	1	999.763	-4414.4	14.4718	5.0	QuestDB turn-in spawn 1
+O	834	0	1	0	CollectWorldItem	0	4918	3290	5	Stolen Supply Sack	3	2491
+OS	834	0	1	596.293	-4505.19	13.0419	22.0	QuestDB objective 1 spawn 1
+OS	834	0	1	676.331	-4586.47	2.1207	22.0	QuestDB objective 1 spawn 2
+OS	834	0	1	719.083	-4457.18	15.708	22.0	QuestDB objective 1 spawn 3
+OS	834	0	1	762.308	-4456.75	15.6685	22.0	QuestDB objective 1 spawn 4
+OS	834	0	1	642.059	-4558.61	7.89757	22.0	QuestDB objective 1 spawn 5
+OS	834	0	1	860.915	-4599.07	9.29407	22.0	QuestDB objective 1 spawn 6
+OS	834	0	1	1012.02	-4558.59	19.5024	22.0	QuestDB objective 1 spawn 7
+OS	834	0	1	894.709	-4651.25	19.0292	22.0	QuestDB objective 1 spawn 8
+OS	834	0	1	829.436	-4695.52	12.4961	22.0	QuestDB objective 1 spawn 9
+OS	834	0	1	900.762	-4610.89	17.0328	22.0	QuestDB objective 1 spawn 10
+S	834	1	596.293	-4505.19	13.0419	22.0	QuestDB objective spawn 1
+S	834	1	676.331	-4586.47	2.1207	22.0	QuestDB objective spawn 2
+S	834	1	719.083	-4457.18	15.708	22.0	QuestDB objective spawn 3
+S	834	1	762.308	-4456.75	15.6685	22.0	QuestDB objective spawn 4
+S	834	1	642.059	-4558.61	7.89757	22.0	QuestDB objective spawn 5
+S	834	1	860.915	-4599.07	9.29407	22.0	QuestDB objective spawn 6
+S	834	1	1012.02	-4558.59	19.5024	22.0	QuestDB objective spawn 7
+S	834	1	894.709	-4651.25	19.0292	22.0	QuestDB objective spawn 8
+S	834	1	829.436	-4695.52	12.4961	22.0	QuestDB objective spawn 9
+S	834	1	900.762	-4610.89	17.0328	22.0	QuestDB objective spawn 10
+D	834	1	596.293	-4505.19	13.0419	22.0	QuestDB primary objective seed
+Q	835	Securing the Lines	7	0	3293	3293	2	KillMob	3117	0	0	12	Dustwind Savage	None	600	-1	0	0	0	11	834	0	0	1	supported	0
+G	835	1	999.763	-4414.4	14.4718	5.0	QuestDB giver spawn 1
+T	835	1	999.763	-4414.4	14.4718	5.0	QuestDB turn-in spawn 1
+O	835	0	1	0	KillMob	3117	0	0	12	Dustwind Savage	-1	0
+OS	835	0	1	968.545	-4702.7	30.2607	28.0	QuestDB objective 1 spawn 1
+OS	835	0	1	965.025	-4732.44	28.8712	28.0	QuestDB objective 1 spawn 2
+OS	835	0	1	951.958	-4754.93	23.7635	28.0	QuestDB objective 1 spawn 3
+OS	835	0	1	945.736	-4820.83	16.8331	28.0	QuestDB objective 1 spawn 4
+OS	835	0	1	1055.75	-4751.77	16.2219	28.0	QuestDB objective 1 spawn 5
+OS	835	0	1	977.91	-4819.45	17.3065	28.0	QuestDB objective 1 spawn 6
+OS	835	0	1	1076.21	-4718.31	13.8847	28.0	QuestDB objective 1 spawn 7
+OS	835	0	1	925.645	-4810.8	14.9581	28.0	QuestDB objective 1 spawn 8
+OS	835	0	1	844.778	-4821.34	11.3737	28.0	QuestDB objective 1 spawn 9
+OS	835	0	1	1008.14	-4812.83	16.3155	28.0	QuestDB objective 1 spawn 10
+OS	835	0	1	826.808	-4813.78	11.2454	28.0	QuestDB objective 1 spawn 11
+OS	835	0	1	1036.55	-4801.56	13.5467	28.0	QuestDB objective 1 spawn 12
+OS	835	0	1	880.661	-4815.5	14.807	28.0	QuestDB objective 1 spawn 13
+OS	835	0	1	935.446	-4781.74	21.9261	28.0	QuestDB objective 1 spawn 14
+OS	835	0	1	1072.86	-4681.6	13.8102	28.0	QuestDB objective 1 spawn 15
+O	835	1	2	1	KillMob	3118	0	0	8	Dustwind Storm Witch	-1	0
+OS	835	1	1	1045.19	-4688.98	40.8734	28.0	QuestDB objective 2 spawn 1
+OS	835	1	1	995.057	-4678.42	46.6831	28.0	QuestDB objective 2 spawn 2
+OS	835	1	1	1100.94	-4713.27	32.2506	28.0	QuestDB objective 2 spawn 3
+OS	835	1	1	978.974	-4705.17	46.4214	28.0	QuestDB objective 2 spawn 4
+OS	835	1	1	983.955	-4686.89	27.0107	28.0	QuestDB objective 2 spawn 5
+OS	835	1	1	1118.89	-4657.44	39.0227	28.0	QuestDB objective 2 spawn 6
+OS	835	1	1	975.515	-4677.04	27.0107	28.0	QuestDB objective 2 spawn 7
+OS	835	1	1	967.296	-4765.49	39.5934	28.0	QuestDB objective 2 spawn 8
+OS	835	1	1	971.102	-4783.22	42.5103	28.0	QuestDB objective 2 spawn 9
+OS	835	1	1	988.622	-4670.71	27.0107	28.0	QuestDB objective 2 spawn 10
+OS	835	1	1	1020.36	-4823.5	15.9218	28.0	QuestDB objective 2 spawn 11
+OS	835	1	1	1046.03	-4778.52	14.0468	28.0	QuestDB objective 2 spawn 12
+OS	835	1	1	1053.67	-4712.36	16.1625	28.0	QuestDB objective 2 spawn 13
+OS	835	1	1	1103.62	-4698.06	17.3793	28.0	QuestDB objective 2 spawn 14
+OS	835	1	1	1131.94	-4673.4	17.7543	28.0	QuestDB objective 2 spawn 15
+OS	835	1	1	1137.51	-4689.39	18.0381	28.0	QuestDB objective 2 spawn 16
+OS	835	1	1	1096.48	-4676.93	16.547	28.0	QuestDB objective 2 spawn 17
+OS	835	1	1	953.471	-4771.75	23.5511	28.0	QuestDB objective 2 spawn 18
+S	835	1	968.545	-4702.7	30.2607	28.0	QuestDB objective spawn 1
+S	835	1	965.025	-4732.44	28.8712	28.0	QuestDB objective spawn 2
+S	835	1	951.958	-4754.93	23.7635	28.0	QuestDB objective spawn 3
+S	835	1	945.736	-4820.83	16.8331	28.0	QuestDB objective spawn 4
+S	835	1	1055.75	-4751.77	16.2219	28.0	QuestDB objective spawn 5
+S	835	1	977.91	-4819.45	17.3065	28.0	QuestDB objective spawn 6
+S	835	1	1076.21	-4718.31	13.8847	28.0	QuestDB objective spawn 7
+S	835	1	925.645	-4810.8	14.9581	28.0	QuestDB objective spawn 8
+S	835	1	844.778	-4821.34	11.3737	28.0	QuestDB objective spawn 9
+S	835	1	1008.14	-4812.83	16.3155	28.0	QuestDB objective spawn 10
+S	835	1	826.808	-4813.78	11.2454	28.0	QuestDB objective spawn 11
+S	835	1	1036.55	-4801.56	13.5467	28.0	QuestDB objective spawn 12
+S	835	1	880.661	-4815.5	14.807	28.0	QuestDB objective spawn 13
+S	835	1	935.446	-4781.74	21.9261	28.0	QuestDB objective spawn 14
+S	835	1	1072.86	-4681.6	13.8102	28.0	QuestDB objective spawn 15
+D	835	1	968.545	-4702.7	30.2607	28.0	QuestDB primary objective seed
+Q	837	Encroachment	6	0	3139	3139	4	KillMob	3111	0	0	4	Razormane Quilboar	None	600	-1	0	0	0	10	0	0	0	1	supported	0
+G	837	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
+T	837	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
+O	837	0	1	0	KillMob	3111	0	0	4	Razormane Quilboar	-1	0
+OS	837	0	1	18.2329	-4617.23	44.7297	28.0	QuestDB objective 1 spawn 1
+OS	837	0	1	80.3499	-4406.12	43.4788	28.0	QuestDB objective 1 spawn 2
+OS	837	0	1	111.28	-4446.82	38.8782	28.0	QuestDB objective 1 spawn 3
+OS	837	0	1	69.3384	-4468.37	45.4963	28.0	QuestDB objective 1 spawn 4
+OS	837	0	1	92.7794	-4557.56	54.6971	28.0	QuestDB objective 1 spawn 5
+OS	837	0	1	128.805	-4583.54	63.5881	28.0	QuestDB objective 1 spawn 6
+OS	837	0	1	58.2777	-4478.91	48.9058	28.0	QuestDB objective 1 spawn 7
+OS	837	0	1	95.0306	-4476.37	40.7528	28.0	QuestDB objective 1 spawn 8
+OS	837	0	1	92.6001	-4458.62	41.2049	28.0	QuestDB objective 1 spawn 9
+OS	837	0	1	107.173	-4552.57	56.8097	28.0	QuestDB objective 1 spawn 10
+OS	837	0	1	82.9627	-4643.34	37.4577	28.0	QuestDB objective 1 spawn 11
+OS	837	0	1	78.5015	-4623.69	44.1086	28.0	QuestDB objective 1 spawn 12
+OS	837	0	1	89.8585	-4548.56	56.8221	28.0	QuestDB objective 1 spawn 13
+OS	837	0	1	85.4167	-4543.75	58.0721	28.0	QuestDB objective 1 spawn 14
+OS	837	0	1	110.593	-4572.87	58.2189	28.0	QuestDB objective 1 spawn 15
+O	837	1	2	1	KillMob	3112	0	0	4	Razormane Scout	-1	0
+OS	837	1	1	58.3333	-4291.67	64.8786	28.0	QuestDB objective 2 spawn 1
+OS	837	1	1	117.878	-4459.38	37.6442	28.0	QuestDB objective 2 spawn 2
+OS	837	1	1	62.1836	-4454.37	46.8297	28.0	QuestDB objective 2 spawn 3
+OS	837	1	1	51.0283	-4468.06	48.8177	28.0	QuestDB objective 2 spawn 4
+OS	837	1	1	34.2625	-4290.57	69.2536	28.0	QuestDB objective 2 spawn 5
+OS	837	1	1	44.381	-4312.11	65.3864	28.0	QuestDB objective 2 spawn 6
+OS	837	1	1	19.0145	-4251.52	72.9204	28.0	QuestDB objective 2 spawn 7
+OS	837	1	1	30.8559	-4335.03	71.3453	28.0	QuestDB objective 2 spawn 8
+OS	837	1	1	60.082	-4298.42	64.1204	28.0	QuestDB objective 2 spawn 9
+OS	837	1	1	22.1264	-4314.94	71.1994	28.0	QuestDB objective 2 spawn 10
+OS	837	1	1	37.5445	-4270.67	68.5036	28.0	QuestDB objective 2 spawn 11
+OS	837	1	1	70.3385	-4597.89	52.774	28.0	QuestDB objective 2 spawn 12
+OS	837	1	1	69.2959	-4609.61	48.2853	28.0	QuestDB objective 2 spawn 13
+OS	837	1	1	92.4038	-4572.77	56.7136	28.0	QuestDB objective 2 spawn 14
+OS	837	1	1	77.7998	-4562.97	55.3221	28.0	QuestDB objective 2 spawn 15
+OS	837	1	1	124.53	-4582.72	63.7189	28.0	QuestDB objective 2 spawn 16
+OS	837	1	1	121.581	-4477.19	37.9417	28.0	QuestDB objective 2 spawn 17
+OS	837	1	1	52.693	-4613.99	46.7336	28.0	QuestDB objective 2 spawn 18
+O	837	2	3	2	KillMob	3113	0	0	4	Razormane Dustrunner	-1	0
+OS	837	2	1	-52.5952	-4017.01	65.3598	28.0	QuestDB objective 3 spawn 1
+OS	837	2	1	-86.0457	-4025.48	63.4506	28.0	QuestDB objective 3 spawn 2
+OS	837	2	1	-57.7837	-3979.82	62.8262	28.0	QuestDB objective 3 spawn 3
+OS	837	2	1	-57.1798	-4040.56	67.3281	28.0	QuestDB objective 3 spawn 4
+OS	837	2	1	-68.2943	-4052.45	67.3768	28.0	QuestDB objective 3 spawn 5
+OS	837	2	1	493.807	-4256.06	21.1464	28.0	QuestDB objective 3 spawn 6
+OS	837	2	1	461.106	-4298.42	25.2114	28.0	QuestDB objective 3 spawn 7
+OS	837	2	1	484.983	-4293.99	22.3683	28.0	QuestDB objective 3 spawn 8
+OS	837	2	1	431.878	-4251.52	25.5356	28.0	QuestDB objective 3 spawn 9
+OS	837	2	1	449.461	-4169.09	25.951	28.0	QuestDB objective 3 spawn 10
+OS	837	2	1	439.975	-4229.21	25.4114	28.0	QuestDB objective 3 spawn 11
+OS	837	2	1	495.607	-4170.69	25.7837	28.0	QuestDB objective 3 spawn 12
+OS	837	2	1	483.502	-4148.08	24.8225	28.0	QuestDB objective 3 spawn 13
+OS	837	2	1	406.918	-4288.94	30.3293	28.0	QuestDB objective 3 spawn 14
+OS	837	2	1	380.849	-4282.82	25.978	28.0	QuestDB objective 3 spawn 15
+OS	837	2	1	413.141	-4243.35	27.0356	28.0	QuestDB objective 3 spawn 16
+OS	837	2	1	424.512	-4228.85	25.1545	28.0	QuestDB objective 3 spawn 17
+O	837	3	4	3	KillMob	3114	0	0	4	Razormane Battleguard	-1	0
+OS	837	3	1	-78.1084	-4012.51	63.6847	28.0	QuestDB objective 4 spawn 1
+OS	837	3	1	-118.588	-3985.38	58.9729	28.0	QuestDB objective 4 spawn 2
+OS	837	3	1	-87.4558	-4045.82	64.5018	28.0	QuestDB objective 4 spawn 3
+OS	837	3	1	-93.6433	-3984.71	61.0635	28.0	QuestDB objective 4 spawn 4
+OS	837	3	1	-137.058	-4010.05	59.3378	28.0	QuestDB objective 4 spawn 5
+OS	837	3	1	491.18	-4222.48	24.282	28.0	QuestDB objective 4 spawn 6
+OS	837	3	1	463.713	-4273.01	23.3364	28.0	QuestDB objective 4 spawn 7
+OS	837	3	1	438.009	-4179.61	25.1933	28.0	QuestDB objective 4 spawn 8
+OS	837	3	1	461.623	-4169.47	26.8051	28.0	QuestDB objective 4 spawn 9
+OS	837	3	1	-58.5116	-4029.94	66.5457	28.0	QuestDB objective 4 spawn 10
+OS	837	3	1	425.345	-4295.34	29.0014	28.0	QuestDB objective 4 spawn 11
+OS	837	3	1	492.111	-4323.12	22.4243	28.0	QuestDB objective 4 spawn 12
+OS	837	3	1	410.892	-4314.54	25.1954	28.0	QuestDB objective 4 spawn 13
+OS	837	3	1	436.981	-4211.97	24.6614	28.0	QuestDB objective 4 spawn 14
+OS	837	3	1	420.398	-4197.62	25.4994	28.0	QuestDB objective 4 spawn 15
+OS	837	3	1	437.596	-4239.34	25.1242	28.0	QuestDB objective 4 spawn 16
+OS	837	3	1	387.255	-4175.69	27.1643	28.0	QuestDB objective 4 spawn 17
+OS	837	3	1	462.983	-4234.37	24.7492	28.0	QuestDB objective 4 spawn 18
+OS	837	3	1	484.674	-4348.81	27.1747	28.0	QuestDB objective 4 spawn 19
+OS	837	3	1	495.711	-4196.06	24.1587	28.0	QuestDB objective 4 spawn 20
+OS	837	3	1	342.624	-4230.38	23.6101	28.0	QuestDB objective 4 spawn 21
+OS	837	3	1	385.936	-4221.34	25.6301	28.0	QuestDB objective 4 spawn 22
+OS	837	3	1	427.358	-4215.38	24.5284	28.0	QuestDB objective 4 spawn 23
+OS	837	3	1	348.268	-4282.86	23.7379	28.0	QuestDB objective 4 spawn 24
+OS	837	3	1	380.718	-4248.74	24.6459	28.0	QuestDB objective 4 spawn 25
+S	837	1	18.2329	-4617.23	44.7297	28.0	QuestDB objective spawn 1
+S	837	1	80.3499	-4406.12	43.4788	28.0	QuestDB objective spawn 2
+S	837	1	111.28	-4446.82	38.8782	28.0	QuestDB objective spawn 3
+S	837	1	69.3384	-4468.37	45.4963	28.0	QuestDB objective spawn 4
+S	837	1	92.7794	-4557.56	54.6971	28.0	QuestDB objective spawn 5
+S	837	1	128.805	-4583.54	63.5881	28.0	QuestDB objective spawn 6
+S	837	1	58.2777	-4478.91	48.9058	28.0	QuestDB objective spawn 7
+S	837	1	95.0306	-4476.37	40.7528	28.0	QuestDB objective spawn 8
+S	837	1	92.6001	-4458.62	41.2049	28.0	QuestDB objective spawn 9
+S	837	1	107.173	-4552.57	56.8097	28.0	QuestDB objective spawn 10
+S	837	1	82.9627	-4643.34	37.4577	28.0	QuestDB objective spawn 11
+S	837	1	78.5015	-4623.69	44.1086	28.0	QuestDB objective spawn 12
+S	837	1	89.8585	-4548.56	56.8221	28.0	QuestDB objective spawn 13
+S	837	1	85.4167	-4543.75	58.0721	28.0	QuestDB objective spawn 14
+S	837	1	110.593	-4572.87	58.2189	28.0	QuestDB objective spawn 15
+D	837	1	18.2329	-4617.23	44.7297	28.0	QuestDB primary objective seed
+Q	840	Conscript of the Horde	10	0	3336	3337	1	Unknown	0	4992	0	1	item 4992	None	600	-1	0	0	0	12	0	842	0	0	objective 1 unsupported/unresolved	0
+G	840	1	271.805	-4650.83	11.7894	5.0	QuestDB giver spawn 1
+T	840	1	303.432	-3686.16	27.1502	5.0	QuestDB turn-in spawn 1
+O	840	0	1	0	Unknown	0	4992	0	1	item 4992	-1	0
+Q	842	Crossroads Conscription	10	0	3337	3338	1	Unknown	0	4995	0	1	item 4995	None	600	-1	0	0	0	12	840	0	0	0	objective 1 unsupported/unresolved	0
+G	842	1	303.432	-3686.16	27.1502	5.0	QuestDB giver spawn 1
+T	842	1	-482.475	-2670.19	97.522	5.0	QuestDB turn-in spawn 1
+O	842	0	1	0	Unknown	0	4995	0	1	item 4995	-1	0
+Q	924	The Demon Seed	9	0	3521	3521	1	InteractGameObject	0	0	3525	1	The Altar of Fire	None	600	10	0	0	0	14	809	0	0	1	supported	0
+G	924	1	256.258	-3693.95	26.4771	5.0	QuestDB giver spawn 1
+T	924	1	256.258	-3693.95	26.4771	5.0	QuestDB turn-in spawn 1
+O	924	0	1	0	InteractGameObject	0	0	3525	1	The Altar of Fire	10	0
+OS	924	0	1	324.017	-2238.79	212.078	8.0	QuestDB objective 1 spawn 1
+S	924	1	324.017	-2238.79	212.078	8.0	QuestDB objective spawn 1
+D	924	1	324.017	-2238.79	212.078	8.0	QuestDB primary objective seed
+Q	926	Flawed Power Stone	1	0	5619	5619	0	TravelReport	5619	0	0	1	Flawed Power Stone	None	600	-1	0	0	0	14	-924	0	0	1	supported	0
+G	926	1	259.176	-3694.17	27.0924	5.0	QuestDB giver spawn 1
+T	926	1	259.176	-3694.17	27.0924	5.0	QuestDB turn-in spawn 1
+Q	2161	A Peon's Burden	1	0	6786	6928	1	Unknown	0	7629	0	1	item 7629	None	600	-1	0	0	0	5	0	0	0	0	objective 1 unsupported/unresolved	0
+G	2161	1	-599.449	-4715.32	35.2296	5.0	QuestDB giver spawn 1
+T	2161	1	340.362	-4686.29	16.5411	5.0	QuestDB turn-in spawn 1
+O	2161	0	1	0	Unknown	0	7629	0	1	item 7629	-1	0
+Q	2383	Simple Parchment	1	0	3143	3153	1	Unknown	0	12635	0	1	item 12635	None	600	-1	0	0	0	1	788	0	0	0	objective 1 unsupported/unresolved	0
+G	2383	1	-600.132	-4186.19	41.2663	5.0	QuestDB giver spawn 1
+T	2383	1	-639.344	-4230.19	38.5605	5.0	QuestDB turn-in spawn 1
+O	2383	0	1	0	Unknown	0	12635	0	1	item 12635	-1	0
+Q	7664	Ivory Raptor Replacement	60	0	7952	7952	1	Unknown	0	13317	0	1	item 13317	None	600	-1	0	0	0	1	0	0	0	0	objective 1 unsupported/unresolved	0
+G	7664	1	-858.232	-4882.66	22.1158	5.0	QuestDB giver spawn 1
+T	7664	1	-858.232	-4882.66	22.1158	5.0	QuestDB turn-in spawn 1
+O	7664	0	1	0	Unknown	0	13317	0	1	item 13317	-1	0
+Q	7665	Red Raptor Replacement	60	0	7952	7952	1	Unknown	0	8586	0	1	item 8586	None	600	-1	0	0	0	1	0	0	0	0	objective 1 unsupported/unresolved	0
+G	7665	1	-858.232	-4882.66	22.1158	5.0	QuestDB giver spawn 1
+T	7665	1	-858.232	-4882.66	22.1158	5.0	QuestDB turn-in spawn 1
+O	7665	0	1	0	Unknown	0	8586	0	1	item 8586	-1	0

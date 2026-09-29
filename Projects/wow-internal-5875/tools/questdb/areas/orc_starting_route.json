@@ -1,0 +1,29 @@
+{
+  "id": "orc_starting_route_1_10",
+  "name": "Orc starting route: Valley of Trials + Sen'jin Village",
+  "map_id": 1,
+  "bounds": {
+    "min_x": -1700.0,
+    "max_x": 50.0,
+    "min_y": -5800.0,
+    "max_y": -4000.0
+  },
+  "quest_ids": [
+    788, 789, 790, 792, 794, 804, 805,
+    2383, 4402, 4641, 5441, 6394,
+    786, 808, 817, 818, 823, 826
+  ],
+  "quest_overrides": {
+    "794": {"route_group": "BurningBladeCoven", "priority": 750},
+    "6394": {"route_group": "BurningBladeCoven", "priority": 650},
+    "805": {"route_group": "SenjinRoad", "priority": 100, "hub_exit": true},
+
+    "786": {"route_group": "SenjinVillage", "priority": 800, "hub_unlock_quest_id": 805},
+    "808": {"route_group": "EchoIsles", "priority": 770, "hub_unlock_quest_id": 805},
+    "817": {"route_group": "EchoIsles", "priority": 740, "hub_unlock_quest_id": 805},
+    "818": {"route_group": "SenjinCoast", "priority": 760, "hub_unlock_quest_id": 805},
+    "826": {"route_group": "EchoIsles", "priority": 790, "hub_unlock_quest_id": 805},
+    "823": {"route_group": "RazorHillRoad", "priority": 100, "hub_unlock_quest_id": 805, "hub_exit": true}
+  },
+  "notes": "Phase 13A deterministic Orc 1-10 hub pack. Quest content is data; movement remains NavMesh/live-object driven. Sen'jin profiles remain undiscoverable until quest 805 is in the persistent completion ledger."
+}

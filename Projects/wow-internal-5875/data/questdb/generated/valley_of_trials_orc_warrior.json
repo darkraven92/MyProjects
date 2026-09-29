@@ -1,0 +1,2927 @@
+{
+  "area": {
+    "id": "valley_of_trials",
+    "name": "Valley of Trials",
+    "map_id": 1,
+    "bounds": {
+      "min_x": -800.0,
+      "max_x": 0.0,
+      "min_y": -4525.0,
+      "max_y": -4000.0
+    },
+    "notes": "Phase 12A bootstrap boundary used only to discover quest-giver spawns. Runtime navigation must still use NavMesh and live ObjectManager positions."
+  },
+  "filters": {
+    "class": "warrior",
+    "race": "orc",
+    "level": null
+  },
+  "quest_count": 12,
+  "quests": [
+    {
+      "quest_id": 788,
+      "patch": 0,
+      "title": "Cutting Teeth",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 2,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 0,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "creature",
+          "raw_target_id": 3098,
+          "target_entry": 3098,
+          "item_id": 0,
+          "required_count": 10,
+          "spell_id": 0,
+          "text": "",
+          "target_name": "Mottled Boar",
+          "spawns": [
+            {
+              "guid": 4688,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -675.722,
+              "y": -4350.36,
+              "z": 44.603,
+              "orientation": 0.498482
+            },
+            {
+              "guid": 4689,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -549.241,
+              "y": -4421.25,
+              "z": 42.1042,
+              "orientation": 5.20731
+            },
+            {
+              "guid": 4690,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -485.464,
+              "y": -4381.5,
+              "z": 48.2731,
+              "orientation": 4.27681
+            },
+            {
+              "guid": 4691,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -680.926,
+              "y": -4284.82,
+              "z": 39.9806,
+              "orientation": 1.84971
+            },
+            {
+              "guid": 6632,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -747.256,
+              "y": -4181.42,
+              "z": 30.2402,
+              "orientation": 5.9414
+            },
+            {
+              "guid": 6633,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -452.91,
+              "y": -4421.99,
+              "z": 50.3803,
+              "orientation": 4.97336
+            },
+            {
+              "guid": 6634,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -375.04,
+              "y": -4314.96,
+              "z": 51.8979,
+              "orientation": 5.99972
+            },
+            {
+              "guid": 7482,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -486.181,
+              "y": -4454.21,
+              "z": 50.132,
+              "orientation": 3.11397
+            },
+            {
+              "guid": 7484,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -486.279,
+              "y": -4144.73,
+              "z": 54.7459,
+              "orientation": 3.74728
+            },
+            {
+              "guid": 7487,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -360.833,
+              "y": -4312.15,
+              "z": 49.0128,
+              "orientation": 3.09699
+            },
+            {
+              "guid": 7488,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -744.55,
+              "y": -4255.23,
+              "z": 43.5246,
+              "orientation": 6.14916
+            },
+            {
+              "guid": 7490,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -344.253,
+              "y": -4260.39,
+              "z": 61.6241,
+              "orientation": 5.09684
+            },
+            {
+              "guid": 7491,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -348.51,
+              "y": -4212.4,
+              "z": 60.171,
+              "orientation": 4.11747
+            },
+            {
+              "guid": 7974,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -477.985,
+              "y": -4182.53,
+              "z": 50.7865,
+              "orientation": 0.662395
+            },
+            {
+              "guid": 7975,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -714.937,
+              "y": -4221.35,
+              "z": 40.2762,
+              "orientation": 1.49268
+            },
+            {
+              "guid": 7976,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -391.309,
+              "y": -4283.43,
+              "z": 49.0554,
+              "orientation": 2.41323
+            },
+            {
+              "guid": 7977,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -716.996,
+              "y": -4150.75,
+              "z": 30.0694,
+              "orientation": 4.95713
+            },
+            {
+              "guid": 7979,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -680.794,
+              "y": -4317.67,
+              "z": 47.2347,
+              "orientation": 1.83299
+            },
+            {
+              "guid": 7980,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -754.894,
+              "y": -4219.76,
+              "z": 42.8502,
+              "orientation": 3.31808
+            },
+            {
+              "guid": 7981,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -411.091,
+              "y": -4411.85,
+              "z": 45.83,
+              "orientation": 0.517397
+            },
+            {
+              "guid": 8545,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -453.527,
+              "y": -4182.39,
+              "z": 46.4166,
+              "orientation": 0.808659
+            },
+            {
+              "guid": 8546,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -726.486,
+              "y": -4188.09,
+              "z": 30.2252,
+              "orientation": 2.59936
+            },
+            {
+              "guid": 8547,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -714.713,
+              "y": -4286.47,
+              "z": 43.2732,
+              "orientation": 3.9581
+            },
+            {
+              "guid": 8548,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -317.699,
+              "y": -4281.69,
+              "z": 59.5233,
+              "orientation": 1.63676
+            },
+            {
+              "guid": 8549,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -555.417,
+              "y": -4384.57,
+              "z": 45.3301,
+              "orientation": 5.6643
+            },
+            {
+              "guid": 8550,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -612.622,
+              "y": -4448.09,
+              "z": 45.5919,
+              "orientation": 6.14394
+            },
+            {
+              "guid": 10371,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -514.764,
+              "y": -4414.54,
+              "z": 52.1484,
+              "orientation": 4.56331
+            },
+            {
+              "guid": 10372,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -616.183,
+              "y": -4417.66,
+              "z": 45.7873,
+              "orientation": 4.53689
+            },
+            {
+              "guid": 10373,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -381.385,
+              "y": -4256.06,
+              "z": 56.0754,
+              "orientation": 5.86932
+            },
+            {
+              "guid": 10374,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -647.283,
+              "y": -4353.27,
+              "z": 44.5734,
+              "orientation": 5.67901
+            },
+            {
+              "guid": 10375,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -346.066,
+              "y": -4290.66,
+              "z": 57.4324,
+              "orientation": 0.619598
+            },
+            {
+              "guid": 10376,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -715.746,
+              "y": -4320.25,
+              "z": 43.4214,
+              "orientation": 6.15125
+            },
+            {
+              "guid": 10377,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -749.724,
+              "y": -4281.92,
+              "z": 43.2103,
+              "orientation": 6.19323
+            },
+            {
+              "guid": 11014,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -619.219,
+              "y": -4382.64,
+              "z": 43.2194,
+              "orientation": 1.614
+            },
+            {
+              "guid": 11029,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -550.962,
+              "y": -4351.29,
+              "z": 41.2188,
+              "orientation": 3.9879
+            },
+            {
+              "guid": 11030,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -453.709,
+              "y": -4222.64,
+              "z": 49.1813,
+              "orientation": 2.86118
+            },
+            {
+              "guid": 11239,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -317.835,
+              "y": -4243.54,
+              "z": 61.7041,
+              "orientation": 2.80837
+            },
+            {
+              "guid": 12178,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -319.209,
+              "y": -4317.22,
+              "z": 54.7874,
+              "orientation": 4.13306
+            },
+            {
+              "guid": 12181,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -476.114,
+              "y": -4255.08,
+              "z": 46.1353,
+              "orientation": 5.24222
+            },
+            {
+              "guid": 12189,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -281.01,
+              "y": -4322.8,
+              "z": 61.7573,
+              "orientation": 5.29926
+            },
+            {
+              "guid": 12201,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -351.906,
+              "y": -4384.64,
+              "z": 48.7124,
+              "orientation": 1.36532
+            },
+            {
+              "guid": 12203,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -320.586,
+              "y": -4354.29,
+              "z": 54.8292,
+              "orientation": 3.9594
+            },
+            {
+              "guid": 12207,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -414.888,
+              "y": -4341.82,
+              "z": 43.1272,
+              "orientation": 2.55533
+            },
+            {
+              "guid": 12208,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -389.932,
+              "y": -4374.94,
+              "z": 40.1369,
+              "orientation": 1.75657
+            },
+            {
+              "guid": 12211,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -448.447,
+              "y": -4240.06,
+              "z": 51.5052,
+              "orientation": 1.43251
+            },
+            {
+              "guid": 12212,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -420.524,
+              "y": -4319.37,
+              "z": 44.686,
+              "orientation": 3.76086
+            },
+            {
+              "guid": 12213,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -420.536,
+              "y": -4246.93,
+              "z": 50.6249,
+              "orientation": 3.34924
+            },
+            {
+              "guid": 12262,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -509.872,
+              "y": -4377.28,
+              "z": 45.7495,
+              "orientation": 3.56854
+            },
+            {
+              "guid": 12385,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -479.686,
+              "y": -4280.64,
+              "z": 43.8398,
+              "orientation": 6.08916
+            },
+            {
+              "guid": 12388,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -456.403,
+              "y": -4280.85,
+              "z": 41.6329,
+              "orientation": 2.91952
+            },
+            {
+              "guid": 12391,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -447.311,
+              "y": -4355.99,
+              "z": 46.1737,
+              "orientation": 4.66552
+            },
+            {
+              "guid": 12393,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -488.73,
+              "y": -4352.5,
+              "z": 40.1998,
+              "orientation": 3.52405
+            },
+            {
+              "guid": 12394,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -514.337,
+              "y": -4344.96,
+              "z": 38.308,
+              "orientation": 1.7611
+            },
+            {
+              "guid": 12952,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -487.311,
+              "y": -4213.77,
+              "z": 50.1885,
+              "orientation": 2.7969
+            },
+            {
+              "guid": 12960,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -516.59,
+              "y": -4286.81,
+              "z": 40.0634,
+              "orientation": 5.20659
+            },
+            {
+              "guid": 12965,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -486.307,
+              "y": -4314.94,
+              "z": 43.5488,
+              "orientation": 3.98066
+            },
+            {
+              "guid": 12966,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -449.98,
+              "y": -4314.05,
+              "z": 45.8115,
+              "orientation": 0.31945
+            },
+            {
+              "guid": 12973,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -385.317,
+              "y": -4351.71,
+              "z": 41.3647,
+              "orientation": 2.38644
+            },
+            {
+              "guid": 12974,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -412.563,
+              "y": -4382.79,
+              "z": 39.2734,
+              "orientation": 4.54908
+            },
+            {
+              "guid": 12976,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -414.492,
+              "y": -4277.36,
+              "z": 42.9012,
+              "orientation": 0.83101
+            },
+            {
+              "guid": 13025,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -308.834,
+              "y": -4217.85,
+              "z": 52.5989,
+              "orientation": 2.77551
+            },
+            {
+              "guid": 13037,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -415.534,
+              "y": -4188.62,
+              "z": 51.1441,
+              "orientation": 4.005
+            },
+            {
+              "guid": 13038,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -382.127,
+              "y": -4181.93,
+              "z": 56.4121,
+              "orientation": 1.58156
+            },
+            {
+              "guid": 13047,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -519.185,
+              "y": -4314.91,
+              "z": 39.3783,
+              "orientation": 1.54976
+            },
+            {
+              "guid": 13077,
+              "entry": 3098,
+              "map_id": 1,
+              "x": -349.288,
+              "y": -4184.41,
+              "z": 59.1999,
+              "orientation": 0.802851
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quest_id": 789,
+      "patch": 0,
+      "title": "Sting of the Scorpid",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 3,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 788,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 4862,
+          "required_count": 10,
+          "spell_id": 0,
+          "text": "",
+          "loot_sources": [
+            {
+              "source_type": "creature",
+              "entry": 3124,
+              "name": "Scorpid Worker",
+              "loot_id": 3124,
+              "chance": -80.0,
+              "min_count": 1,
+              "max_count": 1,
+              "spawns": [
+                {
+                  "guid": 4693,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -378.179,
+                  "y": -4125.45,
+                  "z": 50.7667,
+                  "orientation": 4.83762
+                },
+                {
+                  "guid": 4694,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -180.7,
+                  "y": -4243.65,
+                  "z": 56.9324,
+                  "orientation": 0.313795
+                },
+                {
+                  "guid": 4695,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -304.944,
+                  "y": -4437.49,
+                  "z": 59.0555,
+                  "orientation": 0.551751
+                },
+                {
+                  "guid": 4696,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -513.156,
+                  "y": -4156.63,
+                  "z": 77.3819,
+                  "orientation": 4.34319
+                },
+                {
+                  "guid": 4697,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -248.867,
+                  "y": -4181.38,
+                  "z": 55.9118,
+                  "orientation": 4.10963
+                },
+                {
+                  "guid": 4698,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -448.054,
+                  "y": -4486.25,
+                  "z": 54.7562,
+                  "orientation": 4.39538
+                },
+                {
+                  "guid": 6635,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -756.204,
+                  "y": -4352.79,
+                  "z": 52.2143,
+                  "orientation": 1.72013
+                },
+                {
+                  "guid": 6636,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -380.768,
+                  "y": -4449.68,
+                  "z": 52.4944,
+                  "orientation": 4.51997
+                },
+                {
+                  "guid": 6637,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -582.936,
+                  "y": -4082.73,
+                  "z": 72.6444,
+                  "orientation": 2.28972
+                },
+                {
+                  "guid": 6638,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -289.924,
+                  "y": -4246.46,
+                  "z": 65.532,
+                  "orientation": 5.04897
+                },
+                {
+                  "guid": 6639,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -248.622,
+                  "y": -4252.35,
+                  "z": 63.0932,
+                  "orientation": 5.3856
+                },
+                {
+                  "guid": 6640,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -610.693,
+                  "y": -4084.09,
+                  "z": 77.4566,
+                  "orientation": 2.75703
+                },
+                {
+                  "guid": 6641,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -414.235,
+                  "y": -4455.12,
+                  "z": 50.3399,
+                  "orientation": 4.02693
+                },
+                {
+                  "guid": 7493,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -282.794,
+                  "y": -4416.63,
+                  "z": 56.6823,
+                  "orientation": 1.39555
+                },
+                {
+                  "guid": 7495,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -310.417,
+                  "y": -4414.58,
+                  "z": 56.9974,
+                  "orientation": 6.09144
+                },
+                {
+                  "guid": 7496,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -788.542,
+                  "y": -4286.46,
+                  "z": 52.8241,
+                  "orientation": 4.1216
+                },
+                {
+                  "guid": 7497,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -448.264,
+                  "y": -4459.52,
+                  "z": 50.2802,
+                  "orientation": 4.84749
+                },
+                {
+                  "guid": 7498,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -518.958,
+                  "y": -4076.93,
+                  "z": 69.8705,
+                  "orientation": 6.11225
+                },
+                {
+                  "guid": 7982,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -544.639,
+                  "y": -4116.73,
+                  "z": 65.7142,
+                  "orientation": 5.70841
+                },
+                {
+                  "guid": 7983,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -354.141,
+                  "y": -4421.33,
+                  "z": 50.6012,
+                  "orientation": 3.11921
+                },
+                {
+                  "guid": 7984,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -346.629,
+                  "y": -4045.22,
+                  "z": 51.1096,
+                  "orientation": 5.92702
+                },
+                {
+                  "guid": 8551,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -676.942,
+                  "y": -4114.47,
+                  "z": 39.304,
+                  "orientation": 3.65357
+                },
+                {
+                  "guid": 8552,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -680.309,
+                  "y": -4145.69,
+                  "z": 36.0694,
+                  "orientation": 1.65108
+                },
+                {
+                  "guid": 8658,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -579.552,
+                  "y": -4114.32,
+                  "z": 74.1403,
+                  "orientation": 5.62348
+                },
+                {
+                  "guid": 8659,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -509.617,
+                  "y": -4117.39,
+                  "z": 59.5013,
+                  "orientation": 2.42814
+                },
+                {
+                  "guid": 8660,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -707.628,
+                  "y": -4346.49,
+                  "z": 47.975,
+                  "orientation": 1.85982
+                },
+                {
+                  "guid": 8661,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -353.203,
+                  "y": -4452.88,
+                  "z": 53.6991,
+                  "orientation": 4.17099
+                },
+                {
+                  "guid": 8662,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -212.5,
+                  "y": -4170.83,
+                  "z": 64.5858,
+                  "orientation": 1.5979
+                },
+                {
+                  "guid": 8663,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -787.391,
+                  "y": -4246.54,
+                  "z": 52.6586,
+                  "orientation": 6.20025
+                },
+                {
+                  "guid": 10378,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -585.422,
+                  "y": -4151.6,
+                  "z": 76.4519,
+                  "orientation": 5.23609
+                },
+                {
+                  "guid": 10379,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -252.066,
+                  "y": -4227.22,
+                  "z": 62.8692,
+                  "orientation": 5.16003
+                },
+                {
+                  "guid": 10380,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -546.414,
+                  "y": -4148.11,
+                  "z": 73.5143,
+                  "orientation": 3.45665
+                },
+                {
+                  "guid": 10381,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -511.388,
+                  "y": -4174.16,
+                  "z": 77.2973,
+                  "orientation": 5.16868
+                },
+                {
+                  "guid": 10382,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -548.718,
+                  "y": -4080.81,
+                  "z": 70.8147,
+                  "orientation": 0.494206
+                },
+                {
+                  "guid": 10383,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -607.076,
+                  "y": -4113.04,
+                  "z": 74.9527,
+                  "orientation": 3.32366
+                },
+                {
+                  "guid": 12199,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -261.13,
+                  "y": -4373.69,
+                  "z": 61.5519,
+                  "orientation": 0.317264
+                },
+                {
+                  "guid": 12985,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -320.45,
+                  "y": -4153.63,
+                  "z": 53.2861,
+                  "orientation": 0.893706
+                },
+                {
+                  "guid": 12987,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -350.135,
+                  "y": -4113.14,
+                  "z": 50.8045,
+                  "orientation": 0.226893
+                },
+                {
+                  "guid": 13028,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -427.062,
+                  "y": -4080.09,
+                  "z": 49.5018,
+                  "orientation": 2.75415
+                },
+                {
+                  "guid": 13029,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -415.359,
+                  "y": -4055.64,
+                  "z": 52.2608,
+                  "orientation": 4.64114
+                },
+                {
+                  "guid": 13031,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -448.071,
+                  "y": -4082.53,
+                  "z": 53.1445,
+                  "orientation": 5.99819
+                },
+                {
+                  "guid": 13034,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -410.204,
+                  "y": -4120.98,
+                  "z": 50.2176,
+                  "orientation": 4.26844
+                },
+                {
+                  "guid": 13044,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -279.493,
+                  "y": -4214.26,
+                  "z": 55.2843,
+                  "orientation": 5.68814
+                },
+                {
+                  "guid": 13048,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -355.606,
+                  "y": -4075.84,
+                  "z": 51.8144,
+                  "orientation": 2.16719
+                },
+                {
+                  "guid": 13049,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -386.839,
+                  "y": -4051.39,
+                  "z": 51.8339,
+                  "orientation": -1.09711
+                },
+                {
+                  "guid": 13052,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -379.617,
+                  "y": -4088.91,
+                  "z": 49.3236,
+                  "orientation": 4.62413
+                },
+                {
+                  "guid": 13053,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -287.857,
+                  "y": -4286.79,
+                  "z": 60.4528,
+                  "orientation": 5.24688
+                },
+                {
+                  "guid": 13069,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -457.278,
+                  "y": -4156.35,
+                  "z": 47.5627,
+                  "orientation": 4.24282
+                },
+                {
+                  "guid": 13071,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -448.941,
+                  "y": -4118.7,
+                  "z": 51.1081,
+                  "orientation": 6.04742
+                },
+                {
+                  "guid": 13072,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -425.434,
+                  "y": -4150.13,
+                  "z": 52.0528,
+                  "orientation": 3.52404
+                },
+                {
+                  "guid": 13074,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -379.151,
+                  "y": -4149.79,
+                  "z": 52.1301,
+                  "orientation": 3.63162
+                },
+                {
+                  "guid": 13075,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -354.449,
+                  "y": -4152.44,
+                  "z": 53.0701,
+                  "orientation": 5.65346
+                },
+                {
+                  "guid": 13078,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -284.146,
+                  "y": -4386.08,
+                  "z": 57.6236,
+                  "orientation": 4.70264
+                },
+                {
+                  "guid": 13079,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -283.734,
+                  "y": -4353.08,
+                  "z": 54.2889,
+                  "orientation": 2.46091
+                },
+                {
+                  "guid": 13081,
+                  "entry": 3124,
+                  "map_id": 1,
+                  "x": -311.728,
+                  "y": -4383.49,
+                  "z": 55.4956,
+                  "orientation": 4.99568
+                }
+              ]
+            },
+            {
+              "source_type": "creature",
+              "entry": 3281,
+              "name": "Sarkoth",
+              "loot_id": 3281,
+              "chance": -80.0,
+              "min_count": 1,
+              "max_count": 1,
+              "spawns": [
+                {
+                  "guid": 12263,
+                  "entry": 3281,
+                  "map_id": 1,
+                  "x": -547.335,
+                  "y": -4103.85,
+                  "z": 70.0987,
+                  "orientation": 6.07659
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quest_id": 790,
+      "patch": 0,
+      "title": "Sarkoth",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 5,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 0,
+      "next_quest_id": 0,
+      "next_in_chain": 804,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3287,
+          "name": "Hana'zua",
+          "spawns": [
+            {
+              "guid": 6471,
+              "entry": 3287,
+              "map_id": 1,
+              "x": -397.761,
+              "y": -4108.99,
+              "z": 50.2876,
+              "orientation": 1.41372
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3287,
+          "name": "Hana'zua",
+          "spawns": [
+            {
+              "guid": 6471,
+              "entry": 3287,
+              "map_id": 1,
+              "x": -397.761,
+              "y": -4108.99,
+              "z": 50.2876,
+              "orientation": 1.41372
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 4905,
+          "required_count": 1,
+          "spell_id": 0,
+          "text": "",
+          "loot_sources": [
+            {
+              "source_type": "creature",
+              "entry": 3281,
+              "name": "Sarkoth",
+              "loot_id": 3281,
+              "chance": -100.0,
+              "min_count": 1,
+              "max_count": 1,
+              "spawns": [
+                {
+                  "guid": 12263,
+                  "entry": 3281,
+                  "map_id": 1,
+                  "x": -547.335,
+                  "y": -4103.85,
+                  "z": 70.0987,
+                  "orientation": 6.07659
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quest_id": 792,
+      "patch": 5,
+      "title": "Vile Familiars",
+      "zone_or_sort": 363,
+      "min_level": 2,
+      "max_level": 0,
+      "quest_level": 4,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 0,
+      "next_quest_id": 794,
+      "next_in_chain": 794,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3145,
+          "name": "Zureetha Fargaze",
+          "spawns": [
+            {
+              "guid": 3444,
+              "entry": 3145,
+              "map_id": 1,
+              "x": -629.052,
+              "y": -4228.06,
+              "z": 38.2334,
+              "orientation": 5.0091
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3145,
+          "name": "Zureetha Fargaze",
+          "spawns": [
+            {
+              "guid": 3444,
+              "entry": 3145,
+              "map_id": 1,
+              "x": -629.052,
+              "y": -4228.06,
+              "z": 38.2334,
+              "orientation": 5.0091
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "creature",
+          "raw_target_id": 3101,
+          "target_entry": 3101,
+          "item_id": 0,
+          "required_count": 12,
+          "spell_id": 0,
+          "text": "",
+          "target_name": "Vile Familiar",
+          "spawns": [
+            {
+              "guid": 3392,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -168.068,
+              "y": -4403.07,
+              "z": 77.5404,
+              "orientation": 0.585295
+            },
+            {
+              "guid": 4701,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -35.7399,
+              "y": -4228.09,
+              "z": 65.2618,
+              "orientation": 3.89663
+            },
+            {
+              "guid": 4702,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -117.284,
+              "y": -4217.52,
+              "z": 54.4782,
+              "orientation": 5.72857
+            },
+            {
+              "guid": 4705,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -152.718,
+              "y": -4264.43,
+              "z": 61.5234,
+              "orientation": 1.04177
+            },
+            {
+              "guid": 4706,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -79.4423,
+              "y": -4284.5,
+              "z": 76.0449,
+              "orientation": 5.13539
+            },
+            {
+              "guid": 6568,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -151.647,
+              "y": -4278.49,
+              "z": 81.3672,
+              "orientation": 0.256826
+            },
+            {
+              "guid": 6642,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -79.5128,
+              "y": -4235.76,
+              "z": 53.5811,
+              "orientation": 5.98719
+            },
+            {
+              "guid": 6643,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -47.9176,
+              "y": -4312.65,
+              "z": 68.7943,
+              "orientation": 6.19661
+            },
+            {
+              "guid": 6644,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -139.632,
+              "y": -4301.54,
+              "z": 65.8615,
+              "orientation": 5.17426
+            },
+            {
+              "guid": 6645,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -43.4144,
+              "y": -4226.15,
+              "z": 63.7573,
+              "orientation": 1.62159
+            },
+            {
+              "guid": 6646,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -149.295,
+              "y": -4259.93,
+              "z": 60.8065,
+              "orientation": 5.21439
+            },
+            {
+              "guid": 7505,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -106.37,
+              "y": -4247.68,
+              "z": 53.6425,
+              "orientation": 2.3254
+            },
+            {
+              "guid": 7507,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -104.777,
+              "y": -4285.94,
+              "z": 62.7633,
+              "orientation": 2.47363
+            },
+            {
+              "guid": 7508,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -76.6151,
+              "y": -4266.42,
+              "z": 52.2091,
+              "orientation": 4.67274
+            },
+            {
+              "guid": 7509,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -140.697,
+              "y": -4282.97,
+              "z": 64.2632,
+              "orientation": 1.78955
+            },
+            {
+              "guid": 7527,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -43.8409,
+              "y": -4274.3,
+              "z": 68.2898,
+              "orientation": 0.919327
+            },
+            {
+              "guid": 12169,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -107.068,
+              "y": -4306.76,
+              "z": 62.6159,
+              "orientation": 6.04921
+            },
+            {
+              "guid": 12192,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -193.396,
+              "y": -4403.29,
+              "z": 68.6726,
+              "orientation": 6.21113
+            },
+            {
+              "guid": 12193,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -210.65,
+              "y": -4419.36,
+              "z": 64.7843,
+              "orientation": 5.70493
+            },
+            {
+              "guid": 12194,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -210.927,
+              "y": -4448.35,
+              "z": 68.2828,
+              "orientation": 1.36713
+            },
+            {
+              "guid": 12290,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -88.303,
+              "y": -4285.01,
+              "z": 62.0652,
+              "orientation": 4.09696
+            },
+            {
+              "guid": 13054,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -246.558,
+              "y": -4279.26,
+              "z": 61.6414,
+              "orientation": 0.255442
+            },
+            {
+              "guid": 13055,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -253.593,
+              "y": -4316.13,
+              "z": 56.0352,
+              "orientation": 4.1604
+            },
+            {
+              "guid": 13056,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -244.718,
+              "y": -4342.81,
+              "z": 62.7066,
+              "orientation": 3.59214
+            },
+            {
+              "guid": 13057,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -207.922,
+              "y": -4309.4,
+              "z": 63.9191,
+              "orientation": 0.825043
+            },
+            {
+              "guid": 13058,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -49.3166,
+              "y": -4222.96,
+              "z": 62.2687,
+              "orientation": 2.78015
+            },
+            {
+              "guid": 13059,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -200.79,
+              "y": -4295.73,
+              "z": 64.2941,
+              "orientation": 2.58129
+            },
+            {
+              "guid": 13060,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -86.673,
+              "y": -4328.19,
+              "z": 65.8605,
+              "orientation": 3.87065
+            },
+            {
+              "guid": 13062,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -154.199,
+              "y": -4357.06,
+              "z": 66.8175,
+              "orientation": 3.49807
+            },
+            {
+              "guid": 13063,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -195.434,
+              "y": -4376.55,
+              "z": 66.5687,
+              "orientation": 1.37608
+            },
+            {
+              "guid": 13064,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -132.968,
+              "y": -4349.6,
+              "z": 67.1474,
+              "orientation": 2.61551
+            },
+            {
+              "guid": 13065,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -176.948,
+              "y": -4360.68,
+              "z": 68.4505,
+              "orientation": 1.53969
+            },
+            {
+              "guid": 13067,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -166.438,
+              "y": -4320.16,
+              "z": 71.1002,
+              "orientation": 0.3446
+            },
+            {
+              "guid": 13070,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -211.553,
+              "y": -4351.95,
+              "z": 64.4947,
+              "orientation": 5.57668
+            },
+            {
+              "guid": 13073,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -198.088,
+              "y": -4333.76,
+              "z": 68.3462,
+              "orientation": 5.83675
+            },
+            {
+              "guid": 13076,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -213.201,
+              "y": -4382.11,
+              "z": 63.6607,
+              "orientation": 0.564076
+            },
+            {
+              "guid": 13080,
+              "entry": 3101,
+              "map_id": 1,
+              "x": -252.915,
+              "y": -4381.57,
+              "z": 62.5709,
+              "orientation": 1.92834
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quest_id": 794,
+      "patch": 0,
+      "title": "Burning Blade Medallion",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 5,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 0,
+      "next_quest_id": 0,
+      "next_in_chain": 805,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3145,
+          "name": "Zureetha Fargaze",
+          "spawns": [
+            {
+              "guid": 3444,
+              "entry": 3145,
+              "map_id": 1,
+              "x": -629.052,
+              "y": -4228.06,
+              "z": 38.2334,
+              "orientation": 5.0091
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3145,
+          "name": "Zureetha Fargaze",
+          "spawns": [
+            {
+              "guid": 3444,
+              "entry": 3145,
+              "map_id": 1,
+              "x": -629.052,
+              "y": -4228.06,
+              "z": 38.2334,
+              "orientation": 5.0091
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 4859,
+          "required_count": 1,
+          "spell_id": 0,
+          "text": "",
+          "loot_sources": [
+            {
+              "source_type": "creature",
+              "entry": 3183,
+              "name": "Yarrog Baneshadow",
+              "loot_id": 3183,
+              "chance": -100.0,
+              "min_count": 1,
+              "max_count": 1,
+              "spawns": [
+                {
+                  "guid": 12303,
+                  "entry": 3183,
+                  "map_id": 1,
+                  "x": -58.1846,
+                  "y": -4220.64,
+                  "z": 62.3418,
+                  "orientation": 4.98307
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quest_id": 804,
+      "patch": 0,
+      "title": "Sarkoth",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 5,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 790,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3287,
+          "name": "Hana'zua",
+          "spawns": [
+            {
+              "guid": 6471,
+              "entry": 3287,
+              "map_id": 1,
+              "x": -397.761,
+              "y": -4108.99,
+              "z": 50.2876,
+              "orientation": 1.41372
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "objectives": []
+    },
+    {
+      "quest_id": 805,
+      "patch": 0,
+      "title": "Report to Sen'jin Village",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 5,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 794,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3145,
+          "name": "Zureetha Fargaze",
+          "spawns": [
+            {
+              "guid": 3444,
+              "entry": 3145,
+              "map_id": 1,
+              "x": -629.052,
+              "y": -4228.06,
+              "z": 38.2334,
+              "orientation": 5.0091
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3188,
+          "name": "Master Gadrin",
+          "spawns": [
+            {
+              "guid": 6462,
+              "entry": 3188,
+              "map_id": 1,
+              "x": -825.636,
+              "y": -4920.76,
+              "z": 19.7409,
+              "orientation": 3.6579
+            }
+          ]
+        }
+      ],
+      "objectives": []
+    },
+    {
+      "quest_id": 2383,
+      "patch": 0,
+      "title": "Simple Parchment",
+      "zone_or_sort": -81,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 1,
+      "required_classes": 1,
+      "required_races": 50,
+      "required_condition": 0,
+      "prev_quest_id": 788,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 12635,
+      "source_item_count": 1,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3153,
+          "name": "Frang",
+          "spawns": [
+            {
+              "guid": 7651,
+              "entry": 3153,
+              "map_id": 1,
+              "x": -639.344,
+              "y": -4230.19,
+              "z": 38.5605,
+              "orientation": 5.72468
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 12635,
+          "required_count": 1,
+          "spell_id": 0,
+          "text": "",
+          "loot_sources": []
+        }
+      ]
+    },
+    {
+      "quest_id": 4402,
+      "patch": 0,
+      "title": "Galgar's Cactus Apple Surprise",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 3,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 788,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 9796,
+          "name": "Galgar",
+          "spawns": [
+            {
+              "guid": 704,
+              "entry": 9796,
+              "map_id": 1,
+              "x": -561.628,
+              "y": -4221.8,
+              "z": 41.6737,
+              "orientation": 3.03687
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 9796,
+          "name": "Galgar",
+          "spawns": [
+            {
+              "guid": 704,
+              "entry": 9796,
+              "map_id": 1,
+              "x": -561.628,
+              "y": -4221.8,
+              "z": 41.6737,
+              "orientation": 3.03687
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 11583,
+          "required_count": 10,
+          "spell_id": 0,
+          "text": "",
+          "loot_sources": [
+            {
+              "source_type": "gameobject",
+              "entry": 171938,
+              "name": "Cactus Apple",
+              "loot_id": 11500,
+              "chance": -100.0,
+              "min_count": 1,
+              "max_count": 1,
+              "spawns": [
+                {
+                  "guid": 12182,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -315.8,
+                  "y": -4444.2,
+                  "z": 58.59,
+                  "orientation": 1.57
+                },
+                {
+                  "guid": 12197,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -696.942,
+                  "y": -4355.8,
+                  "z": 54.1846,
+                  "orientation": 2.53073
+                },
+                {
+                  "guid": 12198,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -364.977,
+                  "y": -4333.73,
+                  "z": 55.1878,
+                  "orientation": 0.628319
+                },
+                {
+                  "guid": 12199,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -413.362,
+                  "y": -4058.05,
+                  "z": 52.3058,
+                  "orientation": -0.872665
+                },
+                {
+                  "guid": 12200,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -523.076,
+                  "y": -4182.39,
+                  "z": 76.9361,
+                  "orientation": 0.506145
+                },
+                {
+                  "guid": 12202,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -260.522,
+                  "y": -4211.04,
+                  "z": 58.7291,
+                  "orientation": 1.55334
+                },
+                {
+                  "guid": 12203,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -475.429,
+                  "y": -4323.95,
+                  "z": 44.0192,
+                  "orientation": -2.51327
+                },
+                {
+                  "guid": 12204,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -255.695,
+                  "y": -4160.31,
+                  "z": 55.8644,
+                  "orientation": 0.698132
+                },
+                {
+                  "guid": 12206,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -261.121,
+                  "y": -4159.08,
+                  "z": 54.927,
+                  "orientation": 2.54818
+                },
+                {
+                  "guid": 12440,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -183.5,
+                  "y": -4181.8,
+                  "z": 80.8193,
+                  "orientation": 2.79253
+                },
+                {
+                  "guid": 12441,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -482.637,
+                  "y": -4083.92,
+                  "z": 65.4204,
+                  "orientation": -0.087267
+                },
+                {
+                  "guid": 12442,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -298.444,
+                  "y": -4332.24,
+                  "z": 56.6012,
+                  "orientation": 0.645772
+                },
+                {
+                  "guid": 12444,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -330.869,
+                  "y": -4393.1,
+                  "z": 58.5324,
+                  "orientation": 2.74017
+                },
+                {
+                  "guid": 12445,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -489.837,
+                  "y": -4464.14,
+                  "z": 51.9806,
+                  "orientation": 2.02458
+                },
+                {
+                  "guid": 12446,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -182.636,
+                  "y": -4183.35,
+                  "z": 81.1131,
+                  "orientation": 2.79253
+                },
+                {
+                  "guid": 12457,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -489.684,
+                  "y": -4089.52,
+                  "z": 64.5607,
+                  "orientation": 0.907571
+                },
+                {
+                  "guid": 12509,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -317.603,
+                  "y": -4105.12,
+                  "z": 54.3323,
+                  "orientation": 0.20944
+                },
+                {
+                  "guid": 12510,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -408.213,
+                  "y": -4395.52,
+                  "z": 42.7661,
+                  "orientation": -0.122173
+                },
+                {
+                  "guid": 12511,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -322.206,
+                  "y": -4438.69,
+                  "z": 56.7659,
+                  "orientation": 1.27409
+                },
+                {
+                  "guid": 12512,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -601.576,
+                  "y": -4075.62,
+                  "z": 75.8641,
+                  "orientation": -0.907571
+                },
+                {
+                  "guid": 12513,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -427.711,
+                  "y": -4185.25,
+                  "z": 50.4451,
+                  "orientation": -2.16421
+                },
+                {
+                  "guid": 12514,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -674.292,
+                  "y": -4300.25,
+                  "z": 44.9458,
+                  "orientation": -2.26893
+                },
+                {
+                  "guid": 12515,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -317.47,
+                  "y": -4438.41,
+                  "z": 57.4445,
+                  "orientation": -1.20428
+                },
+                {
+                  "guid": 12555,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -407.968,
+                  "y": -4061.42,
+                  "z": 51.8647,
+                  "orientation": -0.226893
+                },
+                {
+                  "guid": 12556,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -413.091,
+                  "y": -4398.37,
+                  "z": 43.5909,
+                  "orientation": -3.12414
+                },
+                {
+                  "guid": 12557,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -469.634,
+                  "y": -4378.43,
+                  "z": 48.3773,
+                  "orientation": -0.575959
+                },
+                {
+                  "guid": 12558,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -422.691,
+                  "y": -4187.55,
+                  "z": 51.6474,
+                  "orientation": -0.750491
+                },
+                {
+                  "guid": 12559,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -746.487,
+                  "y": -4276.66,
+                  "z": 43.7713,
+                  "orientation": -0.575959
+                },
+                {
+                  "guid": 12560,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -516.889,
+                  "y": -4187.04,
+                  "z": 77.1396,
+                  "orientation": -1.22173
+                },
+                {
+                  "guid": 12561,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -423.568,
+                  "y": -4175.42,
+                  "z": 50.8418,
+                  "orientation": 1.15192
+                },
+                {
+                  "guid": 12562,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -406.41,
+                  "y": -4460.83,
+                  "z": 51.9784,
+                  "orientation": 0.855211
+                },
+                {
+                  "guid": 12563,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -465.098,
+                  "y": -4381.39,
+                  "z": 50.5997,
+                  "orientation": 1.64061
+                },
+                {
+                  "guid": 12565,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -295.805,
+                  "y": -4337.23,
+                  "z": 56.8324,
+                  "orientation": -1.50098
+                },
+                {
+                  "guid": 12591,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -244.933,
+                  "y": -4318.93,
+                  "z": 61.35,
+                  "orientation": 1.20428
+                },
+                {
+                  "guid": 12592,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -444.979,
+                  "y": -4122.43,
+                  "z": 51.091,
+                  "orientation": 0.418879
+                },
+                {
+                  "guid": 12593,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -592.091,
+                  "y": -4074.48,
+                  "z": 74.4737,
+                  "orientation": -0.20944
+                },
+                {
+                  "guid": 12638,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -551.576,
+                  "y": -4292.26,
+                  "z": 37.0935,
+                  "orientation": -1.91986
+                },
+                {
+                  "guid": 12639,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -422.731,
+                  "y": -4377.85,
+                  "z": 42.2301,
+                  "orientation": 0.890118
+                },
+                {
+                  "guid": 12640,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -556.425,
+                  "y": -4288.72,
+                  "z": 37.4423,
+                  "orientation": 0.820305
+                },
+                {
+                  "guid": 12643,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -360.679,
+                  "y": -4337.94,
+                  "z": 58.1938,
+                  "orientation": -0.767945
+                },
+                {
+                  "guid": 12644,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -404.261,
+                  "y": -4263.58,
+                  "z": 49.3811,
+                  "orientation": -1.71042
+                },
+                {
+                  "guid": 12646,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -486.916,
+                  "y": -4291.01,
+                  "z": 43.2161,
+                  "orientation": -0.733038
+                },
+                {
+                  "guid": 12665,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -326.03,
+                  "y": -4395.06,
+                  "z": 58.3265,
+                  "orientation": -2.09439
+                },
+                {
+                  "guid": 12666,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -487.607,
+                  "y": -4277.06,
+                  "z": 43.0128,
+                  "orientation": 1.0821
+                },
+                {
+                  "guid": 12667,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -406.266,
+                  "y": -4279.2,
+                  "z": 46.376,
+                  "orientation": -2.35619
+                },
+                {
+                  "guid": 12668,
+                  "entry": 171938,
+                  "map_id": 1,
+                  "x": -489.093,
+                  "y": -4301.17,
+                  "z": 42.8668,
+                  "orientation": -0.314159
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "quest_id": 4641,
+      "patch": 0,
+      "title": "Your Place In The World",
+      "zone_or_sort": 363,
+      "min_level": 1,
+      "max_level": 0,
+      "quest_level": 1,
+      "required_classes": 0,
+      "required_races": 130,
+      "required_condition": 0,
+      "prev_quest_id": 0,
+      "next_quest_id": 0,
+      "next_in_chain": 788,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 10176,
+          "name": "Kaltunk",
+          "spawns": [
+            {
+              "guid": 3442,
+              "entry": 10176,
+              "map_id": 1,
+              "x": -607.434,
+              "y": -4251.33,
+              "z": 39.0393,
+              "orientation": 3.28122
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 3143,
+          "name": "Gornek",
+          "spawns": [
+            {
+              "guid": 3443,
+              "entry": 3143,
+              "map_id": 1,
+              "x": -600.132,
+              "y": -4186.19,
+              "z": 41.2663,
+              "orientation": 4.15388
+            }
+          ]
+        }
+      ],
+      "objectives": []
+    },
+    {
+      "quest_id": 5441,
+      "patch": 0,
+      "title": "Lazy Peons",
+      "zone_or_sort": 363,
+      "min_level": 3,
+      "max_level": 0,
+      "quest_level": 4,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 0,
+      "next_quest_id": 0,
+      "next_in_chain": 6394,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 16114,
+      "source_item_count": 1,
+      "source_spell": 0,
+      "objective_text_1": "Peons Awoken",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 11378,
+          "name": "Foreman Thazz'ril",
+          "spawns": [
+            {
+              "guid": 3427,
+              "entry": 11378,
+              "map_id": 1,
+              "x": -611.587,
+              "y": -4322.08,
+              "z": 40.0927,
+              "orientation": 1.16937
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 11378,
+          "name": "Foreman Thazz'ril",
+          "spawns": [
+            {
+              "guid": 3427,
+              "entry": 11378,
+              "map_id": 1,
+              "x": -611.587,
+              "y": -4322.08,
+              "z": 40.0927,
+              "orientation": 1.16937
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "creature",
+          "raw_target_id": 10556,
+          "target_entry": 10556,
+          "item_id": 0,
+          "required_count": 5,
+          "spell_id": 0,
+          "text": "Peons Awoken",
+          "target_name": "Lazy Peon",
+          "spawns": [
+            {
+              "guid": 3345,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -227.913,
+              "y": -4277.76,
+              "z": 65.3336,
+              "orientation": 5.04721
+            },
+            {
+              "guid": 3346,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -334.475,
+              "y": -4439.37,
+              "z": 54.7496,
+              "orientation": 4.52331
+            },
+            {
+              "guid": 3347,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -231.575,
+              "y": -4452.83,
+              "z": 63.9721,
+              "orientation": 4.08368
+            },
+            {
+              "guid": 3348,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -507.436,
+              "y": -4376.15,
+              "z": 46.3391,
+              "orientation": 6.2194
+            },
+            {
+              "guid": 6523,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -321.195,
+              "y": -4126.73,
+              "z": 51.7626,
+              "orientation": 2.43894
+            },
+            {
+              "guid": 6524,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -636.336,
+              "y": -4477.29,
+              "z": 46.6977,
+              "orientation": 2.48908
+            },
+            {
+              "guid": 6525,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -758.539,
+              "y": -4324.67,
+              "z": 45.5966,
+              "orientation": 3.94923
+            },
+            {
+              "guid": 6526,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -371.838,
+              "y": -4015.88,
+              "z": 50.6355,
+              "orientation": 0.915577
+            },
+            {
+              "guid": 6527,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -753.618,
+              "y": -4143.19,
+              "z": 38.7636,
+              "orientation": 5.13687
+            },
+            {
+              "guid": 7372,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -214.149,
+              "y": -4220.71,
+              "z": 62.1667,
+              "orientation": 1.82114
+            },
+            {
+              "guid": 7373,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -773.458,
+              "y": -4201.37,
+              "z": 45.3903,
+              "orientation": 4.90095
+            },
+            {
+              "guid": 7374,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -628.478,
+              "y": -4340.7,
+              "z": 41.7989,
+              "orientation": 2.2137
+            },
+            {
+              "guid": 7375,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -263.542,
+              "y": -4143.64,
+              "z": 56.5239,
+              "orientation": 5.45391
+            },
+            {
+              "guid": 7376,
+              "entry": 10556,
+              "map_id": 1,
+              "x": -498.713,
+              "y": -4456.25,
+              "z": 51.1286,
+              "orientation": 3.17724
+            }
+          ]
+        },
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 16114,
+          "required_count": 1,
+          "spell_id": 0,
+          "text": "Peons Awoken",
+          "loot_sources": []
+        }
+      ]
+    },
+    {
+      "quest_id": 6394,
+      "patch": 0,
+      "title": "Thazz'ril's Pick",
+      "zone_or_sort": 363,
+      "min_level": 3,
+      "max_level": 0,
+      "quest_level": 4,
+      "required_classes": 0,
+      "required_races": 0,
+      "required_condition": 0,
+      "prev_quest_id": 5441,
+      "next_quest_id": 0,
+      "next_in_chain": 0,
+      "breadcrumb_for_quest_id": 0,
+      "source_item_id": 0,
+      "source_item_count": 0,
+      "source_spell": 0,
+      "objective_text_1": "",
+      "objective_text_2": "",
+      "objective_text_3": "",
+      "objective_text_4": "",
+      "givers": [
+        {
+          "source_type": "creature",
+          "entry": 11378,
+          "name": "Foreman Thazz'ril",
+          "spawns": [
+            {
+              "guid": 3427,
+              "entry": 11378,
+              "map_id": 1,
+              "x": -611.587,
+              "y": -4322.08,
+              "z": 40.0927,
+              "orientation": 1.16937
+            }
+          ]
+        }
+      ],
+      "turnins": [
+        {
+          "source_type": "creature",
+          "entry": 11378,
+          "name": "Foreman Thazz'ril",
+          "spawns": [
+            {
+              "guid": 3427,
+              "entry": 11378,
+              "map_id": 1,
+              "x": -611.587,
+              "y": -4322.08,
+              "z": 40.0927,
+              "orientation": 1.16937
+            }
+          ]
+        }
+      ],
+      "objectives": [
+        {
+          "slot": 1,
+          "kind": "item",
+          "raw_target_id": 0,
+          "target_entry": 0,
+          "item_id": 16332,
+          "required_count": 1,
+          "spell_id": 0,
+          "text": "",
+          "loot_sources": [
+            {
+              "source_type": "gameobject",
+              "entry": 178087,
+              "name": "Thazz'ril's Pick",
+              "loot_id": 14980,
+              "chance": -100.0,
+              "min_count": 1,
+              "max_count": 1,
+              "spawns": [
+                {
+                  "guid": 12605,
+                  "entry": 178087,
+                  "map_id": 1,
+                  "x": -87.7195,
+                  "y": -4274.56,
+                  "z": 65.9037,
+                  "orientation": -1.48353
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

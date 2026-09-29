@@ -1,0 +1,61 @@
+Area: Valley of Trials
+Quests: 12
+
+[788] Cutting Teeth (min 1, level 2)
+  giver: creature 3143 Gornek spawns_on_map=1 in_area=1
+  objective 1: creature 3098 Mottled Boar x10 spawns=65
+  turn-in: creature 3143 Gornek
+
+[789] Sting of the Scorpid (min 1, level 3)
+  giver: creature 3143 Gornek spawns_on_map=1 in_area=1
+  objective 1: item 4862 x10 sources=creature:3124 Scorpid Worker, creature:3281 Sarkoth
+  turn-in: creature 3143 Gornek
+
+[790] Sarkoth (min 1, level 5)
+  giver: creature 3287 Hana'zua spawns_on_map=1 in_area=1
+  objective 1: item 4905 x1 sources=creature:3281 Sarkoth
+  turn-in: creature 3287 Hana'zua
+
+[792] Vile Familiars (min 2, level 4)
+  giver: creature 3145 Zureetha Fargaze spawns_on_map=1 in_area=1
+  objective 1: creature 3101 Vile Familiar x12 spawns=37
+  turn-in: creature 3145 Zureetha Fargaze
+
+[794] Burning Blade Medallion (min 1, level 5)
+  giver: creature 3145 Zureetha Fargaze spawns_on_map=1 in_area=1
+  objective 1: item 4859 x1 sources=creature:3183 Yarrog Baneshadow
+  turn-in: creature 3145 Zureetha Fargaze
+
+[804] Sarkoth (min 1, level 5)
+  giver: creature 3287 Hana'zua spawns_on_map=1 in_area=1
+  turn-in: creature 3143 Gornek
+
+[805] Report to Sen'jin Village (min 1, level 5)
+  giver: creature 3145 Zureetha Fargaze spawns_on_map=1 in_area=1
+  turn-in: creature 3188 Master Gadrin
+
+[2383] Simple Parchment (min 1, level 1)
+  giver: creature 3143 Gornek spawns_on_map=1 in_area=1
+  objective 1: item 12635 x1 sources=unresolved
+  turn-in: creature 3153 Frang
+
+[4402] Galgar's Cactus Apple Surprise (min 1, level 3)
+  giver: creature 9796 Galgar spawns_on_map=1 in_area=1
+  objective 1: item 11583 x10 sources=gameobject:171938 Cactus Apple
+  turn-in: creature 9796 Galgar
+
+[4641] Your Place In The World (min 1, level 1)
+  giver: creature 10176 Kaltunk spawns_on_map=1 in_area=1
+  turn-in: creature 3143 Gornek
+
+[5441] Lazy Peons (min 3, level 4)
+  giver: creature 11378 Foreman Thazz'ril spawns_on_map=1 in_area=1
+  objective 1: creature 10556 Lazy Peon x5 spawns=14
+  objective 1: item 16114 x1 sources=unresolved
+  turn-in: creature 11378 Foreman Thazz'ril
+
+[6394] Thazz'ril's Pick (min 3, level 4)
+  giver: creature 11378 Foreman Thazz'ril spawns_on_map=1 in_area=1
+  objective 1: item 16332 x1 sources=gameobject:178087 Thazz'ril's Pick
+  turn-in: creature 11378 Foreman Thazz'ril
+
