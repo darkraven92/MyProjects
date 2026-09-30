@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -94,6 +95,18 @@ namespace Bot
         int deadStateStalls_ = 0;
         int reclaimPrecisionRecoveries_ = 0;
 
+        using SteadyClock = std::chrono::steady_clock;
+        SteadyClock::time_point deathEpisodeStartTime_{};
+        SteadyClock::time_point lastPhysicalProgressTime_{};
+        SteadyClock::time_point lastRouteAttemptTime_{};
+        int routeAttempts_ = 0;
+        int routeStartFailures_ = 0;
+        int fullMapFallbackAttempts_ = 0;
+        int fullMapFallbackAttemptsSinceProgress_ = 0;
+        int consecutiveStationaryRouteFailures_ = 0;
+        int failedAliveProbeStreak_ = 0;
+        bool routeAttemptedThisUpdate_ = false;
+
         // Phase 14G.4.2.1: resurrection must never be inferred merely from
         // health becoming non-zero during the asynchronous spirit-release transition.
         bool ghostConfirmedThisRecovery_ = false;
@@ -134,6 +147,31 @@ namespace Bot
             const float dy = by - ay;
             const float dz = bz - az;
             return std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        static std::uint64_t AgeMs(
+            SteadyClock::time_point now,
+            SteadyClock::time_point since)
+        {
+            if (now < since)
+                return 0;
+            return static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count());
+        }
+
+        static const char* LivenessReasonName(
+            DeathRecoveryLivenessPolicy::FailureReason reason)
+        {
+            using Reason = DeathRecoveryLivenessPolicy::FailureReason;
+            switch (reason)
+            {
+                case Reason::EpisodeDeadline: return "episode_deadline";
+                case Reason::NoPhysicalProgress: return "no_physical_progress";
+                case Reason::RouteAttemptBudget: return "route_attempt_budget";
+                case Reason::StationaryFailureBudget: return "stationary_failure_budget";
+                case Reason::None: return "none";
+            }
+            return "unknown";
         }
 
         static bool IsExecutable(std::uintptr_t address)
@@ -301,58 +339,165 @@ namespace Bot
             };
         }
 
+        bool EnforceMonotonicLiveness(
+            const Objects::PlayerState& player,
+            std::uint64_t tick,
+            bool beforeNewRoute)
+        {
+            if (state_ == DeathRecoveryState::Failed)
+                return false;
+
+            const auto now = SteadyClock::now();
+            const auto episodeAgeMs = AgeMs(now, deathEpisodeStartTime_);
+            const auto noProgressAgeMs = AgeMs(now, lastPhysicalProgressTime_);
+            const auto reason = DeathRecoveryLivenessPolicy::Evaluate(
+                episodeAgeMs,
+                noProgressAgeMs,
+                routeAttempts_,
+                consecutiveStationaryRouteFailures_,
+                beforeNewRoute);
+            if (reason == DeathRecoveryLivenessPolicy::FailureReason::None)
+                return true;
+
+            corpseNavigator_.reset();
+            MovementController::HoldPosition(player);
+            failedAliveProbeStreak_ = 0;
+            nextProbeTick_ = tick;
+            const float corpseDistance = Distance3D(
+                player.x, player.y, player.z,
+                deathPosition_.x, deathPosition_.y, deathPosition_.z);
+            Debug::Logger::Info(
+                std::string("DEATH RECOVERY 14G.4.3.2: TERMINAL LIVENESS FAILURE reason=") +
+                LivenessReasonName(reason) +
+                " episodeAgeMs=" + std::to_string(episodeAgeMs) +
+                " noProgressAgeMs=" + std::to_string(noProgressAgeMs) +
+                " routeAttempts=" + std::to_string(routeAttempts_) +
+                " routeStartFailures=" + std::to_string(routeStartFailures_) +
+                " fullMapFallbackAttempts=" + std::to_string(fullMapFallbackAttempts_) +
+                " stationaryFullMapFallbackAttempts=" +
+                std::to_string(fullMapFallbackAttemptsSinceProgress_) +
+                " lastRouteAttemptAgeMs=" +
+                (routeAttempts_ > 0
+                    ? std::to_string(AgeMs(now, lastRouteAttemptTime_))
+                    : std::string("unknown")) +
+                " stationaryFailures=" +
+                std::to_string(consecutiveStationaryRouteFailures_) +
+                " corpseDistance=" + Float(corpseDistance));
+            SetState(DeathRecoveryState::Failed, tick);
+            return false;
+        }
+
+        bool TryStartRoute(
+            const Objects::PlayerState& player,
+            std::uint64_t tick,
+            const Navigation::NavPoint& destination,
+            float arrival,
+            const char* label,
+            int variant,
+            Navigation::GenericNavMeshPathFollower& navigator)
+        {
+            if (!DeathRecoveryLivenessPolicy::MayAttemptRouteThisUpdate(
+                    state_ == DeathRecoveryState::Failed,
+                    routeAttemptedThisUpdate_))
+            {
+                Debug::Logger::Info(
+                    "DEATH RECOVERY 14G.4.3.2: additional route attempt deferred to a later monitor update.");
+                return false;
+            }
+            if (!EnforceMonotonicLiveness(player, tick, true))
+                return false;
+
+            const bool allowFullMapFallback =
+                DeathRecoveryLivenessPolicy::AllowFullMapFallback(
+                    fullMapFallbackAttemptsSinceProgress_);
+            const auto began = SteadyClock::now();
+            lastRouteAttemptTime_ = began;
+            routeAttemptedThisUpdate_ = true;
+            ++routeAttempts_;
+            Debug::Logger::Info(
+                "DEATH RECOVERY 14G.4.3.2 ROUTE ATTEMPT BEGIN variant=" +
+                std::to_string(variant) +
+                " allowFullMapFallback=" +
+                (allowFullMapFallback ? std::string("yes") : std::string("no")) +
+                " attempt=" + std::to_string(routeAttempts_));
+
+            const bool started = navigator.Start(
+                player, tick, destination, mapId_, arrival, label, false,
+                Navigation::GenericNavMeshStartOptions{allowFullMapFallback});
+            if (navigator.FullMapFallbackAttempted())
+            {
+                ++fullMapFallbackAttempts_;
+                ++fullMapFallbackAttemptsSinceProgress_;
+            }
+            if (!started)
+            {
+                ++routeStartFailures_;
+                ++consecutiveStationaryRouteFailures_;
+            }
+
+            Debug::Logger::Info(
+                "DEATH RECOVERY 14G.4.3.2 ROUTE ATTEMPT END variant=" +
+                std::to_string(variant) +
+                " allowFullMapFallback=" +
+                (allowFullMapFallback ? std::string("yes") : std::string("no")) +
+                " attempt=" + std::to_string(routeAttempts_) +
+                " monotonicDurationMs=" +
+                std::to_string(AgeMs(SteadyClock::now(), began)) +
+                " success=" + (started ? std::string("yes") : std::string("no")) +
+                " fullMapAttempted=" +
+                (navigator.FullMapFallbackAttempted() ? std::string("yes") : std::string("no")) +
+                " fullMapFallbackAttempts=" +
+                std::to_string(fullMapFallbackAttempts_) +
+                " stationaryFullMapFallbackAttempts=" +
+                std::to_string(fullMapFallbackAttemptsSinceProgress_) +
+                " routeStartFailures=" + std::to_string(routeStartFailures_) +
+                " stationaryFailures=" +
+                std::to_string(consecutiveStationaryRouteFailures_) +
+                " failureReason=" + (started ? std::string("none") : std::string("navigator_start_failed")));
+
+            // A synchronous full-map load can consume most of the budget by
+            // itself. Recheck real elapsed time before accepting its result.
+            return EnforceMonotonicLiveness(player, tick, false) && started;
+        }
+
         bool StartCorpseRoute(
             const Objects::PlayerState& player,
             std::uint64_t tick)
         {
             corpseNavigator_.reset();
+            if (!EnforceMonotonicLiveness(player, tick, true))
+                return false;
 
-            for (int inspected = 0;
-                 inspected < DeathRecoveryPolicy::MaximumRouteVariants;
-                 ++inspected)
+            // One variant per monitor update; the next index survives failure.
+            const int variant = DeathRecoveryLivenessPolicy::ConsumeNextVariant(
+                routeVariant_);
+            const Navigation::NavPoint destination =
+                RouteDestinationForVariant(variant);
+            const float arrival = variant == 0
+                ? PrecisionRouteArrivalDistance
+                : DeathRecoveryPolicy::GeneratedApproachArrivalDistance;
+            auto nav =
+                std::make_unique<Navigation::GenericNavMeshPathFollower>();
+
+            if (TryStartRoute(
+                    player, tick, destination, arrival,
+                    "death recovery corpse route", variant, *nav))
             {
-                const int variant =
-                    routeVariant_ % DeathRecoveryPolicy::MaximumRouteVariants;
-                ++routeVariant_;
-
-                const Navigation::NavPoint destination =
-                    RouteDestinationForVariant(variant);
-
-                const float arrival =
-                    variant == 0
-                        ? PrecisionRouteArrivalDistance
-                        : DeathRecoveryPolicy::GeneratedApproachArrivalDistance;
-
-                auto nav =
-                    std::make_unique<Navigation::GenericNavMeshPathFollower>();
-
-                if (!nav->Start(
-                        player,
-                        tick,
-                        destination,
-                        mapId_,
-                        arrival,
-                        "death recovery corpse route",
-                        false))
-                {
-                    continue;
-                }
-
                 corpseNavigator_ = std::move(nav);
                 ++routeStarts_;
-
                 Debug::Logger::Info(
                     "DEATH RECOVERY 14G.4.2: corpse route started variant=" +
                     std::to_string(variant) +
                     " destination=(" + Float(destination.x) + "," +
                     Float(destination.y) + "," + Float(destination.z) + ")");
-
                 SetState(DeathRecoveryState::RoutingToCorpse, tick);
                 return true;
             }
 
+            if (state_ == DeathRecoveryState::Failed)
+                return false;
             Debug::Logger::Info(
-                "DEATH RECOVERY 14G.4.2: no corpse route variant could start; retrying after bounded backoff.");
+                "DEATH RECOVERY 14G.4.3.2: corpse route variant failed; retrying after bounded backoff.");
             nextActionTick_ = tick + DeathRecoveryPolicy::RouteRetryTicks;
             return false;
         }
@@ -362,20 +507,23 @@ namespace Bot
             std::uint64_t tick,
             const char* reason)
         {
+            if (routeAttemptedThisUpdate_)
+            {
+                nextDeadStateLivenessTick_ = tick + 1;
+                return false;
+            }
             corpseNavigator_.reset();
 
             auto nav =
                 std::make_unique<Navigation::GenericNavMeshPathFollower>();
 
-            if (!nav->Start(
-                    player,
-                    tick,
-                    deathPosition_,
-                    mapId_,
+            if (!TryStartRoute(
+                    player, tick, deathPosition_,
                     PrecisionRouteArrivalDistance,
-                    "death recovery precision corpse route",
-                    false))
+                    "death recovery precision corpse route", -1, *nav))
             {
+                if (state_ == DeathRecoveryState::Failed)
+                    return false;
                 Debug::Logger::Info(
                     std::string("ROBUSTNESS 14G.4.3: PRECISION CORPSE ROUTE start failed reason=") +
                     reason + "; falling back to bounded route-variant retry.");
@@ -410,6 +558,7 @@ namespace Bot
                 lastPhysicalProgressPosition_ = now;
                 havePhysicalProgressPosition_ = true;
                 lastPhysicalProgressTick_ = tick;
+                lastPhysicalProgressTime_ = SteadyClock::now();
                 nextDeadStateLivenessTick_ = tick + DeadStateStallTicks;
                 return;
             }
@@ -424,6 +573,9 @@ namespace Bot
             {
                 lastPhysicalProgressPosition_ = now;
                 lastPhysicalProgressTick_ = tick;
+                lastPhysicalProgressTime_ = SteadyClock::now();
+                consecutiveStationaryRouteFailures_ = 0;
+                fullMapFallbackAttemptsSinceProgress_ = 0;
                 nextDeadStateLivenessTick_ = tick + DeadStateStallTicks;
             }
         }
@@ -595,6 +747,16 @@ namespace Bot
             precisionRouteStarts_ = 0;
             deadStateStalls_ = 0;
             reclaimPrecisionRecoveries_ = 0;
+            deathEpisodeStartTime_ = SteadyClock::now();
+            lastPhysicalProgressTime_ = deathEpisodeStartTime_;
+            lastRouteAttemptTime_ = SteadyClock::time_point{};
+            routeAttempts_ = 0;
+            routeStartFailures_ = 0;
+            fullMapFallbackAttempts_ = 0;
+            fullMapFallbackAttemptsSinceProgress_ = 0;
+            consecutiveStationaryRouteFailures_ = 0;
+            failedAliveProbeStreak_ = 0;
+            routeAttemptedThisUpdate_ = false;
             lastPhysicalProgressTick_ = tick;
             nextDeadStateLivenessTick_ = tick + DeadStateStallTicks;
             lastPhysicalProgressPosition_ = Navigation::NavPoint{
@@ -650,13 +812,56 @@ namespace Bot
             std::uint64_t tick)
         {
             if (state_ == DeathRecoveryState::Idle ||
-                state_ == DeathRecoveryState::Done ||
-                state_ == DeathRecoveryState::Failed)
+                state_ == DeathRecoveryState::Done)
             {
                 return;
             }
 
+            routeAttemptedThisUpdate_ = false;
+
+            if (state_ == DeathRecoveryState::Failed)
+            {
+                // Terminal death ownership remains in place until two fresh
+                // probes positively confirm a clearly-alive player. HP alone
+                // must not release a ghost to normal grind ownership.
+                if (DeathRecoveryPolicy::ShouldRememberClearlyAlivePosition(
+                        world.player.valid, world.player.health,
+                        world.player.maxHealth) && tick >= nextProbeTick_)
+                {
+                    nextProbeTick_ = tick + DeathRecoveryPolicy::ProbeIntervalTicks;
+                    DeathProbe probe{};
+                    if (ProbeDeathState(probe) && probe.valid && probe.deadKnown &&
+                        !probe.isDead && !probe.isGhost)
+                    {
+                        ++failedAliveProbeStreak_;
+                        if (DeathRecoveryLivenessPolicy::ManualAliveConfirmed(
+                                world.player.valid, world.player.health,
+                                world.player.maxHealth, probe.valid,
+                                probe.deadKnown, probe.isDead, probe.isGhost,
+                                failedAliveProbeStreak_))
+                        {
+                            Debug::Logger::Info(
+                                "DEATH RECOVERY 14G.4.3.2: MANUAL ALIVE CONFIRMED after terminal failure; releasing death ownership.");
+                            SetState(DeathRecoveryState::Done, tick);
+                        }
+                    }
+                    else
+                    {
+                        failedAliveProbeStreak_ = 0;
+                    }
+                }
+                else if (!DeathRecoveryPolicy::ShouldRememberClearlyAlivePosition(
+                             world.player.valid, world.player.health,
+                             world.player.maxHealth))
+                {
+                    failedAliveProbeStreak_ = 0;
+                }
+                return;
+            }
+
             ObservePhysicalProgress(world.player, tick);
+            if (!EnforceMonotonicLiveness(world.player, tick, false))
+                return;
 
             bool freshProbe = false;
             if (tick >= nextProbeTick_)
@@ -828,6 +1033,9 @@ namespace Bot
                     else if (corpseNavigator_->Failed())
                     {
                         corpseNavigator_.reset();
+                        ++consecutiveStationaryRouteFailures_;
+                        if (!EnforceMonotonicLiveness(world.player, tick, false))
+                            return;
                         Debug::Logger::Info(
                             "DEATH RECOVERY 14G.4.2: corpse route failed; selecting another generated approach variant.");
                         nextActionTick_ = tick + DeathRecoveryPolicy::RouteRetryTicks;
@@ -940,6 +1148,7 @@ namespace Bot
             }
 
             if (lastProbe_.valid && lastProbe_.isGhost &&
+                !routeAttemptedThisUpdate_ &&
                 tick >= nextDeadStateLivenessTick_ &&
                 tick >= lastPhysicalProgressTick_ + DeadStateStallTicks &&
                 (state_ == DeathRecoveryState::RoutingToCorpse ||
@@ -1033,6 +1242,16 @@ namespace Bot
             precisionRouteStarts_ = 0;
             deadStateStalls_ = 0;
             reclaimPrecisionRecoveries_ = 0;
+            deathEpisodeStartTime_ = SteadyClock::time_point{};
+            lastPhysicalProgressTime_ = SteadyClock::time_point{};
+            lastRouteAttemptTime_ = SteadyClock::time_point{};
+            routeAttempts_ = 0;
+            routeStartFailures_ = 0;
+            fullMapFallbackAttempts_ = 0;
+            fullMapFallbackAttemptsSinceProgress_ = 0;
+            consecutiveStationaryRouteFailures_ = 0;
+            failedAliveProbeStreak_ = 0;
+            routeAttemptedThisUpdate_ = false;
             ghostConfirmedThisRecovery_ = false;
             bootstrappedFromGhost_ = false;
             retrieveCommandIssuedThisRecovery_ = false;

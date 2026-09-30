@@ -138,4 +138,77 @@ namespace Bot
                 ShouldRetryAction(tick, nextActionTick);
         }
     };
+
+    // Monotonic milliseconds are supplied by the controller. Tick cadence is
+    // deliberately absent: synchronous path loading can take many seconds.
+    struct DeathRecoveryLivenessPolicy
+    {
+        enum class FailureReason
+        {
+            None,
+            EpisodeDeadline,
+            NoPhysicalProgress,
+            RouteAttemptBudget,
+            StationaryFailureBudget
+        };
+
+        static constexpr std::uint64_t MaximumEpisodeAgeMs = 300000;
+        static constexpr std::uint64_t MaximumNoProgressAgeMs = 180000;
+        static constexpr int MaximumRouteAttempts = 18;
+        static constexpr int MaximumStationaryRouteFailures = 9;
+        static constexpr int MaximumFullMapFallbackAttempts = 1;
+
+        static FailureReason Evaluate(
+            std::uint64_t episodeAgeMs,
+            std::uint64_t noProgressAgeMs,
+            int routeAttempts,
+            int stationaryFailures,
+            bool beforeNewRoute)
+        {
+            if (episodeAgeMs >= MaximumEpisodeAgeMs)
+                return FailureReason::EpisodeDeadline;
+            if (noProgressAgeMs >= MaximumNoProgressAgeMs)
+                return FailureReason::NoPhysicalProgress;
+            if (stationaryFailures >= MaximumStationaryRouteFailures)
+                return FailureReason::StationaryFailureBudget;
+            if (beforeNewRoute && routeAttempts >= MaximumRouteAttempts)
+                return FailureReason::RouteAttemptBudget;
+            return FailureReason::None;
+        }
+
+        static bool AllowFullMapFallback(int attempts)
+        {
+            return attempts < MaximumFullMapFallbackAttempts;
+        }
+
+        static bool MayAttemptRouteThisUpdate(
+            bool terminalFailed,
+            bool alreadyAttempted)
+        {
+            return !terminalFailed && !alreadyAttempted;
+        }
+
+        static int ConsumeNextVariant(int& nextVariant)
+        {
+            const int variant = nextVariant % DeathRecoveryPolicy::MaximumRouteVariants;
+            nextVariant = (variant + 1) % DeathRecoveryPolicy::MaximumRouteVariants;
+            return variant;
+        }
+
+        static bool ManualAliveConfirmed(
+            bool playerValid,
+            std::uint32_t health,
+            std::uint32_t maxHealth,
+            bool probeValid,
+            bool deadKnown,
+            bool isDead,
+            bool isGhost,
+            int freshAliveProbes)
+        {
+            return DeathRecoveryPolicy::ShouldRememberClearlyAlivePosition(
+                       playerValid, health, maxHealth) &&
+                probeValid && deadKnown && !isDead && !isGhost &&
+                freshAliveProbes >= DeathRecoveryPolicy::AliveConfirmationProbes;
+        }
+    };
 }

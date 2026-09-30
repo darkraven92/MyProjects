@@ -28,6 +28,11 @@ namespace Navigation
         Failed
     };
 
+    struct GenericNavMeshStartOptions
+    {
+        bool allowFullMapFallback = true;
+    };
+
     class GenericNavMeshPathFollower
     {
     private:
@@ -359,6 +364,7 @@ namespace Navigation
             3.00f;
 
         DetourNavigationProvider provider_{};
+        bool fullMapFallbackAttempted_ = false;
 
         GenericNavMeshFollowState state_ =
             GenericNavMeshFollowState::Idle;
@@ -4399,7 +4405,8 @@ namespace Navigation
             std::uint32_t mapId,
             float arrivalDistance,
             const std::string& label,
-            bool healthSafetyEnabled = true)
+            bool healthSafetyEnabled = true,
+            const GenericNavMeshStartOptions& options = {})
         {
             if (
                 state_ !=
@@ -4646,12 +4653,22 @@ namespace Navigation
                 );
             }
 
+            if (!options.allowFullMapFallback)
+            {
+                Debug::Logger::Info(
+                    "NAVMESH 11B.8: full-map fallback disabled for this route attempt."
+                );
+                SetState(GenericNavMeshFollowState::Failed);
+                return false;
+            }
+
             Debug::Logger::Info(
                 "NAVMESH 11B.8: route-scoped loading exhausted; falling back "
                 "to the full-map loader for correctness."
             );
 
             provider_.Shutdown();
+            fullMapFallbackAttempted_ = true;
 
             const auto fullStarted =
                 std::chrono::steady_clock::now();
@@ -5438,6 +5455,11 @@ namespace Navigation
                 state_ ==
                     GenericNavMeshFollowState::
                         Failed;
+        }
+
+        bool FullMapFallbackAttempted() const
+        {
+            return fullMapFallbackAttempted_;
         }
 
         const char* StateName() const

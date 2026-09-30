@@ -925,7 +925,7 @@ namespace Bot
                         }
                     }
 
-                    if (deathRecovery.IsActive())
+                    if (deathRecovery.IsActive() || deathRecovery.IsFailed())
                     {
                         deathRecovery.Update(
                             world,
