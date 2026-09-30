@@ -62,15 +62,31 @@ namespace Bot
                 probeValid && isGhost;
         }
 
+        static bool CanBootstrapFromDead(
+            bool playerValid,
+            std::uint32_t health,
+            std::uint32_t maxHealth,
+            bool probeValid,
+            bool deadKnown,
+            bool isDead,
+            bool isGhost)
+        {
+            return ShouldProbeIdleGhost(playerValid, health, maxHealth) &&
+                probeValid && deadKnown && isDead && !isGhost;
+        }
+
         static EntryState EntryFor(
+            bool confirmedDead,
             bool confirmedGhost,
             bool haveClearlyAlivePosition)
         {
-            if (!confirmedGhost)
+            if (!confirmedDead && !confirmedGhost)
                 return EntryState::ReleasingSpirit;
-            return haveClearlyAlivePosition
+            if (!haveClearlyAlivePosition)
+                return EntryState::FailedMissingAnchor;
+            return confirmedGhost
                 ? EntryState::WaitingForGhost
-                : EntryState::FailedMissingAnchor;
+                : EntryState::ReleasingSpirit;
         }
 
         static bool AliveAfterCorpseRun(

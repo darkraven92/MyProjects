@@ -791,16 +791,16 @@ namespace Bot
                 if (TemporaryGrindModeEnabled)
                     deathRecovery.ObserveClearlyAlivePosition(world);
 
-                const bool ghostBootstrap =
+                const bool deathBootstrap =
                     TemporaryGrindModeEnabled &&
                     world.player.health == 1 &&
-                    deathRecovery.ConfirmGhostWhileIdle(world, tick);
+                    deathRecovery.ConfirmDeathWhileIdle(world, tick);
 
                 if (TemporaryGrindModeEnabled &&
                     (deathRecovery.IsActive() ||
                      deathRecovery.IsFailed() ||
                      (world.player.maxHealth > 0 && world.player.health == 0) ||
-                     ghostBootstrap))
+                     deathBootstrap))
                 {
                     deathRecoveryOwnedTick = true;
 
@@ -808,7 +808,7 @@ namespace Bot
                     {
                         Navigation::NavPoint deathRecordPosition{
                             world.player.x, world.player.y, world.player.z};
-                        if (!ghostBootstrap ||
+                        if (!deathBootstrap ||
                             deathRecovery.LastClearlyAlivePosition(deathRecordPosition))
                         {
                             grindMode.RecordDeath(
@@ -828,7 +828,7 @@ namespace Bot
                                 world,
                                 tick,
                                 GrindModeController::MapIdValue(),
-                                ghostBootstrap))
+                                deathBootstrap))
                         {
                             Debug::Logger::Info(
                                 "DEATH RECOVERY 14G.4.2: start deferred; retrying from next live world snapshot.");

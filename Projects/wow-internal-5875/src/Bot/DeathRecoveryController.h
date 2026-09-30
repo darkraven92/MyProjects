@@ -53,9 +53,11 @@ namespace Bot
         static constexpr std::uint64_t DeadStateStallTicks = 160;
         static constexpr int RetrieveAttemptsBeforePrecisionReroute = 2;
 
-        struct GhostProbe
+        struct DeathProbe
         {
             bool valid = false;
+            bool deadKnown = false;
+            bool isDead = false;
             bool isGhost = false;
             float recoveryDelaySeconds = 0.0f;
         };
@@ -72,7 +74,9 @@ namespace Bot
         std::uint64_t nextActionTick_ = 0;
         std::uint64_t nextProbeTick_ = 0;
         std::uint64_t nextIdleProbeTick_ = 0;
-        std::uint64_t idleGhostConfirmedTick_ = 0;
+        std::uint64_t lastIdleProbeLogTick_ = 0;
+        std::uint64_t idleDeathConfirmedTick_ = 0;
+        bool haveIdleProbeLog_ = false;
         std::uint64_t lastStatusTick_ = 0;
 
         int releaseAttempts_ = 0;
@@ -97,7 +101,7 @@ namespace Bot
         bool retrieveCommandIssuedThisRecovery_ = false;
         int aliveProbeStreak_ = 0;
 
-        GhostProbe lastProbe_{};
+        DeathProbe lastProbe_{};
 
         static const char* StateNameInternal(DeathRecoveryState state)
         {
@@ -195,9 +199,9 @@ namespace Bot
             return dispatched && onGameThread && luaExecuted;
         }
 
-        static bool ProbeGhostState(GhostProbe& probe)
+        static bool ProbeDeathState(DeathProbe& probe)
         {
-            probe = GhostProbe{};
+            probe = DeathProbe{};
 
             const auto doStringAddress = LuaDoStringAddress();
             const auto getTextAddress = GetTextAddress();
@@ -212,9 +216,10 @@ namespace Bot
                 reinterpret_cast<GetTextFunction>(getTextAddress);
 
             static constexpr const char* script =
-                "local g=0; if UnitIsGhost and UnitIsGhost('player') then g=1 end; "
-                "local d=0; if GetCorpseRecoveryDelay then d=GetCorpseRecoveryDelay() or 0 end; "
-                "WOW_INTERNAL_DEATH_RESULT=tostring(g)..'|'..tostring(d);";
+                "local dead=-1; if type(UnitIsDead)=='function' then dead=UnitIsDead('player') and 1 or 0 end; "
+                "local ghost=-1; if type(UnitIsGhost)=='function' then ghost=UnitIsGhost('player') and 1 or 0 end; "
+                "local delay=0; if GetCorpseRecoveryDelay then delay=GetCorpseRecoveryDelay() or 0 end; "
+                "WOW_INTERNAL_DEATH_RESULT=tostring(dead)..'|'..tostring(ghost)..'|'..tostring(delay);";
 
             char buffer[128]{};
             bool onGameThread = false;
@@ -250,15 +255,18 @@ namespace Bot
             if (!dispatched || !onGameThread || !luaExecuted || !gotText)
                 return false;
 
-            int ghost = 0;
+            int dead = -1;
+            int ghost = -1;
             float delay = 0.0f;
-            if (std::sscanf(buffer, "%d|%f", &ghost, &delay) != 2)
+            if (std::sscanf(buffer, "%d|%d|%f", &dead, &ghost, &delay) != 3)
                 return false;
 
-            probe.valid = true;
-            probe.isGhost = ghost != 0;
+            probe.valid = ghost == 0 || ghost == 1;
+            probe.deadKnown = dead == 0 || dead == 1;
+            probe.isDead = dead == 1;
+            probe.isGhost = ghost == 1;
             probe.recoveryDelaySeconds = std::max(0.0f, delay);
-            return true;
+            return probe.valid;
         }
 
         void SetState(DeathRecoveryState state, std::uint64_t tick)
@@ -454,7 +462,7 @@ namespace Bot
             haveLastClearlyAlivePosition_ = true;
         }
 
-        bool ConfirmGhostWhileIdle(
+        bool ConfirmDeathWhileIdle(
             const Objects::WorldState& world,
             std::uint64_t tick)
         {
@@ -469,47 +477,85 @@ namespace Bot
             }
 
             nextIdleProbeTick_ = tick + DeathRecoveryPolicy::ProbeIntervalTicks;
-            GhostProbe probe{};
-            if (!ProbeGhostState(probe))
-                return false;
-
-            if (DeathRecoveryPolicy::CanBootstrapFromGhost(
+            DeathProbe probe{};
+            const bool probeRead = ProbeDeathState(probe);
+            const bool confirmedGhost = probeRead &&
+                DeathRecoveryPolicy::CanBootstrapFromGhost(
                     world.player.valid,
                     world.player.health,
                     world.player.maxHealth,
                     probe.valid,
-                    probe.isGhost))
+                    probe.isGhost);
+            const bool confirmedDead = probeRead &&
+                DeathRecoveryPolicy::CanBootstrapFromDead(
+                    world.player.valid,
+                    world.player.health,
+                    world.player.maxHealth,
+                    probe.valid,
+                    probe.deadKnown,
+                    probe.isDead,
+                    probe.isGhost);
+
+            if (!haveIdleProbeLog_ ||
+                tick >= lastIdleProbeLogTick_ + DeathRecoveryPolicy::StatusLogTicks ||
+                confirmedDead || confirmedGhost)
             {
-                lastProbe_ = probe;
-                idleGhostConfirmedTick_ = tick;
-                return true;
+                haveIdleProbeLog_ = true;
+                lastIdleProbeLogTick_ = tick;
+                Debug::Logger::Info(
+                    "DEATH 14G.4.3.1 PROBE: hp=" +
+                    std::to_string(world.player.health) + "/" +
+                    std::to_string(world.player.maxHealth) +
+                    " valid=" + (probe.valid ? "yes" : "no") +
+                    " dead=" + (probe.deadKnown
+                        ? (probe.isDead ? "yes" : "no") : "unknown") +
+                    " ghost=" + (probe.valid
+                        ? (probe.isGhost ? "yes" : "no") : "unknown") +
+                    " reclaimDelay=" +
+                    (probe.valid ? Float(probe.recoveryDelaySeconds) : "unknown"));
             }
 
+            if (!probeRead)
+                return false;
+
             lastProbe_ = probe;
-            return false;
+            if (confirmedDead || confirmedGhost)
+                idleDeathConfirmedTick_ = tick;
+            return confirmedDead || confirmedGhost;
         }
 
         bool Start(
             const Objects::WorldState& world,
             std::uint64_t tick,
             std::uint32_t mapId,
-            bool ghostBootstrap = false)
+            bool deathBootstrap = false)
         {
             if (state_ != DeathRecoveryState::Idle)
                 return false;
 
             const bool confirmedGhost =
-                ghostBootstrap && idleGhostConfirmedTick_ == tick &&
+                deathBootstrap && idleDeathConfirmedTick_ == tick &&
                 DeathRecoveryPolicy::CanBootstrapFromGhost(
                     world.player.valid,
                     world.player.health,
                     world.player.maxHealth,
                     lastProbe_.valid,
                     lastProbe_.isGhost);
+            const bool confirmedDead =
+                deathBootstrap && idleDeathConfirmedTick_ == tick &&
+                DeathRecoveryPolicy::CanBootstrapFromDead(
+                    world.player.valid,
+                    world.player.health,
+                    world.player.maxHealth,
+                    lastProbe_.valid,
+                    lastProbe_.deadKnown,
+                    lastProbe_.isDead,
+                    lastProbe_.isGhost);
             if (!DeathRecoveryPolicy::CanStartFromDeath(
                     world.player.valid,
                     world.player.health,
-                    world.player.maxHealth) && !confirmedGhost)
+                    world.player.maxHealth) &&
+                !confirmedDead && !confirmedGhost)
             {
                 return false;
             }
@@ -523,20 +569,21 @@ namespace Bot
             }
 
             const auto entry = DeathRecoveryPolicy::EntryFor(
-                confirmedGhost, haveLastClearlyAlivePosition_);
+                confirmedDead, confirmedGhost, haveLastClearlyAlivePosition_);
             if (entry == DeathRecoveryPolicy::EntryState::FailedMissingAnchor)
             {
                 MovementController::HoldPosition(world.player);
                 Debug::Logger::Info(
-                    "ROBUSTNESS 14G.4.3.1: GHOST OWNERSHIP BOOTSTRAP corpsePosition=unknown");
+                    std::string("ROBUSTNESS 14G.4.3.1: DEATH OWNERSHIP BOOTSTRAP corpsePosition=unknown state=") +
+                    (confirmedGhost ? "ghost" : "dead"));
                 Debug::Logger::Info(
-                    "ROBUSTNESS 14G.4.3.1: GHOST OWNERSHIP BOOTSTRAP FAILED; no clearly-alive anchor, corpse routing and reclaim disabled until bot restart.");
+                    "ROBUSTNESS 14G.4.3.1: DEATH OWNERSHIP BOOTSTRAP FAILED; no clearly-alive anchor, corpse routing and reclaim disabled until bot restart.");
                 SetState(DeathRecoveryState::Failed, tick);
                 return true;
             }
 
             mapId_ = mapId;
-            deathPosition_ = confirmedGhost
+            deathPosition_ = (confirmedDead || confirmedGhost)
                 ? lastClearlyAlivePosition_
                 : Navigation::NavPoint{
                     world.player.x, world.player.y, world.player.z};
@@ -554,15 +601,15 @@ namespace Bot
                 world.player.x, world.player.y, world.player.z};
             havePhysicalProgressPosition_ = true;
             nextActionTick_ = tick;
-            nextProbeTick_ = confirmedGhost
+            nextProbeTick_ = (confirmedDead || confirmedGhost)
                 ? tick + DeathRecoveryPolicy::ProbeIntervalTicks : tick;
             lastStatusTick_ = tick;
             ghostConfirmedThisRecovery_ = confirmedGhost;
             bootstrappedFromGhost_ = confirmedGhost;
             retrieveCommandIssuedThisRecovery_ = false;
             aliveProbeStreak_ = 0;
-            if (!confirmedGhost)
-                lastProbe_ = GhostProbe{};
+            if (!confirmedDead && !confirmedGhost)
+                lastProbe_ = DeathProbe{};
             corpseNavigator_.reset();
 
             MovementController::HoldPosition(world.player);
@@ -572,6 +619,11 @@ namespace Bot
             {
                 Debug::Logger::Info(
                     "ROBUSTNESS 14G.4.3.1: GHOST OWNERSHIP BOOTSTRAP corpsePosition=last clearly-alive position");
+            }
+            else if (confirmedDead)
+            {
+                Debug::Logger::Info(
+                    "ROBUSTNESS 14G.4.3.1: DEAD OWNERSHIP BOOTSTRAP corpsePosition=last clearly-alive position");
             }
             else
             {
@@ -610,8 +662,8 @@ namespace Bot
             if (tick >= nextProbeTick_)
             {
                 nextProbeTick_ = tick + DeathRecoveryPolicy::ProbeIntervalTicks;
-                GhostProbe probe{};
-                if (ProbeGhostState(probe))
+                DeathProbe probe{};
+                if (ProbeDeathState(probe))
                 {
                     lastProbe_ = probe;
                     freshProbe = true;
@@ -966,7 +1018,9 @@ namespace Bot
             nextActionTick_ = 0;
             nextProbeTick_ = 0;
             nextIdleProbeTick_ = 0;
-            idleGhostConfirmedTick_ = 0;
+            lastIdleProbeLogTick_ = 0;
+            idleDeathConfirmedTick_ = 0;
+            haveIdleProbeLog_ = false;
             lastStatusTick_ = 0;
             releaseAttempts_ = 0;
             retrieveAttempts_ = 0;
@@ -983,7 +1037,7 @@ namespace Bot
             bootstrappedFromGhost_ = false;
             retrieveCommandIssuedThisRecovery_ = false;
             aliveProbeStreak_ = 0;
-            lastProbe_ = GhostProbe{};
+            lastProbe_ = DeathProbe{};
         }
 
         DeathRecoveryState State() const { return state_; }
