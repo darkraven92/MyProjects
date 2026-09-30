@@ -97,6 +97,11 @@ namespace
     ULONGLONG g_botSessionElapsedMs = 0;
     bool g_botSessionTimerRunning = false;
     bool g_previousRuntimeAttached = false;
+    bool g_haveObservedRuntimeHeartbeat = false;
+    bool g_runtimeHeartbeatStalled = false;
+    LONG g_lastObservedRuntimeHeartbeat = 0;
+    ULONGLONG g_lastRuntimeHeartbeatAdvanceMs = 0;
+    ULONGLONG g_lastHeartbeatDiagnosticMs = 0;
 
     void Remember(std::vector<HWND>& group, HWND control)
     {
@@ -183,6 +188,34 @@ namespace
         std::vector<wchar_t> buffer(static_cast<std::size_t>(length) + 1, L'\0');
         GetWindowTextW(window, buffer.data(), static_cast<int>(buffer.size()));
         return std::wstring(buffer.data());
+    }
+
+    void AppendDisconnectDiagnostic(const std::string& details)
+    {
+        const std::wstring path = GetWindowTextString(g_logPath);
+        if (path.empty())
+            return;
+
+        SYSTEMTIME utc{};
+        GetSystemTime(&utc);
+        const std::string timestamp = std::to_string(utc.wYear) + "-" +
+            std::to_string(utc.wMonth) + "-" + std::to_string(utc.wDay) +
+            "T" + std::to_string(utc.wHour) + ":" +
+            std::to_string(utc.wMinute) + ":" +
+            std::to_string(utc.wSecond) + "Z";
+
+        HANDLE file = CreateFileW(
+            path.c_str(), FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return;
+
+        const std::string line = "[INFO] DISCONNECT DIAGNOSTIC 14D GUI: utc=" +
+            timestamp + " " + details + "\r\n";
+        DWORD written = 0;
+        WriteFile(file, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
+        CloseHandle(file);
     }
 
     void SetControlText(HWND control, const std::wstring& value)
@@ -981,6 +1014,57 @@ namespace
         const bool unloading = attached &&
             (g_runtimeControl.UnloadRequested(false) ||
              g_runtimeControl.RuntimeState() == Control::BotRunState::Unloading);
+
+        const ULONGLONG nowMs = GetTickCount64();
+        if (g_previousRuntimeAttached && !wowRunning)
+        {
+            AppendDisconnectDiagnostic(
+                "monotonicMs=" + std::to_string(nowMs) +
+                " processAlive=no runtimeAttached=stale"
+                " classification=wow_process_not_found_cause_unknown");
+        }
+
+        if (attached && !unloading &&
+            g_runtimeControl.RuntimeState() == Control::BotRunState::Running)
+        {
+            const LONG heartbeat = g_runtimeControl.Heartbeat();
+            if (!g_haveObservedRuntimeHeartbeat ||
+                heartbeat != g_lastObservedRuntimeHeartbeat ||
+                nowMs < g_lastRuntimeHeartbeatAdvanceMs)
+            {
+                if (g_runtimeHeartbeatStalled)
+                {
+                    AppendDisconnectDiagnostic(
+                        "monotonicMs=" + std::to_string(nowMs) +
+                        " processAlive=yes runtimeAttached=yes runtimeHeartbeat=" +
+                        std::to_string(heartbeat) +
+                        " classification=runtime_heartbeat_resumed");
+                }
+                g_haveObservedRuntimeHeartbeat = true;
+                g_runtimeHeartbeatStalled = false;
+                g_lastObservedRuntimeHeartbeat = heartbeat;
+                g_lastRuntimeHeartbeatAdvanceMs = nowMs;
+            }
+            else if (nowMs - g_lastRuntimeHeartbeatAdvanceMs >= 10000 &&
+                (!g_runtimeHeartbeatStalled ||
+                 nowMs - g_lastHeartbeatDiagnosticMs >= 30000))
+            {
+                g_runtimeHeartbeatStalled = true;
+                g_lastHeartbeatDiagnosticMs = nowMs;
+                AppendDisconnectDiagnostic(
+                    "monotonicMs=" + std::to_string(nowMs) +
+                    " processAlive=yes runtimeAttached=yes runtimeHeartbeat=" +
+                    std::to_string(heartbeat) +
+                    " runtimeHeartbeatAgeMs=" +
+                    std::to_string(nowMs - g_lastRuntimeHeartbeatAdvanceMs) +
+                    " classification=runtime_loop_stalled_or_blocked");
+            }
+        }
+        else
+        {
+            g_haveObservedRuntimeHeartbeat = false;
+            g_runtimeHeartbeatStalled = false;
+        }
 
         if (attached && !g_previousRuntimeAttached && !g_botSessionTimerRunning)
         {

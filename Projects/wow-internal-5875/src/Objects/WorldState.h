@@ -27,12 +27,51 @@ namespace Objects
         bool valid = false;
     };
 
+    enum class WorldReadStage
+    {
+        Complete,
+        ObjectManagerRootUnreadable,
+        ObjectManagerMissing,
+        ObjectManagerUnreadable,
+        ActivePlayerGuidUnreadable,
+        ActivePlayerGuidMissing,
+        FirstObjectUnreadable,
+        FirstObjectMissing,
+        LocalPlayerMissing,
+        PlayerSnapshotUnreadable
+    };
+
+    inline const char* WorldReadStageName(WorldReadStage stage)
+    {
+        switch (stage)
+        {
+            case WorldReadStage::Complete: return "complete";
+            case WorldReadStage::ObjectManagerRootUnreadable: return "manager_root_unreadable";
+            case WorldReadStage::ObjectManagerMissing: return "manager_missing";
+            case WorldReadStage::ObjectManagerUnreadable: return "manager_unreadable";
+            case WorldReadStage::ActivePlayerGuidUnreadable: return "active_guid_unreadable";
+            case WorldReadStage::ActivePlayerGuidMissing: return "active_guid_missing";
+            case WorldReadStage::FirstObjectUnreadable: return "first_object_unreadable";
+            case WorldReadStage::FirstObjectMissing: return "first_object_missing";
+            case WorldReadStage::LocalPlayerMissing: return "local_player_missing";
+            case WorldReadStage::PlayerSnapshotUnreadable: return "player_snapshot_unreadable";
+        }
+        return "unknown";
+    }
+
     class WorldStateReader
     {
     public:
-        static bool Read(WorldState& state)
+        static bool Read(WorldState& state, WorldReadStage* stage = nullptr)
         {
             state = {};
+
+            const auto fail = [stage](WorldReadStage reason)
+            {
+                if (stage)
+                    *stage = reason;
+                return false;
+            };
 
             // ---------------------------------------------
             // ObjectManager
@@ -43,17 +82,17 @@ namespace Objects
                         ObjectManager::Root,
                     state.manager))
             {
-                return false;
+                return fail(WorldReadStage::ObjectManagerRootUnreadable);
             }
 
             if (state.manager == 0)
-                return false;
+                return fail(WorldReadStage::ObjectManagerMissing);
 
             if (!Core::Memory::IsReadable(
                     state.manager,
                     0xC8))
             {
-                return false;
+                return fail(WorldReadStage::ObjectManagerUnreadable);
             }
 
             // ---------------------------------------------
@@ -67,11 +106,11 @@ namespace Objects
                             ActivePlayerGuid,
                     state.activePlayerGuid))
             {
-                return false;
+                return fail(WorldReadStage::ActivePlayerGuidUnreadable);
             }
 
             if (state.activePlayerGuid == 0)
-                return false;
+                return fail(WorldReadStage::ActivePlayerGuidMissing);
 
             // ---------------------------------------------
             // First object
@@ -84,13 +123,13 @@ namespace Objects
                             FirstObject,
                     state.firstObject))
             {
-                return false;
+                return fail(WorldReadStage::FirstObjectUnreadable);
             }
 
             if (state.firstObject == 0 ||
                 (state.firstObject & 1) != 0)
             {
-                return false;
+                return fail(WorldReadStage::FirstObjectMissing);
             }
 
             // ---------------------------------------------
@@ -181,7 +220,7 @@ namespace Objects
             }
 
             if (state.localPlayer == 0)
-                return false;
+                return fail(WorldReadStage::LocalPlayerMissing);
 
             // ---------------------------------------------
             // Local player state
@@ -191,7 +230,7 @@ namespace Objects
                     state.localPlayer,
                     state.player))
             {
-                return false;
+                return fail(WorldReadStage::PlayerSnapshotUnreadable);
             }
 
             // ---------------------------------------------
@@ -226,6 +265,9 @@ namespace Objects
             );
 
             state.valid = true;
+
+            if (stage)
+                *stage = WorldReadStage::Complete;
 
             return true;
         }

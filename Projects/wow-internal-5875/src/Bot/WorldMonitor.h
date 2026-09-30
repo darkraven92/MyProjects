@@ -6,6 +6,7 @@
 #include "PlayerPostureController.h"
 #include "AutonomySupervisor.h"
 #include "ActiveBotAfkSafeguard.h"
+#include "DisconnectDiagnosticPolicy.h"
 #include "RuntimeRobustnessSupervisor.h"
 #include "CombatController.h"
 #include "DeathRecoveryController.h"
@@ -25,6 +26,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -369,6 +371,14 @@ namespace Bot
             int consecutiveWorldFailures =
                 0;
 
+            DisconnectDiagnosticPolicy disconnectDiagnostic;
+            std::uint64_t loopHeartbeat = 0;
+            bool haveMovementAnchor = false;
+            float movementAnchorX = 0.0f;
+            float movementAnchorY = 0.0f;
+            float movementAnchorZ = 0.0f;
+            std::uint64_t lastMeaningfulMovementMs = 0;
+
             std::uint64_t previousUiTargetGuid =
                 0;
 
@@ -422,11 +432,99 @@ namespace Bot
                     return;
                 }
 
+                // Unlike the controller tick, this heartbeat advances even
+                // while the world snapshot is unavailable. An external GUI
+                // can therefore distinguish a live monitor from a stalled one.
+                ++loopHeartbeat;
+                if (runtimeControl.IsOpen())
+                {
+                    runtimeControl.MarkRuntimeAttached(activeGuiMode);
+                    runtimeControl.MarkRuntimeState(
+                        Control::BotRunState::Running,
+                        static_cast<LONG>(loopHeartbeat & 0x7FFFFFFFULL));
+                }
+
                 Objects::WorldState world{};
 
-                if (!Objects::
-                        WorldStateReader::
-                        Read(world))
+                Objects::WorldReadStage worldReadStage =
+                    Objects::WorldReadStage::Complete;
+                const bool snapshotValid = Objects::WorldStateReader::Read(
+                    world, &worldReadStage);
+                const std::uint64_t nowMs = GetTickCount64();
+                const std::uint64_t priorIncidentAgeMs =
+                    disconnectDiagnostic.IncidentAgeMs(nowMs);
+                const DisconnectDiagnosticEvent diagnosticEvent =
+                    disconnectDiagnostic.Update(snapshotValid, nowMs);
+
+                if (snapshotValid)
+                {
+                    if (!haveMovementAnchor)
+                    {
+                        haveMovementAnchor = true;
+                        movementAnchorX = world.player.x;
+                        movementAnchorY = world.player.y;
+                        movementAnchorZ = world.player.z;
+                        lastMeaningfulMovementMs = nowMs;
+                    }
+                    else
+                    {
+                        const float dx = world.player.x - movementAnchorX;
+                        const float dy = world.player.y - movementAnchorY;
+                        const float dz = world.player.z - movementAnchorZ;
+                        if (std::sqrt(dx * dx + dy * dy + dz * dz) >= 2.5f)
+                        {
+                            movementAnchorX = world.player.x;
+                            movementAnchorY = world.player.y;
+                            movementAnchorZ = world.player.z;
+                            lastMeaningfulMovementMs = nowMs;
+                        }
+                    }
+                }
+
+                if (diagnosticEvent != DisconnectDiagnosticEvent::None)
+                {
+                    SYSTEMTIME utc{};
+                    GetSystemTime(&utc);
+                    std::ostringstream timestamp;
+                    timestamp << std::setfill('0') << std::setw(4) << utc.wYear
+                        << '-' << std::setw(2) << utc.wMonth
+                        << '-' << std::setw(2) << utc.wDay
+                        << 'T' << std::setw(2) << utc.wHour
+                        << ':' << std::setw(2) << utc.wMinute
+                        << ':' << std::setw(2) << utc.wSecond << 'Z';
+
+                    const char* classification = snapshotValid
+                        ? (diagnosticEvent == DisconnectDiagnosticEvent::SnapshotRecovered
+                            ? "snapshot_recovered_cause_unknown" : "healthy")
+                        : "world_snapshot_unavailable_cause_unknown";
+                    Debug::Logger::Info(
+                        "DISCONNECT DIAGNOSTIC 14D: utc=" + timestamp.str() +
+                        " processAlive=yes runtimeLoopHeartbeat=" +
+                        std::to_string(loopHeartbeat) +
+                        " snapshot=" + (snapshotValid ? std::string("valid") : std::string("unavailable")) +
+                        " snapshotStage=" + Objects::WorldReadStageName(worldReadStage) +
+                        " snapshotAgeMs=" +
+                        (disconnectDiagnostic.HaveSuccessfulSnapshot()
+                            ? std::to_string(disconnectDiagnostic.SnapshotAgeMs(nowMs))
+                            : std::string("unknown")) +
+                        " incidentAgeMs=" + std::to_string(
+                            snapshotValid ? priorIncidentAgeMs : disconnectDiagnostic.IncidentAgeMs(nowMs)) +
+                        " playerValid=" + (world.player.valid ? std::string("yes") : std::string("no")) +
+                        " playerGuid=" + Hex64(world.activePlayerGuid) +
+                        " objectManager=" + std::to_string(world.manager) +
+                        " objectListPresent=" + (world.firstObject != 0 ? std::string("yes") : std::string("no")) +
+                        " localPlayerPresent=" + (world.localPlayer != 0 ? std::string("yes") : std::string("no")) +
+                        " worldLoaded=" + (snapshotValid ? std::string("yes") : std::string("unknown")) +
+                        " movementAgeMs=" +
+                        (haveMovementAnchor ? std::to_string(nowMs - lastMeaningfulMovementMs) : std::string("unknown")) +
+                        " meaningfulActionAgeMs=unknown" +
+                        " antiAfkSafeIdleAgeTicks=" + std::to_string(antiAfkSafeguard.SafeIdleAgeTicks(tick)) +
+                        " antiAfkRequests=" + std::to_string(antiAfkSafeguard.Requests()) +
+                        " antiAfkActions=" + std::to_string(grindMode.AntiAfkActions()) +
+                        " gameThreadResponsive=unknown clientState=unknown classification=" + classification);
+                }
+
+                if (!snapshotValid)
                 {
                     ++consecutiveWorldFailures;
 
@@ -467,14 +565,6 @@ namespace Bot
 
                     consecutiveWorldFailures =
                         0;
-                }
-
-                if (runtimeControl.IsOpen())
-                {
-                    runtimeControl.MarkRuntimeAttached(activeGuiMode);
-                    runtimeControl.MarkRuntimeState(
-                        Control::BotRunState::Running,
-                        static_cast<LONG>(tick & 0x7FFFFFFFULL));
                 }
 
                 // Phase 14G.2: XP telemetry is sampled from the same live
