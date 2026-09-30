@@ -2,6 +2,7 @@
 
 #include "DetourNavigationProvider.h"
 #include "NavigationHazardMemory.h"
+#include "SteeringSelectionPolicy.h"
 
 #include "../Bot/ClickToMoveController.h"
 #include "../Debug/Logger.h"
@@ -131,12 +132,11 @@ namespace Navigation
         static constexpr float MaximumPathLength =
             2000.0f;
 
-        // Phase 13C.1 robust local navigation.  Every non-trivial CTM leg is
-        // raycast against the currently loaded Detour surface before it is
+        // Phase 13C.1 robust local navigation. Corridor steering CTM legs are
+        // raycast against the currently loaded Detour surface before they are
         // issued.  When a direct segment is blocked, moveAlongSurface is used
         // to generate a connected local detour instead of projecting an
         // arbitrary point that might lie across world geometry.
-        static constexpr float SurfaceSegmentValidationMinimumDistance = 4.0f;
         static constexpr float SurfaceRecoveryMinimumStep = 1.25f;
         static constexpr float SurfaceRecoveryMaximumStep = 12.0f;
         static constexpr float SurfaceRecoveryMaximumVerticalDelta = 4.0f;
@@ -155,10 +155,10 @@ namespace Navigation
         // after a real no-motion stall, perform one bounded wall-normal escape
         // before falling back to the older replan/escape machinery.
         static constexpr float WallSteeringProbeRadius = 3.0f;
-        static constexpr float WallSteeringMinimumClearance = 0.70f;
+        static constexpr float WallSteeringMinimumClearance =
+            SteeringSelectionPolicy::MinimumWallClearance;
         static constexpr float WallSteeringDesiredClearance = 1.35f;
         static constexpr float WallSteeringMaximumInset = 1.75f;
-        static constexpr float WallSteeringMinimumClearanceGain = 0.30f;
         static constexpr float WallTrapProbeRadius = 3.0f;
         static constexpr float WallTrapTriggerClearance = 0.90f;
         static constexpr float WallTrapDesiredClearance = 1.60f;
@@ -463,6 +463,11 @@ namespace Navigation
         int surfaceRecoveryAttempts_ = 0;
 
         std::uint64_t lastPathFingerprint_ = 0;
+        std::uint64_t lastSteeringLogTick_ = 0;
+        std::uint64_t lastSteeringLogFingerprint_ = 0;
+        std::size_t lastSteeringLogCandidate_ = static_cast<std::size_t>(-1);
+        std::string lastSteeringLogDecision_{};
+        bool steeringAtCorridorEnd_ = false;
         int repeatedCorridorPlans_ = 0;
 
         // Phase 13D.6 bounded partial-corridor staging state.
@@ -1076,22 +1081,29 @@ namespace Navigation
             const NavPoint& point,
             NavPoint& adjusted,
             float& originalClearance,
-            float& adjustedClearance)
+            float& adjustedClearance,
+            bool& originalClearanceKnown,
+            bool& adjustedClearanceKnown)
         {
             adjusted = point;
             originalClearance = WallSteeringProbeRadius;
             adjustedClearance = originalClearance;
+            originalClearanceKnown = false;
+            adjustedClearanceKnown = false;
 
             NavPoint wallPoint{};
             if (!provider_.FindWallDistance(
                     point,
                     WallSteeringProbeRadius,
                     originalClearance,
-                    wallPoint) ||
-                originalClearance >= WallSteeringMinimumClearance)
+                    wallPoint))
             {
                 return false;
             }
+            originalClearanceKnown = true;
+            adjustedClearance = originalClearance;
+            if (originalClearance >= WallSteeringMinimumClearance)
+                return false;
 
             float awayX = point.x - wallPoint.x;
             float awayY = point.y - wallPoint.y;
@@ -1138,21 +1150,10 @@ namespace Navigation
             {
                 return false;
             }
+            adjustedClearanceKnown = true;
 
-            if (adjustedClearance <
-                originalClearance + WallSteeringMinimumClearanceGain)
-            {
-                return false;
-            }
-
-            float reachableFraction = 0.0f;
-            NavPoint reached{};
-            if (!provider_.IsSurfaceSegmentReachable(
-                    PlayerPoint(player),
-                    projected,
-                    reachableFraction,
-                    reached) ||
-                reachableFraction < 0.985f)
+            if (!SteeringSelectionPolicy::MeetsMinimumClearance(
+                    adjustedClearance))
             {
                 return false;
             }
@@ -3426,238 +3427,261 @@ namespace Navigation
             return true;
         }
 
+        void LogSteeringSelection(
+            std::uint64_t tick,
+            std::size_t fromIndex,
+            const SteeringCandidateEvidence& evidence,
+            const char* decision,
+            const NavPoint& target)
+        {
+            if (lastSteeringLogFingerprint_ == lastPathFingerprint_ &&
+                lastSteeringLogCandidate_ == evidence.index &&
+                lastSteeringLogDecision_ == decision &&
+                tick >= lastSteeringLogTick_ &&
+                tick - lastSteeringLogTick_ < ReissueTicks)
+            {
+                return;
+            }
+
+            lastSteeringLogTick_ = tick;
+            lastSteeringLogFingerprint_ = lastPathFingerprint_;
+            lastSteeringLogCandidate_ = evidence.index;
+            lastSteeringLogDecision_ = decision;
+            const bool finalRaycastKnown = evidence.adjusted
+                ? evidence.adjustedRaycastValid : evidence.raycastValid;
+            const float finalRaycastFraction = evidence.adjusted
+                ? evidence.adjustedRaycastFraction : evidence.raycastFraction;
+            Debug::Logger::Info(
+                "NAV 14N.1 STEERING: corridorFingerprint=" +
+                std::to_string(lastPathFingerprint_) +
+                " fromIndex=" + std::to_string(fromIndex) +
+                " candidateIndex=" + std::to_string(evidence.index) +
+                " candidateClearance=" +
+                (evidence.clearanceKnown
+                    ? Float(evidence.candidateClearance) : std::string("unknown")) +
+                " adjustedClearance=" +
+                (evidence.adjustedClearanceKnown
+                    ? Float(evidence.adjustedClearance) : std::string("unknown")) +
+                " raycastFraction=" +
+                (finalRaycastKnown
+                    ? Float(finalRaycastFraction) : std::string("unknown")) +
+                " decision=" + decision +
+                " target=(" + Float(target.x) + "," +
+                Float(target.y) + "," + Float(target.z) + ")");
+        }
+
         bool IssueCurrentCorner(
             const Objects::PlayerState& player,
             std::uint64_t tick,
-            const char* reason)
+            const char* reason,
+            std::size_t minimumIndex = 0,
+            std::size_t proposedStartIndex = static_cast<std::size_t>(-1))
         {
-            while (
-                pointIndex_ <
-                    points_.size())
+            if (pointIndex_ >= points_.size())
+                return true;
+
+            steeringAtCorridorEnd_ = false;
+            const std::size_t fromIndex = pointIndex_;
+            std::size_t firstCandidate = proposedStartIndex !=
+                    static_cast<std::size_t>(-1)
+                ? proposedStartIndex
+                : std::max(pointIndex_, minimumIndex);
+            while (firstCandidate + 1 < points_.size() &&
+                   Distance2D(player.x, player.y,
+                       points_[firstCandidate].x,
+                       points_[firstCandidate].y) <= CornerArrivalDistance)
             {
-                // Phase 13C.1: skip redundant dense portal points only when a
-                // Detour surface raycast proves the farther steering point is
-                // directly reachable from the live player.  This keeps the
-                // safety of ALL_CROSSINGS while reducing zig-zag and corner
-                // oscillation in open terrain.
-                if (pointIndex_ + 1 < points_.size())
-                {
-                    const std::size_t lastCandidate = std::min(
-                        points_.size() - 1,
-                        pointIndex_ + SurfaceLookaheadPoints);
-                    std::size_t bestCandidate = pointIndex_;
+                ++firstCandidate;
+            }
+            if (firstCandidate >= points_.size() ||
+                (firstCandidate + 1 == points_.size() &&
+                 Distance2D(player.x, player.y,
+                     points_[firstCandidate].x,
+                     points_[firstCandidate].y) <= CornerArrivalDistance))
+            {
+                // The next Update handles final-portal arrival/replanning.
+                steeringAtCorridorEnd_ = true;
+                return true;
+            }
 
-                    for (std::size_t candidate = lastCandidate;
-                         candidate > pointIndex_;
-                         --candidate)
+            const std::size_t lastCandidate = std::min(
+                points_.size() - 1,
+                firstCandidate + SurfaceLookaheadPoints);
+            bool rejectedFarther = false;
+            bool haveVerticalRecovery = false;
+            float verticalRecoveryHorizontal = 0.0f;
+            float verticalRecoveryDelta = 0.0f;
+            NavPoint verticalRecoveryPoint{};
+            SteeringCandidateEvidence lastEvidence{};
+            lastEvidence.index = firstCandidate;
+
+            for (std::size_t candidate = lastCandidate;; --candidate)
+            {
+                const NavPoint& point = points_[candidate];
+                const float distance = Distance2D(
+                    player.x, player.y, point.x, point.y);
+                const float rise = point.z - player.z;
+                const float vertical = std::fabs(rise);
+                bool geometryValid = std::isfinite(distance) &&
+                    std::isfinite(vertical);
+                if (candidate > firstCandidate)
+                {
+                    geometryValid = geometryValid &&
+                        distance <= SurfaceLookaheadMaximumDistance &&
+                        vertical <= SurfaceLookaheadMaximumVerticalDelta &&
+                        rise <= StairLookaheadMaximumRise;
+                    float previousZ = player.z;
+                    for (std::size_t check = firstCandidate;
+                         geometryValid && check <= candidate; ++check)
                     {
-                        const float candidateDistance = Distance2D(
-                            player.x, player.y,
-                            points_[candidate].x, points_[candidate].y);
-                        const float candidateRise =
-                            points_[candidate].z - player.z;
-                        const float vertical = std::fabs(candidateRise);
-                        if (candidateDistance > SurfaceLookaheadMaximumDistance ||
-                            vertical > SurfaceLookaheadMaximumVerticalDelta ||
-                            candidateRise > StairLookaheadMaximumRise)
-                        {
-                            continue;
-                        }
-
-                        bool steepIntermediate = false;
-                        float previousZ = player.z;
-                        for (std::size_t check = pointIndex_;
-                             check <= candidate;
-                             ++check)
-                        {
-                            if (std::fabs(points_[check].z - previousZ) >
-                                SurfaceLookaheadMaximumVerticalDelta)
-                            {
-                                steepIntermediate = true;
-                                break;
-                            }
-                            previousZ = points_[check].z;
-                        }
-                        if (steepIntermediate)
-                            continue;
-
-                        float fraction = 0.0f;
-                        NavPoint reached{};
-                        if (provider_.IsSurfaceSegmentReachable(
-                                PlayerPoint(player),
-                                points_[candidate],
-                                fraction,
-                                reached) &&
-                            fraction >= 0.985f)
-                        {
-                            bestCandidate = candidate;
-                            break;
-                        }
+                        const float stepRise =
+                            std::fabs(points_[check].z - previousZ);
+                        geometryValid = std::isfinite(stepRise) &&
+                            stepRise <= SurfaceLookaheadMaximumVerticalDelta;
+                        previousZ = points_[check].z;
                     }
-
-                    if (bestCandidate > pointIndex_)
-                    {
-                        Debug::Logger::Info(
-                            "NAVMESH 13C.1: SURFACE LOOKAHEAD portal=" +
-                            std::to_string(pointIndex_ + 1) + "->" +
-                            std::to_string(bestCandidate + 1) +
-                            "/" + std::to_string(points_.size()));
-                        pointIndex_ = bestCandidate;
-                    }
-                }
-
-                const auto& point =
-                    points_[pointIndex_];
-
-                const float portalRise = point.z - player.z;
-                if (portalRise > 0.35f &&
-                    lastStairLogPoint_ != pointIndex_)
-                {
-                    lastStairLogPoint_ = pointIndex_;
-                    Debug::Logger::Info(
-                        "NAVMESH 13D.7: STAIR / ASCENT MODE portal=" +
-                        std::to_string(pointIndex_ + 1) + "/" +
-                        std::to_string(points_.size()) +
-                        " rise=" + Float(portalRise) +
-                        "; dense polygon-by-polygon steering retained");
-                }
-
-                const float distance =
-                    Distance2D(
-                        player.x,
-                        player.y,
-                        point.x,
-                        point.y
-                    );
-
-                if (
-                    distance <=
-                        CornerArrivalDistance &&
-                    pointIndex_ + 1 <
-                        points_.size())
-                {
-                    ++pointIndex_;
-                    continue;
                 }
 
                 float unsafeHorizontal = 0.0f;
                 float unsafeVertical = 0.0f;
-
-                if (IsUnsafeVerticalPortal(
-                        player,
-                        point,
-                        unsafeHorizontal,
-                        unsafeVertical))
+                if (geometryValid && IsUnsafeVerticalPortal(
+                        player, point, unsafeHorizontal, unsafeVertical))
                 {
-                    if (IssueVerticalPortalRecovery(
-                            player,
-                            tick,
-                            point,
-                            unsafeHorizontal,
-                            unsafeVertical))
+                    geometryValid = false;
+                    if (!haveVerticalRecovery)
                     {
-                        return true;
+                        haveVerticalRecovery = true;
+                        verticalRecoveryHorizontal = unsafeHorizontal;
+                        verticalRecoveryDelta = unsafeVertical;
+                        verticalRecoveryPoint = point;
                     }
                 }
 
-                if (distance >= SurfaceSegmentValidationMinimumDistance)
+                SteeringCandidateEvidence evidence{};
+                evidence.index = candidate;
+                evidence.distanceAndRiseValid = geometryValid;
+                NavPoint commandPoint = point;
+                if (geometryValid)
                 {
-                    float reachableFraction = 0.0f;
-                    NavPoint reachablePoint{};
-                    const bool raycastOk = provider_.IsSurfaceSegmentReachable(
-                        PlayerPoint(player),
-                        point,
-                        reachableFraction,
-                        reachablePoint);
-
-                    if (raycastOk && reachableFraction < 0.985f)
+                    NavPoint reached{};
+                    evidence.raycastValid = provider_.IsSurfaceSegmentReachable(
+                        PlayerPoint(player), point,
+                        evidence.raycastFraction, reached);
+                    if (evidence.raycastValid &&
+                        std::isfinite(evidence.raycastFraction) &&
+                        evidence.raycastFraction >=
+                            SteeringSelectionPolicy::MinimumRaycastFraction)
                     {
-                        Debug::Logger::Info(
-                            "NAVMESH 13C.1: DIRECT CTM SEGMENT REJECTED portal=" +
-                            std::to_string(pointIndex_ + 1) +
-                            "/" + std::to_string(points_.size()) +
-                            " reachableFraction=" + Float(reachableFraction) +
-                            " distance=" + Float(distance));
-
-                        if (IssueSurfaceRecovery(
-                                player,
-                                tick,
-                                point,
-                                "raycast blocked current portal"))
+                        evidence.adjusted = BuildWallSafeSteeringPoint(
+                            player, point, commandPoint,
+                            evidence.candidateClearance,
+                            evidence.adjustedClearance,
+                            evidence.clearanceKnown,
+                            evidence.adjustedClearanceKnown);
+                        if (evidence.adjusted)
                         {
-                            return true;
+                            NavPoint adjustedReached{};
+                            evidence.adjustedRaycastValid =
+                                provider_.IsSurfaceSegmentReachable(
+                                    PlayerPoint(player), commandPoint,
+                                    evidence.adjustedRaycastFraction,
+                                    adjustedReached);
                         }
                     }
                 }
 
-                NavPoint commandPoint = point;
-                float originalWallClearance = WallSteeringProbeRadius;
-                float adjustedWallClearance = originalWallClearance;
-                if (BuildWallSafeSteeringPoint(
-                        player,
-                        point,
-                        commandPoint,
-                        originalWallClearance,
-                        adjustedWallClearance))
+                lastEvidence = evidence;
+                const auto decision = SteeringSelectionPolicy::Assess(evidence);
+                if (decision == SteeringCandidateDecision::RejectedClearance)
                 {
+                    LogSteeringSelection(
+                        tick, fromIndex, evidence,
+                        "rejected_clearance", point);
+                }
+                if (decision == SteeringCandidateDecision::Accepted)
+                {
+                    const float commandDistance = Distance2D(
+                        player.x, player.y,
+                        commandPoint.x, commandPoint.y);
                     Debug::Logger::Info(
-                        "NAVMESH 14I.1: WALL-CLEARANCE STEERING portal=" +
-                        std::to_string(pointIndex_ + 1) + "/" +
+                        "NAVMESH 11B: CTM portal " +
+                        std::to_string(candidate + 1) + "/" +
                         std::to_string(points_.size()) +
-                        " clearance=" + Float(originalWallClearance) +
-                        " -> " + Float(adjustedWallClearance) +
-                        " insetTarget=(" + Float(commandPoint.x) + "," +
-                        Float(commandPoint.y) + "," + Float(commandPoint.z) + ")");
+                        " reason=" + reason +
+                        " distance=" + Float(commandDistance));
+                    if (!Bot::ClickToMoveController::MoveTo(
+                            player, commandPoint.x, commandPoint.y,
+                            commandPoint.z, CtmPrecision))
+                    {
+                        return false;
+                    }
+
+                    pointIndex_ = SteeringSelectionPolicy::CommitIndex(
+                        fromIndex, candidate, true, true);
+                    ++commands_;
+                    lastCommandTick_ = tick;
+                    lastProgressTick_ = tick;
+                    bestCornerDistance_ = distance;
+                    if (candidate > fromIndex)
+                    {
+                        Debug::Logger::Info(
+                            "NAVMESH 13C.1: SURFACE LOOKAHEAD portal=" +
+                            std::to_string(fromIndex + 1) + "->" +
+                            std::to_string(candidate + 1) + "/" +
+                            std::to_string(points_.size()));
+                    }
+                    if (rise > 0.35f && lastStairLogPoint_ != candidate)
+                    {
+                        lastStairLogPoint_ = candidate;
+                        Debug::Logger::Info(
+                            "NAVMESH 13D.7: STAIR / ASCENT MODE portal=" +
+                            std::to_string(candidate + 1) + "/" +
+                            std::to_string(points_.size()) +
+                            " rise=" + Float(rise) +
+                            "; dense polygon-by-polygon steering retained");
+                    }
+                    if (evidence.adjusted)
+                    {
+                        Debug::Logger::Info(
+                            "NAVMESH 14I.1: WALL-CLEARANCE STEERING portal=" +
+                            std::to_string(candidate + 1) + "/" +
+                            std::to_string(points_.size()) +
+                            " clearance=" + Float(evidence.candidateClearance) +
+                            " -> " + Float(evidence.adjustedClearance) +
+                            " insetTarget=(" + Float(commandPoint.x) + "," +
+                            Float(commandPoint.y) + "," +
+                            Float(commandPoint.z) + ")");
+                    }
+                    LogSteeringSelection(
+                        tick, fromIndex, evidence,
+                        rejectedFarther ? "fallback_nearer" : "accepted",
+                        commandPoint);
+                    return true;
                 }
 
-                const float commandDistance = Distance2D(
-                    player.x, player.y, commandPoint.x, commandPoint.y);
-
-                Debug::Logger::Info(
-                    "NAVMESH 11B: CTM portal " +
-                    std::to_string(
-                        pointIndex_ + 1
-                    ) +
-                    "/" +
-                    std::to_string(
-                        points_.size()
-                    ) +
-                    " reason=" +
-                    reason +
-                    " distance=" +
-                    Float(
-                        commandDistance
-                    )
-                );
-
-                if (!Bot::
-                        ClickToMoveController::
-                        MoveTo(
-                            player,
-                            commandPoint.x,
-                            commandPoint.y,
-                            commandPoint.z,
-                            CtmPrecision
-                        ))
-                {
-                    return false;
-                }
-
-                ++commands_;
-
-                lastCommandTick_ =
-                    tick;
-
-                lastProgressTick_ =
-                    tick;
-
-                bestCornerDistance_ =
-                    distance;
-
-                return true;
+                rejectedFarther = true;
+                if (candidate == firstCandidate)
+                    break;
             }
 
-            return true;
+            LogSteeringSelection(
+                tick, fromIndex, lastEvidence,
+                "recovery", points_[firstCandidate]);
+            if (haveVerticalRecovery && IssueVerticalPortalRecovery(
+                    player, tick, verticalRecoveryPoint,
+                    verticalRecoveryHorizontal, verticalRecoveryDelta))
+            {
+                return true;
+            }
+            if (IssueSurfaceRecovery(
+                    player, tick, points_[firstCandidate],
+                    "no clearance-safe corridor steering target"))
+            {
+                return true;
+            }
+            if (IssueWallTrapRecovery(player, tick, points_[firstCandidate]))
+                return true;
+            return false;
         }
 
         bool HasSafePartialVerticalProfile(
@@ -4312,6 +4336,7 @@ namespace Navigation
 
             pointIndex_ =
                 1;
+            steeringAtCorridorEnd_ = false;
 
             plannedPathLength_ =
                 length;
@@ -4821,6 +4846,13 @@ namespace Navigation
                 return;
             }
 
+            if (steeringAtCorridorEnd_)
+            {
+                steeringAtCorridorEnd_ = false;
+                Replan(player, tick);
+                return;
+            }
+
             if (UpdateSurfaceRecovery(player, tick))
             {
                 return;
@@ -4949,13 +4981,13 @@ namespace Navigation
                         cornerDistance <= HardStallNearPortalDistance &&
                         pointIndex_ + 1 < points_.size())
                     {
-                        ++pointIndex_;
                         ResetMotionWatchdog(player, tick);
 
                         if (!IssueCurrentCorner(
                                 player,
                                 tick,
-                                "12B.2 first-stall portal lookahead"))
+                                "12B.2 first-stall portal lookahead",
+                                pointIndex_ + 1))
                         {
                             SetState(GenericNavMeshFollowState::Failed);
                             StopAtCurrentPosition(player);
@@ -5019,10 +5051,8 @@ namespace Navigation
                 cornerDistance <=
                     CornerArrivalDistance)
             {
-                ++pointIndex_;
-
                 if (
-                    pointIndex_ >=
+                    pointIndex_ + 1 >=
                         points_.size())
                 {
                     if (partialStageActive_)
@@ -5042,7 +5072,8 @@ namespace Navigation
                 if (!IssueCurrentCorner(
                         player,
                         tick,
-                        "next portal"))
+                        "next portal",
+                        pointIndex_ + 1))
                 {
                     SetState(
                         GenericNavMeshFollowState::
@@ -5082,12 +5113,11 @@ namespace Navigation
                     pointIndex_ + 1 <
                         points_.size())
                 {
-                    ++pointIndex_;
-
                     if (!IssueCurrentCorner(
                             player,
                             tick,
-                            "near-portal lookahead"))
+                            "near-portal lookahead",
+                            pointIndex_ + 1))
                     {
                         SetState(
                             GenericNavMeshFollowState::
@@ -5348,9 +5378,6 @@ namespace Navigation
 
                 if (bestDistance <= MaximumCachedResumeDistance)
                 {
-                    pointIndex_ =
-                        bestIndex;
-
                     lastCommandTick_ =
                         tick;
 
@@ -5378,7 +5405,7 @@ namespace Navigation
                     Debug::Logger::Info(
                         "NAVMESH 11B.7: FAST RESUME from cached corridor "
                         "portal=" +
-                        std::to_string(pointIndex_ + 1) +
+                        std::to_string(bestIndex + 1) +
                         "/" +
                         std::to_string(points_.size()) +
                         " distance=" +
@@ -5388,7 +5415,9 @@ namespace Navigation
                     if (!IssueCurrentCorner(
                             player,
                             tick,
-                            "combat-resume cached path"))
+                            "combat-resume cached path",
+                            0,
+                            bestIndex))
                     {
                         SetState(
                             GenericNavMeshFollowState::Failed
