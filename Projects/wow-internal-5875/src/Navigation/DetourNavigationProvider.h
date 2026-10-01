@@ -45,12 +45,15 @@ namespace Navigation
         std::uint64_t lastPoly = 0;
 
         std::uint32_t findPathStatus = 0;
+        std::uint32_t findStraightPathStatus = 0;
         bool findPathOutOfNodes = false;
         bool findPathBufferTooSmall = false;
         bool findPathPartialResult = false;
+        bool findStraightPathBufferTooSmall = false;
 
         int queryNodePoolSize = 0;
         int maximumPolygons = 0;
+        int maximumStraightPoints = 0;
 
         // Phase 13D.7.2: preserve the Detour terrain flags used to build
         // the route. Ground remains the primary query; NAV_WATER is enabled
@@ -1917,6 +1920,9 @@ namespace Navigation
             result.maximumPolygons =
                 MaximumPolygons;
 
+            result.maximumStraightPoints =
+                MaximumStraightPoints;
+
             if (
                 mesh_ == nullptr ||
                 query_ == nullptr)
@@ -2217,6 +2223,10 @@ namespace Navigation
                     MaximumStraightPoints,
                     DT_STRAIGHTPATH_ALL_CROSSINGS
                 );
+
+            result.findStraightPathStatus = static_cast<std::uint32_t>(status);
+            result.findStraightPathBufferTooSmall =
+                dtStatusDetail(status, DT_BUFFER_TOO_SMALL);
 
             if (
                 dtStatusFailed(

@@ -4,6 +4,7 @@
 #include "CorridorReplanHysteresisPolicy.h"
 #include "NavigationHazardMemory.h"
 #include "NavigationInitTelemetryPolicy.h"
+#include "LongPathDiagnosticPolicy.h"
 #include "SteeringSelectionPolicy.h"
 
 #include "../Bot/ClickToMoveController.h"
@@ -1754,9 +1755,8 @@ namespace Navigation
                 length +=
                     segment;
 
-                if (
-                    length >
-                        MaximumPathLength)
+                if (LongPathDiagnosticPolicy::ExceedsSafetyLength(
+                        length, MaximumPathLength))
                 {
                     if (failure)
                         *failure = NavigationPlanFailure::PathLengthExceeded;
@@ -1771,6 +1771,71 @@ namespace Navigation
             error.clear();
 
             return true;
+        }
+
+        void LogLongPathDiagnostic(const Objects::PlayerState& player,
+                                   const NavPathResult& path,
+                                   float rejectedPrefixLength) const
+        {
+            const auto measured =
+                LongPathDiagnosticPolicy::MeasureStraightPath(path.points);
+            const bool polygonBufferFilled =
+                LongPathDiagnosticPolicy::PolygonBufferFilled(
+                    path.polygonCount, path.maximumPolygons);
+            const bool straightBufferFilled =
+                path.maximumStraightPoints > 0 &&
+                path.points.size() >=
+                    static_cast<std::size_t>(path.maximumStraightPoints);
+            const char* capacityHit =
+                path.findPathBufferTooSmall ||
+                path.findStraightPathBufferTooSmall
+                    ? "yes"
+                    : polygonBufferFilled || straightBufferFilled
+                        ? "possible" : "no";
+
+            std::ostringstream stream;
+            stream << std::fixed << std::setprecision(3)
+                << "NAV 14N.4 LONG PATH DIAGNOSTIC: mode="
+                << NavigationInitTelemetryPolicy::TierName(currentInitTier_)
+                << " directDistance="
+                << Distance3D(PlayerPoint(player), destination_)
+                << " directDistanceMetric=3d"
+                << " polygonCount=" << path.polygonCount
+                << " maxPolygons=" << path.maximumPolygons
+                << " straightPathPointCount=" << path.points.size()
+                << " maxStraightPoints=" << path.maximumStraightPoints
+                << " reachedEnd="
+                << (LongPathDiagnosticPolicy::ReachedDestination(
+                        path.lastPoly, path.endPoly) ? "yes" : "no")
+                << " partial=" << (path.partial ? "yes" : "no")
+                << " detourPartialResult="
+                << (path.findPathPartialResult ? "yes" : "no")
+                << " outOfNodes="
+                << (path.findPathOutOfNodes ? "yes" : "no")
+                << " capacityHit=" << capacityHit
+                << " polygonBufferFilled="
+                << (polygonBufferFilled ? "yes" : "no")
+                << " straightBufferFilled="
+                << (straightBufferFilled ? "yes" : "no")
+                << " corridorLength=unknown"
+                << " straightPathLength=";
+            if (measured.known)
+                stream << measured.straightPathLength;
+            else
+                stream << "unknown";
+            stream << " safetyLimit=" << MaximumPathLength
+                << " rejectionMetric=validated_straight_path_prefix_3d"
+                << " rejectionValue=" << rejectedPrefixLength
+                << " rejectionLimit=" << MaximumPathLength
+                << " startPoly=" << HexPoly(path.startPoly)
+                << " lastPoly=" << HexPoly(path.lastPoly)
+                << " endPoly=" << HexPoly(path.endPoly)
+                << " findPathStatus=0x" << std::hex << path.findPathStatus
+                << " findStraightPathStatus=0x" << path.findStraightPathStatus
+                << std::dec
+                << " queryNodePoolSize=" << path.queryNodePoolSize
+                << " loadedTiles=" << path.loadedTiles;
+            Debug::Logger::Info(stream.str());
         }
 
         void LogPath(
@@ -4267,7 +4332,7 @@ namespace Navigation
                 return false;
             }
 
-            if (path.partial)
+            if (LongPathDiagnosticPolicy::UsesPartialStaging(path.partial))
             {
                 const float startFinalDistance = Distance2D(
                     player.x, player.y, destination_.x, destination_.y);
@@ -4304,9 +4369,10 @@ namespace Navigation
                     residualDistance <= PartialStageMaximumResidualDistance &&
                     verticalResidual <= PartialStageMaximumVerticalResidual;
                 const bool capacityLimitedStage =
-                    path.findPathOutOfNodes &&
-                    reachableAdvance >= PartialStageMinimumProgress &&
-                    destinationProgress >= PartialStageRepeatProgress;
+                    LongPathDiagnosticPolicy::CapacityLimitedPartialStage(
+                        path.partial, path.findPathOutOfNodes,
+                        reachableAdvance, destinationProgress,
+                        PartialStageMinimumProgress, PartialStageRepeatProgress);
                 float maximumPartialRise = 0.0f;
                 float maximumPartialAscentSlope = 0.0f;
                 std::size_t worstPartialSegment = 0;
@@ -4477,6 +4543,8 @@ namespace Navigation
                     length,
                     &lastPlanFailure_))
             {
+                if (lastPlanFailure_ == NavigationPlanFailure::PathLengthExceeded)
+                    LogLongPathDiagnostic(player, path, length);
                 planProfile.validationMs = std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - validationStarted).count();
                 Debug::Logger::Info(
