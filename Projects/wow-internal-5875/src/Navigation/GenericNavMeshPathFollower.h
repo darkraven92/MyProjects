@@ -3,6 +3,7 @@
 #include "DetourNavigationProvider.h"
 #include "CorridorReplanHysteresisPolicy.h"
 #include "NavigationHazardMemory.h"
+#include "NavigationInitTelemetryPolicy.h"
 #include "SteeringSelectionPolicy.h"
 
 #include "../Bot/ClickToMoveController.h"
@@ -366,6 +367,8 @@ namespace Navigation
 
         DetourNavigationProvider provider_{};
         bool fullMapFallbackAttempted_ = false;
+        NavigationInitTier currentInitTier_ = NavigationInitTier::Route;
+        NavigationPlanFailure lastPlanFailure_ = NavigationPlanFailure::None;
 
         GenericNavMeshFollowState state_ =
             GenericNavMeshFollowState::Idle;
@@ -1661,13 +1664,18 @@ namespace Navigation
         bool ValidatePath(
             const NavPathResult& path,
             std::string& error,
-            float& length) const
+            float& length,
+            NavigationPlanFailure* failure = nullptr) const
         {
+            if (failure)
+                *failure = NavigationPlanFailure::None;
             length =
                 0.0f;
 
             if (!path.success)
             {
+                if (failure)
+                    *failure = NavigationPlanFailure::NoPath;
                 error =
                     "Detour did not return a successful path.";
                 return false;
@@ -1679,6 +1687,8 @@ namespace Navigation
 
             if (path.points.size() < 2)
             {
+                if (failure)
+                    *failure = NavigationPlanFailure::PathValidationFailed;
                 error =
                     "Detour returned fewer than two steering points.";
                 return false;
@@ -1708,6 +1718,8 @@ namespace Navigation
                     segment >
                         MaximumSegment)
                 {
+                    if (failure)
+                        *failure = NavigationPlanFailure::PathValidationFailed;
                     error =
                         "implausible segment " +
                         std::to_string(i) +
@@ -1724,6 +1736,8 @@ namespace Navigation
                     vertical >
                         MaximumVerticalSegment)
                 {
+                    if (failure)
+                        *failure = NavigationPlanFailure::PathValidationFailed;
                     error =
                         "implausible vertical segment " +
                         std::to_string(i) +
@@ -1740,6 +1754,8 @@ namespace Navigation
                     length >
                         MaximumPathLength)
                 {
+                    if (failure)
+                        *failure = NavigationPlanFailure::PathLengthExceeded;
                     error =
                         "path exceeds generic Phase 11B "
                         "safety length.";
@@ -4072,12 +4088,50 @@ namespace Navigation
             std::uint64_t tick,
             bool replan)
         {
+            lastPlanFailure_ = NavigationPlanFailure::None;
             SetState(
                 GenericNavMeshFollowState::
                     Planning
             );
 
             NavPathResult path{};
+
+            struct PlanProfileScope
+            {
+                const NavPathResult& path;
+                const NavigationInitTier& tier;
+                const NavigationPlanFailure& reason;
+                std::chrono::steady_clock::time_point start =
+                    std::chrono::steady_clock::now();
+                double queryMs = 0.0;
+                double validationMs = 0.0;
+                float pathLength = 0.0f;
+                bool pathLengthKnown = false;
+                const char* result = "failed";
+
+                ~PlanProfileScope()
+                {
+                    const double totalMs = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - start).count();
+                    std::ostringstream stream;
+                    stream << std::fixed << std::setprecision(3)
+                        << "NAV 14N.3 PLAN PROFILE: mode="
+                        << NavigationInitTelemetryPolicy::TierName(tier)
+                        << " threadId=" << GetCurrentThreadId()
+                        << " queryMs=" << queryMs
+                        << " validationMs=" << validationMs
+                        << " totalMs=" << totalMs
+                        << " result=" << result
+                        << " reason=" << NavigationInitTelemetryPolicy::ReasonName(reason)
+                        << " pathLength=";
+                    if (pathLengthKnown)
+                        stream << pathLength;
+                    else
+                        stream << "unknown";
+                    stream << " polygonCount=" << path.polygonCount;
+                    Debug::Logger::Info(stream.str());
+                }
+            } planProfile{path, currentInitTier_, lastPlanFailure_};
 
             const auto queryStarted =
                 std::chrono::steady_clock::now();
@@ -4175,6 +4229,8 @@ namespace Navigation
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - queryStarted
                 ).count();
+            planProfile.queryMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - queryStarted).count();
 
             Debug::Logger::Info(
                 "NAVMESH 11B.7: Detour query time=" +
@@ -4184,6 +4240,8 @@ namespace Navigation
 
             if (!queryOk)
             {
+                lastPlanFailure_ = NavigationInitTelemetryPolicy::QueryFailure(
+                    path.error);
                 Debug::Logger::Info(
                     "NAVMESH 11B: path query failed."
                 );
@@ -4339,6 +4397,7 @@ namespace Navigation
 
                 if (!partialRejectReason.empty())
                 {
+                    lastPlanFailure_ = NavigationPlanFailure::PartialOrUnusablePath;
                     Debug::Logger::Info(
                         "NAVMESH 13D.7.1: PARTIAL CORRIDOR REJECTED startDistance=" +
                         Float(startFinalDistance) +
@@ -4407,11 +4466,15 @@ namespace Navigation
             float length =
                 0.0f;
 
+            const auto validationStarted = std::chrono::steady_clock::now();
             if (!ValidatePath(
                     path,
                     error,
-                    length))
+                    length,
+                    &lastPlanFailure_))
             {
+                planProfile.validationMs = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - validationStarted).count();
                 Debug::Logger::Info(
                     "NAVMESH 11B: path validation failed."
                 );
@@ -4432,6 +4495,11 @@ namespace Navigation
 
                 return false;
             }
+
+            planProfile.pathLength = length;
+            planProfile.pathLengthKnown = true;
+            planProfile.validationMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - validationStarted).count();
 
             if (replan)
             {
@@ -4515,6 +4583,7 @@ namespace Navigation
                             player, tick, path.points[1],
                             "14N.2 repeated failed corridor"))
                     {
+                        planProfile.result = "recovery";
                         SetState(GenericNavMeshFollowState::Moving);
                         ResetMotionWatchdog(player, tick);
                         return true;
@@ -4522,6 +4591,7 @@ namespace Navigation
                     if (BeginLastSafeBacktrack(
                             player, tick, "14N.2 repeated failed corridor"))
                     {
+                        planProfile.result = "recovery";
                         ResetMotionWatchdog(player, tick);
                         return true;
                     }
@@ -4546,6 +4616,7 @@ namespace Navigation
                         std::to_string(repeatedCorridorPlans_) +
                         " decision=escalate reason=bounded_recovery_unavailable");
                     SetState(GenericNavMeshFollowState::Failed);
+                    lastPlanFailure_ = NavigationPlanFailure::OtherUnknown;
                     StopAtCurrentPosition(player);
                     return false;
                 }
@@ -4610,6 +4681,7 @@ namespace Navigation
                         ? "replan"
                         : "initial"))
             {
+                lastPlanFailure_ = NavigationPlanFailure::OtherUnknown;
                 SetState(
                     GenericNavMeshFollowState::
                         Failed
@@ -4622,6 +4694,8 @@ namespace Navigation
                 return false;
             }
 
+            planProfile.result = issuedOrdinarySteeringTargetValid_
+                ? "accepted" : "started_non_corridor";
             return true;
         }
 
@@ -4805,6 +4879,7 @@ namespace Navigation
                     ResolveMmapsDirectory();
 
             std::string error;
+            currentInitTier_ = NavigationInitTier::Route;
 
             const auto initializationStarted =
                 std::chrono::steady_clock::now();
@@ -4816,7 +4891,8 @@ namespace Navigation
                     PlayerPoint(player),
                     destination_,
                     InitialRouteTileMargin,
-                    error);
+                    error,
+                    "route");
 
             const auto initializationElapsedMs =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -4876,8 +4952,15 @@ namespace Navigation
                 "NAVMESH 11B.8: initial route-scoped corridor did not "
                 "produce a usable path; retrying with expanded ADT margin."
             );
+            Debug::Logger::Info(
+                "NAV 14N.3 FALLBACK: from=route to=expanded reason=" +
+                std::string(NavigationInitTelemetryPolicy::ReasonName(
+                    lastPlanFailure_)) +
+                " destination=\"" + destinationLabel_ + "\" threadId=" +
+                std::to_string(GetCurrentThreadId()));
 
             provider_.Shutdown();
+            currentInitTier_ = NavigationInitTier::Expanded;
 
             const auto expandedStarted =
                 std::chrono::steady_clock::now();
@@ -4888,7 +4971,8 @@ namespace Navigation
                     PlayerPoint(player),
                     destination_,
                     ExpandedRouteTileMargin,
-                    error))
+                    error,
+                    "expanded"))
             {
                 const auto expandedMs =
                     std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -4913,11 +4997,24 @@ namespace Navigation
             }
             else
             {
+                lastPlanFailure_ = NavigationPlanFailure::InitializationFailed;
                 Debug::Logger::Info(
                     "NAVMESH 11B.8: expanded route-tile initialization failed: " +
                     error
                 );
             }
+
+            const NavigationInitTier nextTier =
+                NavigationInitTelemetryPolicy::NextTier(
+                    NavigationInitTier::Expanded,
+                    options.allowFullMapFallback);
+            Debug::Logger::Info(
+                "NAV 14N.3 FALLBACK: from=expanded to=" +
+                std::string(NavigationInitTelemetryPolicy::TierName(nextTier)) +
+                " reason=" +
+                NavigationInitTelemetryPolicy::ReasonName(lastPlanFailure_) +
+                " destination=\"" + destinationLabel_ + "\" threadId=" +
+                std::to_string(GetCurrentThreadId()));
 
             if (!options.allowFullMapFallback)
             {
@@ -4935,6 +5032,7 @@ namespace Navigation
 
             provider_.Shutdown();
             fullMapFallbackAttempted_ = true;
+            currentInitTier_ = NavigationInitTier::FullMap;
 
             const auto fullStarted =
                 std::chrono::steady_clock::now();

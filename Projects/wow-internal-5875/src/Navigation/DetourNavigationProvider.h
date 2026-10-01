@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -152,6 +153,95 @@ namespace Navigation
             0;
 
         std::string directory_;
+
+        using ProfileClock = std::chrono::steady_clock;
+
+        struct InitProfile
+        {
+            int tilesDiscovered = 0;
+            int tilesOpened = 0;
+            int tilesLoaded = 0;
+            int tilesFailed = 0;
+            double enumerationMs = 0.0;
+            double tileReadMs = 0.0;
+            double addTileMs = 0.0;
+            double queryInitMs = 0.0;
+            double mapHeaderMs = 0.0;
+            double slowestTileMs = 0.0;
+            std::string slowestTileName;
+        } initProfile_{};
+
+        static double ProfileMs(ProfileClock::time_point start)
+        {
+            return std::chrono::duration<double, std::milli>(
+                ProfileClock::now() - start).count();
+        }
+
+        void LogInitProfile(const char* mode, ProfileClock::time_point start,
+                            bool success) const
+        {
+            const double totalMs = ProfileMs(start);
+            const double accounted = initProfile_.enumerationMs +
+                initProfile_.tileReadMs + initProfile_.addTileMs +
+                initProfile_.queryInitMs + initProfile_.mapHeaderMs;
+            std::ostringstream stream;
+            stream << std::fixed << std::setprecision(3)
+                << "NAV 14N.3 INIT PROFILE: mode=" << mode
+                << " threadId=" << GetCurrentThreadId()
+                << " tilesDiscovered=" << initProfile_.tilesDiscovered
+                << " tilesOpened=" << initProfile_.tilesOpened
+                << " tilesLoaded=" << initProfile_.tilesLoaded
+                << " tilesFailed=" << initProfile_.tilesFailed
+                << " enumerationMs=" << initProfile_.enumerationMs
+                << " tileReadMs=" << initProfile_.tileReadMs
+                << " addTileMs=" << initProfile_.addTileMs
+                << " queryInitMs=" << initProfile_.queryInitMs
+                << " mapHeaderMs=" << initProfile_.mapHeaderMs
+                << " otherMs=" << std::max(0.0, totalMs - accounted)
+                << " totalMs=" << totalMs
+                << " slowestTileMs=" << initProfile_.slowestTileMs
+                << " slowestTile="
+                << (initProfile_.slowestTileName.empty()
+                    ? "none" : initProfile_.slowestTileName)
+                << " success=" << (success ? "yes" : "no");
+            Debug::Logger::Info(stream.str());
+        }
+
+        struct InitProfileScope
+        {
+            const DetourNavigationProvider& provider;
+            const char* mode;
+            ProfileClock::time_point start = ProfileClock::now();
+            bool success = false;
+
+            ~InitProfileScope()
+            {
+                provider.LogInitProfile(mode, start, success);
+            }
+        };
+
+        struct TileProfileScope
+        {
+            DetourNavigationProvider& provider;
+            const std::string& path;
+            ProfileClock::time_point start = ProfileClock::now();
+            bool success = false;
+
+            ~TileProfileScope()
+            {
+                const double tileMs = ProfileMs(start);
+                if (tileMs > provider.initProfile_.slowestTileMs)
+                {
+                    provider.initProfile_.slowestTileMs = tileMs;
+                    const auto separator = path.find_last_of("\\/");
+                    provider.initProfile_.slowestTileName =
+                        path.substr(separator == std::string::npos
+                            ? 0 : separator + 1);
+                }
+                if (!success)
+                    ++provider.initProfile_.tilesFailed;
+            }
+        };
 
         static std::string MapName(
             std::uint32_t mapId,
@@ -362,10 +452,12 @@ namespace Navigation
                             )
                         );
 
+                    const auto lookupStarted = ProfileClock::now();
                     const DWORD attributes =
                         GetFileAttributesA(
                             path.c_str()
                         );
+                    initProfile_.enumerationMs += ProfileMs(lookupStarted);
 
                     if (
                         attributes == INVALID_FILE_ATTRIBUTES ||
@@ -375,6 +467,7 @@ namespace Navigation
                     }
 
                     ++existingFiles;
+                    ++initProfile_.tilesDiscovered;
 
                     if (!LoadTile(path, error))
                     {
@@ -513,10 +606,13 @@ namespace Navigation
             const std::string& path,
             std::string& error)
         {
+            TileProfileScope tileProfile{*this, path};
+            const auto openStarted = ProfileClock::now();
             std::ifstream input(
                 path,
                 std::ios::binary
             );
+            initProfile_.tileReadMs += ProfileMs(openStarted);
 
             if (!input)
             {
@@ -526,15 +622,18 @@ namespace Navigation
 
                 return false;
             }
+            ++initProfile_.tilesOpened;
 
             MmapTileHeader header{};
 
+            const auto headerReadStarted = ProfileClock::now();
             input.read(
                 reinterpret_cast<char*>(
                     &header
                 ),
                 sizeof(header)
             );
+            initProfile_.tileReadMs += ProfileMs(headerReadStarted);
 
             if (
                 input.gcount() !=
@@ -610,12 +709,14 @@ namespace Navigation
                 return false;
             }
 
+            const auto dataReadStarted = ProfileClock::now();
             input.read(
                 reinterpret_cast<char*>(
                     data
                 ),
                 header.size
             );
+            initProfile_.tileReadMs += ProfileMs(dataReadStarted);
 
             if (
                 input.gcount() !=
@@ -637,6 +738,7 @@ namespace Navigation
             dtTileRef tileReference =
                 0;
 
+            const auto addTileStarted = ProfileClock::now();
             const dtStatus status =
                 mesh_->addTile(
                     data,
@@ -647,6 +749,7 @@ namespace Navigation
                     0,
                     &tileReference
                 );
+            initProfile_.addTileMs += ProfileMs(addTileStarted);
 
             if (
                 dtStatusFailed(
@@ -666,6 +769,8 @@ namespace Navigation
             }
 
             ++loadedTiles_;
+            ++initProfile_.tilesLoaded;
+            tileProfile.success = true;
 
             return true;
         }
@@ -673,6 +778,7 @@ namespace Navigation
         bool LoadTiles(
             std::string& error)
         {
+            const auto enumerationStarted = ProfileClock::now();
             const std::string pattern =
                 JoinPath(
                     directory_,
@@ -694,6 +800,7 @@ namespace Navigation
                 search ==
                     INVALID_HANDLE_VALUE)
             {
+                initProfile_.enumerationMs += ProfileMs(enumerationStarted);
                 error =
                     "No mmtile files found for map " +
                     std::to_string(
@@ -745,6 +852,8 @@ namespace Navigation
                 tiles.begin(),
                 tiles.end()
             );
+            initProfile_.enumerationMs += ProfileMs(enumerationStarted);
+            initProfile_.tilesDiscovered = static_cast<int>(tiles.size());
 
             if (tiles.empty())
             {
@@ -930,9 +1039,12 @@ namespace Navigation
             const NavPoint& start,
             const NavPoint& destination,
             int marginTiles,
-            std::string& error)
+            std::string& error,
+            const char* profileMode = "route")
         {
+            InitProfileScope profileScope{*this, profileMode};
             Shutdown();
+            initProfile_ = InitProfile{};
 
             directory_ =
                 NormalizeWinePath(
@@ -952,11 +1064,13 @@ namespace Navigation
                     )
                 );
 
-            if (!ReadMapParameters(
+            const auto mapHeaderStarted = ProfileClock::now();
+            const bool mapHeaderRead = ReadMapParameters(
                     mmapPath,
                     parameters,
-                    error
-                ))
+                    error);
+            initProfile_.mapHeaderMs += ProfileMs(mapHeaderStarted);
+            if (!mapHeaderRead)
             {
                 Shutdown();
                 return false;
@@ -983,13 +1097,17 @@ namespace Navigation
                 return false;
             }
 
-            if (!InitializeQuery(error))
+            const auto queryInitStarted = ProfileClock::now();
+            const bool queryInitialized = InitializeQuery(error);
+            initProfile_.queryInitMs += ProfileMs(queryInitStarted);
+            if (!queryInitialized)
             {
                 Shutdown();
                 return false;
             }
 
             error.clear();
+            profileScope.success = true;
             return true;
         }
 
@@ -998,7 +1116,9 @@ namespace Navigation
             std::uint32_t mapId,
             std::string& error)
         {
+            InitProfileScope profileScope{*this, "full_map"};
             Shutdown();
+            initProfile_ = InitProfile{};
 
             directory_ =
                 NormalizeWinePath(
@@ -1019,11 +1139,13 @@ namespace Navigation
                     )
                 );
 
-            if (!ReadMapParameters(
+            const auto mapHeaderStarted = ProfileClock::now();
+            const bool mapHeaderRead = ReadMapParameters(
                     mmapPath,
                     parameters,
-                    error
-                ))
+                    error);
+            initProfile_.mapHeaderMs += ProfileMs(mapHeaderStarted);
+            if (!mapHeaderRead)
             {
                 Shutdown();
 
@@ -1058,11 +1180,13 @@ namespace Navigation
                 return false;
             }
 
+            const auto queryInitStarted = ProfileClock::now();
             query_ =
                 dtAllocNavMeshQuery();
 
             if (query_ == nullptr)
             {
+                initProfile_.queryInitMs += ProfileMs(queryInitStarted);
                 error =
                     "Could not allocate Detour navmesh query.";
 
@@ -1076,6 +1200,7 @@ namespace Navigation
                     mesh_,
                     QueryNodePoolSize
                 );
+            initProfile_.queryInitMs += ProfileMs(queryInitStarted);
 
             if (
                 dtStatusFailed(
@@ -1103,6 +1228,7 @@ namespace Navigation
             }
 
             error.clear();
+            profileScope.success = true;
 
             return true;
         }
