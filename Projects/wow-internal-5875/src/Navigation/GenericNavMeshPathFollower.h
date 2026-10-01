@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DetourNavigationProvider.h"
+#include "CorridorReplanHysteresisPolicy.h"
 #include "NavigationHazardMemory.h"
 #include "SteeringSelectionPolicy.h"
 
@@ -469,6 +470,9 @@ namespace Navigation
         std::string lastSteeringLogDecision_{};
         bool steeringAtCorridorEnd_ = false;
         int repeatedCorridorPlans_ = 0;
+        CorridorFailureRecord failedCorridor_{};
+        NavPoint issuedOrdinarySteeringTarget_{};
+        bool issuedOrdinarySteeringTargetValid_ = false;
 
         // Phase 13D.6 bounded partial-corridor staging state.
         bool partialStageActive_ = false;
@@ -1076,6 +1080,131 @@ namespace Navigation
             return corridor.empty() ? 0 : hash;
         }
 
+        // pointIndex_ can name a far lookahead portal. Resolve the first
+        // corridor edge actually ahead of the live player and on the issued
+        // ordinary CTM leg instead of treating that far portal's incoming
+        // edge as the local obstruction.
+        bool ResolveIssuedLocalTransition(
+            const Objects::PlayerState& player,
+            std::uint64_t& fromPoly,
+            std::uint64_t& toPoly) const
+        {
+            fromPoly = 0;
+            toPoly = 0;
+            if (!issuedOrdinarySteeringTargetValid_ ||
+                pointIndex_ >= pointPolyRefs_.size())
+                return false;
+
+            NavPoint projectedPlayer{};
+            NavPoint projectedTarget{};
+            std::uint64_t playerPoly = 0;
+            std::uint64_t targetPoly = 0;
+            if (!provider_.ProjectToNavMesh(
+                    PlayerPoint(player), projectedPlayer, playerPoly) ||
+                !provider_.ProjectToNavMesh(
+                    issuedOrdinarySteeringTarget_, projectedTarget, targetPoly))
+                return false;
+
+            const auto candidate = std::find(
+                corridorPolys_.begin(), corridorPolys_.end(),
+                pointPolyRefs_[pointIndex_]);
+            if (candidate == corridorPolys_.end())
+                return false;
+            const std::size_t candidateIndex = static_cast<std::size_t>(
+                candidate - corridorPolys_.begin());
+
+            std::size_t playerIndex = corridorPolys_.size();
+            for (std::size_t i = 0; i < candidateIndex; ++i)
+            {
+                if (corridorPolys_[i] == playerPoly)
+                    playerIndex = i;
+            }
+            if (playerIndex >= candidateIndex ||
+                std::find(corridorPolys_.begin() + playerIndex + 1,
+                    corridorPolys_.begin() + candidateIndex + 1,
+                    targetPoly) ==
+                    corridorPolys_.begin() + candidateIndex + 1)
+                return false;
+
+            fromPoly = corridorPolys_[playerIndex];
+            toPoly = corridorPolys_[playerIndex + 1];
+            return fromPoly != 0 && toPoly != 0 && fromPoly != toPoly;
+        }
+
+        // The nearest forward steering point is already inside the normal
+        // lookahead window. A different first edge is a different local exit;
+        // a failed edge merely appearing later in the route is not a match.
+        static bool ResolveCandidateLocalTransition(
+            const Objects::PlayerState& player,
+            const NavPathResult& path,
+            std::uint64_t& fromPoly,
+            std::uint64_t& toPoly)
+        {
+            fromPoly = 0;
+            toPoly = 0;
+            if (path.corridorPolys.size() < 2 || path.points.size() < 2 ||
+                path.pointPolys.size() != path.points.size() ||
+                path.corridorPolys.front() != path.startPoly)
+                return false;
+
+            std::size_t firstCandidate = 1;
+            while (firstCandidate + 1 < path.points.size() &&
+                   Distance2D(player.x, player.y,
+                       path.points[firstCandidate].x,
+                       path.points[firstCandidate].y) <= CornerArrivalDistance)
+                ++firstCandidate;
+
+            if (firstCandidate + 1 == path.points.size() &&
+                Distance2D(player.x, player.y,
+                    path.points[firstCandidate].x,
+                    path.points[firstCandidate].y) <= CornerArrivalDistance)
+                return false;
+
+            const auto entered = std::find(
+                path.corridorPolys.begin() + 1, path.corridorPolys.end(),
+                path.pointPolys[firstCandidate]);
+            if (entered == path.corridorPolys.end())
+                return false;
+
+            fromPoly = path.corridorPolys[0];
+            toPoly = path.corridorPolys[1];
+            return fromPoly != 0 && toPoly != 0 && fromPoly != toPoly;
+        }
+
+        void RegisterFailedCorridor(
+            const Objects::PlayerState& player,
+            const char* reason,
+            bool ordinarySteeringStalled)
+        {
+            if (lastPathFingerprint_ == 0)
+                return;
+
+            std::uint64_t fromPoly = 0;
+            std::uint64_t toPoly = 0;
+            const bool transitionKnown = ordinarySteeringStalled &&
+                ResolveIssuedLocalTransition(player, fromPoly, toPoly);
+            const CorridorFailureRecord previous = failedCorridor_;
+            CorridorReplanHysteresisPolicy::RecordFailure(
+                failedCorridor_, lastPathFingerprint_, player.x, player.y,
+                RecoveryResetProgressDistance,
+                transitionKnown, fromPoly, toPoly);
+            if (!previous.active ||
+                previous.fingerprint != failedCorridor_.fingerprint ||
+                previous.anchorX != failedCorridor_.anchorX ||
+                previous.anchorY != failedCorridor_.anchorY ||
+                previous.transitionKnown != failedCorridor_.transitionKnown)
+            {
+                Debug::Logger::Info(
+                    std::string("NAV 14N.2 HYSTERESIS: failedFingerprint=") +
+                    std::to_string(failedCorridor_.fingerprint) +
+                    " failedFromPoly=" + HexPoly(failedCorridor_.failedFromPoly) +
+                    " failedToPoly=" + HexPoly(failedCorridor_.failedToPoly) +
+                    " transitionKnown=" +
+                    (failedCorridor_.transitionKnown ? "yes" : "no") +
+                    " decision=record_failure reason=" + reason);
+            }
+        }
+
         bool BuildWallSafeSteeringPoint(
             const Objects::PlayerState& player,
             const NavPoint& point,
@@ -1442,6 +1571,7 @@ namespace Navigation
                 return false;
             }
 
+            RegisterFailedCorridor(player, reason, false);
             ++commands_;
             ++surfaceRecoveryAttempts_;
             surfaceRecoveryActive_ = true;
@@ -1497,7 +1627,8 @@ namespace Navigation
 
                 surfaceRecoveryActive_ = false;
                 ResetMotionWatchdog(player, tick);
-                return Replan(player, tick);
+                Replan(player, tick);
+                return true;
             }
 
             if (targetDistance + SurfaceRecoveryProgressThreshold <
@@ -1520,7 +1651,8 @@ namespace Navigation
                     "surface recovery stalled");
                 surfaceRecoveryActive_ = false;
                 ResetMotionWatchdog(player, tick);
-                return Replan(player, tick);
+                Replan(player, tick);
+                return true;
             }
 
             return true;
@@ -3480,6 +3612,7 @@ namespace Navigation
             if (pointIndex_ >= points_.size())
                 return true;
 
+            issuedOrdinarySteeringTargetValid_ = false;
             steeringAtCorridorEnd_ = false;
             const std::size_t fromIndex = pointIndex_;
             std::size_t firstCandidate = proposedStartIndex !=
@@ -3618,6 +3751,8 @@ namespace Navigation
 
                     pointIndex_ = SteeringSelectionPolicy::CommitIndex(
                         fromIndex, candidate, true, true);
+                    issuedOrdinarySteeringTarget_ = commandPoint;
+                    issuedOrdinarySteeringTargetValid_ = true;
                     ++commands_;
                     lastCommandTick_ = tick;
                     lastProgressTick_ = tick;
@@ -4304,6 +4439,122 @@ namespace Navigation
                 ++totalReplans_;
             }
 
+            const std::uint64_t fingerprint = FingerprintPath(path.points);
+            if (replan && failedCorridor_.active)
+            {
+                std::uint64_t candidateFromPoly = 0;
+                std::uint64_t candidateToPoly = 0;
+                const bool candidateTransitionKnown =
+                    ResolveCandidateLocalTransition(
+                        player, path, candidateFromPoly, candidateToPoly);
+                const bool recoveryAvailable =
+                    surfaceRecoveryAttempts_ < MaximumSurfaceRecoveryAttempts ||
+                    (lastSafeNav_.valid &&
+                     lastSafeBacktrackAttempts_ < MaximumLastSafeBacktracks);
+                const CorridorReplanAssessment assessment =
+                    CorridorReplanHysteresisPolicy::Assess(
+                        failedCorridor_, fingerprint, player.x, player.y,
+                        RecoveryResetProgressDistance, recoveryAvailable,
+                        candidateTransitionKnown,
+                        candidateFromPoly, candidateToPoly);
+                const bool meaningfulProgress =
+                    assessment.decision ==
+                    CorridorReplanDecision::AllowAfterProgress;
+                const bool repeatedFailure =
+                    assessment.decision ==
+                        CorridorReplanDecision::SuppressRepeated ||
+                    assessment.decision == CorridorReplanDecision::Escalate;
+
+                if (repeatedFailure)
+                    ++repeatedCorridorPlans_;
+                else
+                    repeatedCorridorPlans_ = 0;
+
+                Debug::Logger::Info(
+                    "NAV 14N.2 HYSTERESIS: corridorFingerprint=" +
+                    std::to_string(fingerprint) +
+                    " failedFingerprint=" +
+                    std::to_string(failedCorridor_.fingerprint) +
+                    " failedFromPoly=" + HexPoly(failedCorridor_.failedFromPoly) +
+                    " failedToPoly=" + HexPoly(failedCorridor_.failedToPoly) +
+                    " candidateLocalFromPoly=" + HexPoly(candidateFromPoly) +
+                    " candidateLocalToPoly=" + HexPoly(candidateToPoly) +
+                    " transitionKnown=" +
+                    (failedCorridor_.transitionKnown ? "yes" : "no") +
+                    " candidateTransitionKnown=" +
+                    (candidateTransitionKnown ? "yes" : "no") +
+                    " localTransitionMatch=" +
+                    (assessment.localTransitionMatch ? "yes" : "no") +
+                    " failureAnchorDistance=" + Float(assessment.anchorDistance) +
+                    " meaningfulProgress=" +
+                    (meaningfulProgress ? "yes" : "no") +
+                    " repeatCount=" + std::to_string(repeatedCorridorPlans_) +
+                    " decision=" +
+                    (assessment.decision == CorridorReplanDecision::Escalate
+                        ? "escalate" : repeatedFailure
+                            ? "suppress_repeated" : "allow") +
+                    " reason=" +
+                    CorridorReplanHysteresisPolicy::ReasonName(
+                        assessment.reason));
+
+                if (meaningfulProgress)
+                    failedCorridor_ = CorridorFailureRecord{};
+
+                if (repeatedFailure)
+                {
+                    Debug::Logger::Info(
+                        "NAVMESH 13C.1: REPEATED CORRIDOR fingerprint=" +
+                        std::to_string(fingerprint) +
+                        " repeat=" + std::to_string(repeatedCorridorPlans_) +
+                        "; ordinary corridor CTM suppressed.");
+
+                    // Keep the failed corridor and its steering cursor intact.
+                    // Recovery completes on a later Update; never replan here.
+                    if (surfaceRecoveryAttempts_ < MaximumSurfaceRecoveryAttempts &&
+                        IssueSurfaceRecovery(
+                            player, tick, path.points[1],
+                            "14N.2 repeated failed corridor"))
+                    {
+                        SetState(GenericNavMeshFollowState::Moving);
+                        ResetMotionWatchdog(player, tick);
+                        return true;
+                    }
+                    if (BeginLastSafeBacktrack(
+                            player, tick, "14N.2 repeated failed corridor"))
+                    {
+                        ResetMotionWatchdog(player, tick);
+                        return true;
+                    }
+
+                    Debug::Logger::Info(
+                        "NAV 14N.2 HYSTERESIS: corridorFingerprint=" +
+                        std::to_string(fingerprint) +
+                        " failedFingerprint=" +
+                        std::to_string(failedCorridor_.fingerprint) +
+                        " failedFromPoly=" + HexPoly(failedCorridor_.failedFromPoly) +
+                        " failedToPoly=" + HexPoly(failedCorridor_.failedToPoly) +
+                        " candidateLocalFromPoly=" + HexPoly(candidateFromPoly) +
+                        " candidateLocalToPoly=" + HexPoly(candidateToPoly) +
+                        " transitionKnown=" +
+                        (failedCorridor_.transitionKnown ? "yes" : "no") +
+                        " candidateTransitionKnown=" +
+                        (candidateTransitionKnown ? "yes" : "no") +
+                        " localTransitionMatch=" +
+                        (assessment.localTransitionMatch ? "yes" : "no") +
+                        " failureAnchorDistance=" + Float(assessment.anchorDistance) +
+                        " meaningfulProgress=no repeatCount=" +
+                        std::to_string(repeatedCorridorPlans_) +
+                        " decision=escalate reason=bounded_recovery_unavailable");
+                    SetState(GenericNavMeshFollowState::Failed);
+                    StopAtCurrentPosition(player);
+                    return false;
+                }
+            }
+            else
+            {
+                repeatedCorridorPlans_ = 0;
+            }
+
             points_ =
                 path.points;
             corridorPolys_ = path.corridorPolys;
@@ -4319,20 +4570,8 @@ namespace Navigation
                     " steeringPoints=" + std::to_string(path.points.size()));
             }
 
-            const std::uint64_t fingerprint = FingerprintPath(points_);
-            if (replan && fingerprint != 0 && fingerprint == lastPathFingerprint_)
-            {
-                ++repeatedCorridorPlans_;
-                Debug::Logger::Info(
-                    "NAVMESH 13C.1: REPEATED CORRIDOR fingerprint=" +
-                    std::to_string(fingerprint) +
-                    " repeat=" + std::to_string(repeatedCorridorPlans_));
-            }
-            else
-            {
-                repeatedCorridorPlans_ = 0;
-            }
             lastPathFingerprint_ = fingerprint;
+            issuedOrdinarySteeringTargetValid_ = false;
 
             pointIndex_ =
                 1;
@@ -4471,6 +4710,8 @@ namespace Navigation
             surfaceRecoveryBestTargetDistance_ = 0.0f;
             repeatedCorridorPlans_ = 0;
             lastPathFingerprint_ = 0;
+            failedCorridor_ = CorridorFailureRecord{};
+            issuedOrdinarySteeringTargetValid_ = false;
             partialStageActive_ = false;
             partialStageAttempts_ = 0;
             partialStageBestResidualDistance_ = 1.0e30f;
@@ -4965,6 +5206,8 @@ namespace Navigation
                         " finalDistance=" + Float(finalDistance)
                     );
 
+                    RegisterFailedCorridor(player, "hard_stall", true);
+
                     // Phase 14I.1: before skipping a portal or repeating the
                     // same corridor, detect the common wall/corner trap shown
                     // by live runtime: the character has zero movement while
@@ -5107,6 +5350,9 @@ namespace Navigation
                     lastProgressTick_ >=
                     StuckTicks)
             {
+                // Corner-distance stagnation can occur while the character
+                // is still moving; it does not prove which local edge failed.
+                RegisterFailedCorridor(player, "progress_stall", false);
                 if (
                     cornerDistance <=
                         NearCornerRecoveryDistance &&
