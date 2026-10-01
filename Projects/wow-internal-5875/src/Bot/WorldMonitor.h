@@ -6,6 +6,7 @@
 #include "PlayerPostureController.h"
 #include "AutonomySupervisor.h"
 #include "ActiveBotAfkSafeguard.h"
+#include "AfkDiagnosticTracker.h"
 #include "DisconnectDiagnosticPolicy.h"
 #include "RuntimeRobustnessSupervisor.h"
 #include "CombatController.h"
@@ -59,6 +60,28 @@ namespace Bot
                 << value;
 
             return stream.str();
+        }
+
+        static std::string Hex32(std::uint32_t value)
+        {
+            std::ostringstream stream;
+            stream << "0x" << std::hex << std::uppercase
+                   << std::setw(8) << std::setfill('0') << value;
+            return stream.str();
+        }
+
+        static std::string UtcTimestamp()
+        {
+            SYSTEMTIME utc{};
+            GetSystemTime(&utc);
+            std::ostringstream timestamp;
+            timestamp << std::setfill('0') << std::setw(4) << utc.wYear
+                << '-' << std::setw(2) << utc.wMonth
+                << '-' << std::setw(2) << utc.wDay
+                << 'T' << std::setw(2) << utc.wHour
+                << ':' << std::setw(2) << utc.wMinute
+                << ':' << std::setw(2) << utc.wSecond << 'Z';
+            return timestamp.str();
         }
 
         static std::string Float(
@@ -372,6 +395,8 @@ namespace Bot
                 0;
 
             DisconnectDiagnosticPolicy disconnectDiagnostic;
+            AfkDiagnosticTracker afkDiagnostic;
+            std::uint32_t lastAfkRawFlags = 0;
             std::uint64_t loopHeartbeat = 0;
             bool haveMovementAnchor = false;
             float movementAnchorX = 0.0f;
@@ -481,24 +506,27 @@ namespace Bot
                     }
                 }
 
+                const bool afkSampleKnown =
+                    snapshotValid && world.player.afkCandidateKnown;
+                const AfkDiagnosticTransition afkTransition =
+                    afkDiagnostic.Observe(
+                        afkSampleKnown,
+                        world.player.afkCandidate,
+                        nowMs);
+                if (afkSampleKnown)
+                    lastAfkRawFlags = world.player.playerFlagsRaw;
+                const std::string afkTransitionUtc =
+                    afkTransition.event == AfkDiagnosticEvent::None
+                        ? std::string{} : UtcTimestamp();
+
                 if (diagnosticEvent != DisconnectDiagnosticEvent::None)
                 {
-                    SYSTEMTIME utc{};
-                    GetSystemTime(&utc);
-                    std::ostringstream timestamp;
-                    timestamp << std::setfill('0') << std::setw(4) << utc.wYear
-                        << '-' << std::setw(2) << utc.wMonth
-                        << '-' << std::setw(2) << utc.wDay
-                        << 'T' << std::setw(2) << utc.wHour
-                        << ':' << std::setw(2) << utc.wMinute
-                        << ':' << std::setw(2) << utc.wSecond << 'Z';
-
                     const char* classification = snapshotValid
                         ? (diagnosticEvent == DisconnectDiagnosticEvent::SnapshotRecovered
                             ? "snapshot_recovered_cause_unknown" : "healthy")
                         : "world_snapshot_unavailable_cause_unknown";
                     Debug::Logger::Info(
-                        "DISCONNECT DIAGNOSTIC 14D: utc=" + timestamp.str() +
+                        "DISCONNECT DIAGNOSTIC 14D: utc=" + UtcTimestamp() +
                         " processAlive=yes runtimeLoopHeartbeat=" +
                         std::to_string(loopHeartbeat) +
                         " snapshot=" + (snapshotValid ? std::string("valid") : std::string("unavailable")) +
@@ -521,6 +549,20 @@ namespace Bot
                         " antiAfkSafeIdleAgeTicks=" + std::to_string(antiAfkSafeguard.SafeIdleAgeTicks(tick)) +
                         " antiAfkRequests=" + std::to_string(antiAfkSafeguard.Requests()) +
                         " antiAfkActions=" + std::to_string(grindMode.AntiAfkActions()) +
+                        // SignalKnown means a prior successful read. Stale
+                        // explicitly distinguishes that from a current read.
+                        " afkSignalKnown=" + (afkDiagnostic.EverKnown() ? std::string("yes") : std::string("no")) +
+                        " afkCandidate=" + (afkDiagnostic.EverKnown()
+                            ? (afkDiagnostic.CandidateAfk() ? std::string("yes") : std::string("no"))
+                            : std::string("unknown")) +
+                        " afkSignalVerified=no" +
+                        " afkObservationStale=" + (afkDiagnostic.Stale() ? std::string("yes") : std::string("no")) +
+                        " afkRawFlags=" + (afkDiagnostic.EverKnown()
+                            ? Hex32(lastAfkRawFlags) : std::string("unknown")) +
+                        " afkObservedDurationMs=" + (afkDiagnostic.EverKnown() && afkDiagnostic.CandidateAfk()
+                            ? std::to_string(afkDiagnostic.ObservedDurationMs()) : std::string("0")) +
+                        " afkLastObservedAgeMs=" + (afkDiagnostic.EverKnown()
+                            ? std::to_string(afkDiagnostic.LastObservedAgeMs(nowMs)) : std::string("unknown")) +
                         " gameThreadResponsive=unknown clientState=unknown classification=" + classification);
                 }
 
@@ -1054,6 +1096,36 @@ namespace Bot
                                 " polling ticks; request=" +
                                 std::to_string(antiAfkEvent.request));
                     }
+                }
+
+                if (afkTransition.event != AfkDiagnosticEvent::None)
+                {
+                    Debug::Logger::Info(
+                        std::string("AFK DIAGNOSTIC 14K.1.8: ") +
+                        (afkTransition.event == AfkDiagnosticEvent::Entered ? "ENTERED" : "CLEARED") +
+                        " utc=" + afkTransitionUtc +
+                        " tick=" + std::to_string(tick) +
+                        " source=player_flags_candidate signalVerified=no" +
+                        " rawFlags=" + Hex32(lastAfkRawFlags) +
+                        " candidateAfk=" + (world.player.afkCandidate ? std::string("yes") : std::string("no")) +
+                        " initialObservation=" + (afkTransition.initialObservation ? std::string("yes") : std::string("no")) +
+                        " observedDurationMs=" + std::to_string(afkTransition.observedDurationMs) +
+                        " grindState=" + grindMode.StateName() +
+                        " combatState=" + combat.StateName() +
+                        " deathRecoveryState=" + deathRecovery.StateName() +
+                        " deathRecoveryOwned=" + (deathRecoveryOwnedTick ? std::string("yes") : std::string("no")) +
+                        " vendorState=" + grindMode.Vendor().StateName() +
+                        " playerValid=" + (world.player.valid ? std::string("yes") : std::string("no")) +
+                        " health=" + std::to_string(world.player.health) +
+                        " movementAgeMs=" + (haveMovementAnchor
+                            ? std::to_string(nowMs >= lastMeaningfulMovementMs
+                                ? nowMs - lastMeaningfulMovementMs : 0)
+                            : std::string("unknown")) +
+                        " lockedGuid=" + Hex64(combat.LockedGuid()) +
+                        " antiAfkSafeIdleActive=" + (antiAfkSafeguard.SafeIdleActive() ? std::string("yes") : std::string("no")) +
+                        " antiAfkSafeIdleAgeTicks=" + std::to_string(antiAfkSafeguard.SafeIdleAgeTicks(tick)) +
+                        " antiAfkRequests=" + std::to_string(antiAfkSafeguard.Requests()) +
+                        " antiAfkActions=" + std::to_string(grindMode.AntiAfkActions()));
                 }
 
                 // =====================================

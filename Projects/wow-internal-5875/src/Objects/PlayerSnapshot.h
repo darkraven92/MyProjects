@@ -2,6 +2,7 @@
 
 #include "../Core/Memory.h"
 #include "../Debug/Logger.h"
+#include "PlayerFlagsCandidate.h"
 
 #include <cmath>
 #include <cstdint>
@@ -24,6 +25,11 @@ namespace Objects
 
         std::uint32_t health = 0;
         std::uint32_t maxHealth = 0;
+
+        bool playerFlagsKnown = false;
+        std::uint32_t playerFlagsRaw = 0;
+        bool afkCandidateKnown = false;
+        bool afkCandidate = false;
 
         std::uint8_t powerType = 0;
 
@@ -352,6 +358,16 @@ namespace Objects
             {
                 return false;
             }
+
+            // Optional, read-only candidate signal for a validated local
+            // player. Runtime entry is gated to WoW 1.12.1 build 5875;
+            // a failed read is unknown, never "not AFK".
+            state.playerFlagsKnown = Core::Memory::Read(
+                d + Vanilla5875PlayerFlagsOffset,
+                state.playerFlagsRaw);
+            state.afkCandidateKnown = state.playerFlagsKnown;
+            if (state.playerFlagsKnown)
+                state.afkCandidate = DecodeAfkCandidate(state.playerFlagsRaw);
 
             state.valid = true;
 
