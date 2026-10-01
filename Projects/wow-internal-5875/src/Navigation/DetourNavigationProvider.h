@@ -6,6 +6,7 @@
 #include "DetourNavMesh.h"
 #include "DetourNavMeshQuery.h"
 #include "DetourStatus.h"
+#include "IncrementalTileInitializationPolicy.h"
 
 #include <windows.h>
 
@@ -156,6 +157,16 @@ namespace Navigation
 
         using ProfileClock = std::chrono::steady_clock;
 
+        IncrementalTileInitializationPolicy incrementalCursor_{};
+        std::vector<std::string> incrementalTiles_{};
+        std::string incrementalMode_{};
+        ProfileClock::time_point incrementalStarted_{};
+        double incrementalWorkMs_ = 0.0;
+        bool incrementalActive_ = false;
+        std::size_t incrementalFinalTotal_ = 0;
+        std::size_t incrementalFinalProcessed_ = 0;
+        double incrementalFinalElapsedMs_ = 0.0;
+
         struct InitProfile
         {
             int tilesDiscovered = 0;
@@ -178,9 +189,11 @@ namespace Navigation
         }
 
         void LogInitProfile(const char* mode, ProfileClock::time_point start,
-                            bool success) const
+                            bool success, double workMs = -1.0) const
         {
             const double totalMs = ProfileMs(start);
+            if (workMs < 0.0)
+                workMs = totalMs;
             const double accounted = initProfile_.enumerationMs +
                 initProfile_.tileReadMs + initProfile_.addTileMs +
                 initProfile_.queryInitMs + initProfile_.mapHeaderMs;
@@ -197,7 +210,8 @@ namespace Navigation
                 << " addTileMs=" << initProfile_.addTileMs
                 << " queryInitMs=" << initProfile_.queryInitMs
                 << " mapHeaderMs=" << initProfile_.mapHeaderMs
-                << " otherMs=" << std::max(0.0, totalMs - accounted)
+                << " otherMs=" << std::max(0.0, workMs - accounted)
+                << " workMs=" << workMs
                 << " totalMs=" << totalMs
                 << " slowestTileMs=" << initProfile_.slowestTileMs
                 << " slowestTile="
@@ -955,7 +969,244 @@ namespace Navigation
             return true;
         }
 
+        void FinishIncremental(bool success, bool cancelled = false)
+        {
+            if (!incrementalActive_)
+                return;
+            incrementalFinalTotal_ = incrementalCursor_.Total();
+            incrementalFinalProcessed_ = incrementalCursor_.Processed();
+            incrementalFinalElapsedMs_ = ProfileMs(incrementalStarted_);
+            LogInitProfile(incrementalMode_.c_str(), incrementalStarted_,
+                           success, incrementalWorkMs_);
+            incrementalActive_ = false;
+            if (cancelled)
+                incrementalCursor_.Cancel();
+            else if (success)
+                incrementalCursor_.MarkReady();
+            else
+                incrementalCursor_.Fail();
+            incrementalTiles_.clear();
+        }
+
+        bool BeginIncrementalCommon(const std::string& directory,
+                                    std::uint32_t mapId, const char* mode,
+                                    std::string& error)
+        {
+            Shutdown();
+            initProfile_ = InitProfile{};
+            incrementalStarted_ = ProfileClock::now();
+            incrementalWorkMs_ = 0.0;
+            incrementalFinalTotal_ = 0;
+            incrementalFinalProcessed_ = 0;
+            incrementalFinalElapsedMs_ = 0.0;
+            incrementalMode_ = mode;
+            incrementalActive_ = true;
+            directory_ = NormalizeWinePath(directory);
+            mapId_ = mapId;
+            const std::string mmapPath = JoinPath(directory_, MapName(mapId_, ".mmap"));
+            dtNavMeshParams parameters{};
+            const auto headerStarted = ProfileClock::now();
+            const bool headerOk = ReadMapParameters(mmapPath, parameters, error);
+            initProfile_.mapHeaderMs += ProfileMs(headerStarted);
+            if (!headerOk || !InitializeMeshAndQuery(mmapPath, parameters, error))
+            {
+                incrementalWorkMs_ += ProfileMs(incrementalStarted_);
+                FinishIncremental(false);
+                Shutdown();
+                return false;
+            }
+            return true;
+        }
+
+        bool CollectIncrementalRouteTiles(const NavPoint& start,
+                                          const NavPoint& destination,
+                                          int marginTiles, std::string& error)
+        {
+            // Keep the same WoW/Recast axis mapping, window and tile order as
+            // LoadRouteTiles; only the addTile work is deferred.
+            const int startX = WorldToTile(start.y);
+            const int startY = WorldToTile(start.x);
+            const int endX = WorldToTile(destination.y);
+            const int endY = WorldToTile(destination.x);
+            const int minX = std::max(0, std::min(startX, endX) - marginTiles);
+            const int maxX = std::min(63, std::max(startX, endX) + marginTiles);
+            const int minY = std::max(0, std::min(startY, endY) - marginTiles);
+            const int maxY = std::min(63, std::max(startY, endY) + marginTiles);
+            Debug::Logger::Info(
+                "NAVMESH 11B.8.2: ADT axis mapping start tileX=" +
+                std::to_string(startX) + " tileY=" + std::to_string(startY) +
+                " file=" + TileName(mapId_, startY, startX) +
+                " destination tileX=" + std::to_string(endX) +
+                " tileY=" + std::to_string(endY) +
+                " file=" + TileName(mapId_, endY, endX));
+            Debug::Logger::Info(
+                "NAVMESH 11B.8.2: route tile window tileX=" +
+                std::to_string(minX) + ".." + std::to_string(maxX) +
+                " tileY=" + std::to_string(minY) + ".." +
+                std::to_string(maxY) + " margin=" + std::to_string(marginTiles));
+            for (int tileY = minY; tileY <= maxY; ++tileY)
+            {
+                for (int tileX = minX; tileX <= maxX; ++tileX)
+                {
+                    const std::string path = JoinPath(
+                        directory_, TileName(mapId_, tileY, tileX));
+                    const auto lookupStarted = ProfileClock::now();
+                    const DWORD attributes = GetFileAttributesA(path.c_str());
+                    initProfile_.enumerationMs += ProfileMs(lookupStarted);
+                    if (attributes != INVALID_FILE_ATTRIBUTES &&
+                        (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+                        incrementalTiles_.push_back(path);
+                }
+            }
+            initProfile_.tilesDiscovered =
+                static_cast<int>(incrementalTiles_.size());
+            if (incrementalTiles_.empty())
+            {
+                error = "No route-scoped mmtile files were found in the computed ADT window.";
+                return false;
+            }
+            return true;
+        }
+
+        bool CollectIncrementalFullMapTiles(std::string& error)
+        {
+            const auto enumerationStarted = ProfileClock::now();
+            const std::string pattern = JoinPath(
+                directory_, MapName(mapId_, "*.mmtile"));
+            WIN32_FIND_DATAA data{};
+            HANDLE search = FindFirstFileA(pattern.c_str(), &data);
+            if (search == INVALID_HANDLE_VALUE)
+            {
+                initProfile_.enumerationMs += ProfileMs(enumerationStarted);
+                error = "No mmtile files found for map " +
+                    std::to_string(mapId_) + " in " + directory_;
+                return false;
+            }
+            std::vector<std::string> names;
+            do
+            {
+                if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
+                    IsTileName(data.cFileName, mapId_))
+                    names.emplace_back(data.cFileName);
+            }
+            while (FindNextFileA(search, &data));
+            FindClose(search);
+            std::sort(names.begin(), names.end());
+            initProfile_.enumerationMs += ProfileMs(enumerationStarted);
+            initProfile_.tilesDiscovered = static_cast<int>(names.size());
+            if (names.empty())
+            {
+                error = "No valid mmtile filenames found for map " +
+                    std::to_string(mapId_) + " in " + directory_;
+                return false;
+            }
+            for (const auto& name : names)
+                incrementalTiles_.push_back(JoinPath(directory_, name));
+            return true;
+        }
+
     public:
+        enum class IncrementalStatus { Pending, Ready, Failed };
+
+        struct IncrementalProgress
+        {
+            std::size_t total = 0;
+            std::size_t processed = 0;
+            int loaded = 0;
+            int failed = 0;
+            double elapsedMs = 0.0;
+            double workMs = 0.0;
+        };
+
+        IncrementalProgress InitializationProgress() const
+        {
+            return {incrementalActive_ ? incrementalCursor_.Total() : incrementalFinalTotal_,
+                    incrementalActive_ ? incrementalCursor_.Processed() : incrementalFinalProcessed_,
+                    initProfile_.tilesLoaded, initProfile_.tilesFailed,
+                    incrementalActive_ ? ProfileMs(incrementalStarted_) : incrementalFinalElapsedMs_,
+                    incrementalWorkMs_};
+        }
+
+        bool BeginIncrementalForRoute(const std::string& directory,
+                                      std::uint32_t mapId,
+                                      const NavPoint& start,
+                                      const NavPoint& destination,
+                                      int marginTiles, std::string& error,
+                                      const char* mode = "route")
+        {
+            if (!BeginIncrementalCommon(directory, mapId, mode, error))
+                return false;
+            const bool found = CollectIncrementalRouteTiles(
+                start, destination, marginTiles, error);
+            incrementalWorkMs_ += ProfileMs(incrementalStarted_);
+            if (!found)
+            {
+                FinishIncremental(false);
+                Shutdown();
+                return false;
+            }
+            incrementalCursor_.Begin(incrementalTiles_.size());
+            error.clear();
+            return true;
+        }
+
+        bool BeginIncrementalFullMap(const std::string& directory,
+                                     std::uint32_t mapId, std::string& error)
+        {
+            if (!BeginIncrementalCommon(directory, mapId, "full_map", error))
+                return false;
+            const bool found = CollectIncrementalFullMapTiles(error);
+            incrementalWorkMs_ += ProfileMs(incrementalStarted_);
+            if (!found)
+            {
+                FinishIncremental(false);
+                Shutdown();
+                return false;
+            }
+            incrementalCursor_.Begin(incrementalTiles_.size());
+            error.clear();
+            return true;
+        }
+
+        IncrementalStatus StepIncremental(std::string& error)
+        {
+            if (!incrementalActive_)
+            {
+                error = "No incremental navmesh initialization is pending.";
+                return IncrementalStatus::Failed;
+            }
+            const auto stepStarted = ProfileClock::now();
+            incrementalCursor_.BeginStep();
+            std::size_t index = 0;
+            while (incrementalCursor_.Next(index))
+            {
+                if (!LoadTile(incrementalTiles_[index], error))
+                {
+                    incrementalWorkMs_ += ProfileMs(stepStarted);
+                    FinishIncremental(false);
+                    Shutdown();
+                    return IncrementalStatus::Failed;
+                }
+            }
+            if (!incrementalCursor_.Complete())
+            {
+                incrementalWorkMs_ += ProfileMs(stepStarted);
+                return IncrementalStatus::Pending;
+            }
+            const auto queryStarted = ProfileClock::now();
+            const bool queryOk = InitializeQuery(error);
+            initProfile_.queryInitMs += ProfileMs(queryStarted);
+            incrementalWorkMs_ += ProfileMs(stepStarted);
+            FinishIncremental(queryOk);
+            if (!queryOk)
+            {
+                Shutdown();
+                return IncrementalStatus::Failed;
+            }
+            error.clear();
+            return IncrementalStatus::Ready;
+        }
+
         DetourNavigationProvider() =
             default;
 
@@ -1235,6 +1486,8 @@ namespace Navigation
 
         void Shutdown()
         {
+            if (incrementalActive_)
+                FinishIncremental(false, true);
             if (query_ != nullptr)
             {
                 dtFreeNavMeshQuery(

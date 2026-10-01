@@ -70,6 +70,9 @@ namespace Bot
         std::uint32_t mapId_ = 1;
 
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> corpseNavigator_{};
+        bool corpseNavigatorFullMapCounted_ = false;
+        bool corpseNavigatorReadyCounted_ = false;
+        bool corpseNavigatorPrecision_ = false;
 
         std::uint64_t stateStartedTick_ = 0;
         std::uint64_t nextActionTick_ = 0;
@@ -444,6 +447,8 @@ namespace Bot
                 " monotonicDurationMs=" +
                 std::to_string(AgeMs(SteadyClock::now(), began)) +
                 " success=" + (started ? std::string("yes") : std::string("no")) +
+                " initializationPending=" +
+                (navigator.InitializationPending() ? std::string("yes") : std::string("no")) +
                 " fullMapAttempted=" +
                 (navigator.FullMapFallbackAttempted() ? std::string("yes") : std::string("no")) +
                 " fullMapFallbackAttempts=" +
@@ -465,6 +470,9 @@ namespace Bot
             std::uint64_t tick)
         {
             corpseNavigator_.reset();
+            corpseNavigatorFullMapCounted_ = false;
+            corpseNavigatorReadyCounted_ = false;
+            corpseNavigatorPrecision_ = false;
             if (!EnforceMonotonicLiveness(player, tick, true))
                 return false;
 
@@ -484,9 +492,8 @@ namespace Bot
                     "death recovery corpse route", variant, *nav))
             {
                 corpseNavigator_ = std::move(nav);
-                ++routeStarts_;
                 Debug::Logger::Info(
-                    "DEATH RECOVERY 14G.4.2: corpse route started variant=" +
+                    "DEATH RECOVERY 14G.4.2: corpse route initialization accepted variant=" +
                     std::to_string(variant) +
                     " destination=(" + Float(destination.x) + "," +
                     Float(destination.y) + "," + Float(destination.z) + ")");
@@ -513,6 +520,9 @@ namespace Bot
                 return false;
             }
             corpseNavigator_.reset();
+            corpseNavigatorFullMapCounted_ = false;
+            corpseNavigatorReadyCounted_ = false;
+            corpseNavigatorPrecision_ = true;
 
             auto nav =
                 std::make_unique<Navigation::GenericNavMeshPathFollower>();
@@ -533,12 +543,10 @@ namespace Bot
             }
 
             corpseNavigator_ = std::move(nav);
-            ++routeStarts_;
-            ++precisionRouteStarts_;
             nextDeadStateLivenessTick_ = tick + DeadStateStallTicks;
 
             Debug::Logger::Info(
-                std::string("ROBUSTNESS 14G.4.3: PRECISION CORPSE ROUTE started reason=") +
+                std::string("ROBUSTNESS 14G.4.3: PRECISION CORPSE ROUTE initialization accepted reason=") +
                 reason +
                 " destination=(" + Float(deathPosition_.x) + "," +
                 Float(deathPosition_.y) + "," + Float(deathPosition_.z) +
@@ -773,6 +781,9 @@ namespace Bot
             if (!confirmedDead && !confirmedGhost)
                 lastProbe_ = DeathProbe{};
             corpseNavigator_.reset();
+            corpseNavigatorFullMapCounted_ = false;
+            corpseNavigatorReadyCounted_ = false;
+            corpseNavigatorPrecision_ = false;
 
             MovementController::HoldPosition(world.player);
 
@@ -1013,6 +1024,25 @@ namespace Bot
                 {
                     corpseNavigator_->Update(world.player, tick);
 
+                    // Initialization now spans monitor updates. Consume the
+                    // existing death-route fallback budget when full-map is
+                    // actually entered, not when Start accepted a pending route.
+                    if (corpseNavigator_->FullMapFallbackAttempted() &&
+                        !corpseNavigatorFullMapCounted_)
+                    {
+                        ++fullMapFallbackAttempts_;
+                        ++fullMapFallbackAttemptsSinceProgress_;
+                        corpseNavigatorFullMapCounted_ = true;
+                    }
+                    if (corpseNavigator_->HasUsablePath() &&
+                        !corpseNavigatorReadyCounted_)
+                    {
+                        ++routeStarts_;
+                        if (corpseNavigatorPrecision_)
+                            ++precisionRouteStarts_;
+                        corpseNavigatorReadyCounted_ = true;
+                    }
+
                     if (corpseNavigator_->Arrived())
                     {
                         corpseNavigator_.reset();
@@ -1032,6 +1062,8 @@ namespace Bot
                     }
                     else if (corpseNavigator_->Failed())
                     {
+                        if (!corpseNavigatorReadyCounted_)
+                            ++routeStartFailures_;
                         corpseNavigator_.reset();
                         ++consecutiveStationaryRouteFailures_;
                         if (!EnforceMonotonicLiveness(world.player, tick, false))
@@ -1219,6 +1251,9 @@ namespace Bot
         void Reset()
         {
             corpseNavigator_.reset();
+            corpseNavigatorFullMapCounted_ = false;
+            corpseNavigatorReadyCounted_ = false;
+            corpseNavigatorPrecision_ = false;
             state_ = DeathRecoveryState::Idle;
             deathPosition_ = Navigation::NavPoint{};
             lastClearlyAlivePosition_ = Navigation::NavPoint{};

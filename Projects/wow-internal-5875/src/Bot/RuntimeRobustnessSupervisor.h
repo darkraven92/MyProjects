@@ -1,5 +1,8 @@
 #pragma once
 
+#include "NavigationInitializationLivenessPolicy.h"
+
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 
@@ -79,6 +82,7 @@ namespace Bot
         bool recoveryNoSupplyStalled = false;
         bool firstAidActive = false;
         bool vendorActive = false;
+        bool navigationInitializationPending = false;
         int vendorState = 0;
         int vendorProgressSerial = 0;
         int firstAidCraftsIssued = 0;
@@ -151,6 +155,10 @@ namespace Bot
 
         static constexpr int EscalationAttempt = 3;
         static constexpr int StrategicEscalationAttempt = 2;
+
+        using SteadyClock = std::chrono::steady_clock;
+        SteadyClock::time_point navigationInitializationSince_{};
+        bool navigationInitializationObserved_ = false;
 
         bool initialized_ = false;
         bool watchingLatched_ = false;
@@ -611,6 +619,35 @@ namespace Bot
             UpdateOwnerTracking(sample, tick, tacticalProgress);
             UpdateActivityLoopTracking(sample, tacticalProgress);
 
+            if (sample.navigationInitializationPending)
+            {
+                const auto now = SteadyClock::now();
+                if (!navigationInitializationObserved_)
+                {
+                    navigationInitializationObserved_ = true;
+                    navigationInitializationSince_ = now;
+                }
+                const auto elapsedMs =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - navigationInitializationSince_).count();
+                if (NavigationInitializationLivenessPolicy::DeferOwnerRecovery(
+                        true, elapsedMs))
+                    return {};
+                // A stuck planner eventually falls through to existing
+                // owner/tactical recovery; it is not an unbounded exemption.
+            }
+            else if (navigationInitializationObserved_)
+            {
+                navigationInitializationObserved_ = false;
+                navigationInitializationSince_ = SteadyClock::time_point{};
+                // Completion/cancellation gets one normal owner window to
+                // demonstrate physical progress; strategic outcome age is
+                // intentionally not reset by initialization work.
+                lastOwnerProgressTick_ = tick;
+                lastProgressTick_ = tick;
+                watchingLatched_ = false;
+            }
+
             const std::uint64_t tacticalAge =
                 tick >= lastProgressTick_ ? tick - lastProgressTick_ : 0;
             const std::uint64_t strategicAge =
@@ -848,6 +885,8 @@ namespace Bot
             anchor_ = {};
             lastProgressTick_ = 0;
             lastOutcomeTick_ = 0;
+            navigationInitializationSince_ = SteadyClock::time_point{};
+            navigationInitializationObserved_ = false;
             lastRecoveryTick_ = 0;
             lastStrategicRecoveryTick_ = 0;
             lastIdleRecoveryTick_ = 0;

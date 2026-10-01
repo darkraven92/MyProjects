@@ -1252,6 +1252,8 @@ namespace Bot
                         grindMode.FirstAidCraftsIssued();
                     robustnessSample.vendorActive =
                         grindMode.State() == GrindModeState::Vendoring;
+                    robustnessSample.navigationInitializationPending =
+                        grindMode.NavigationInitializationPending();
                     robustnessSample.vendorState =
                         static_cast<int>(grindMode.Vendor().State());
                     robustnessSample.vendorProgressSerial =

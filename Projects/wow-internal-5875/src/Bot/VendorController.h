@@ -2530,6 +2530,12 @@ namespace Bot
 
         VendorState State() const { return state_; }
         const char* StateName() const { return StateNameInternal(state_); }
+        bool NavigationInitializationPending() const
+        {
+            return (homeNavigator_ && homeNavigator_->InitializationProgressing()) ||
+                (vendorNavigator_ && vendorNavigator_->InitializationProgressing()) ||
+                (returnNavigator_ && returnNavigator_->InitializationProgressing());
+        }
         bool IsActive() const
         {
             return state_ != VendorState::Idle &&

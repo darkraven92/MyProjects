@@ -369,6 +369,10 @@ namespace Navigation
         bool fullMapFallbackAttempted_ = false;
         NavigationInitTier currentInitTier_ = NavigationInitTier::Route;
         NavigationPlanFailure lastPlanFailure_ = NavigationPlanFailure::None;
+        GenericNavMeshStartOptions startOptions_{};
+        std::string initializationDirectory_{};
+        bool initializationPending_ = false;
+        std::size_t initializationProgressLogBucket_ = 0;
 
         GenericNavMeshFollowState state_ =
             GenericNavMeshFollowState::Idle;
@@ -4735,7 +4739,159 @@ namespace Navigation
                 );
         }
 
+        void LogIncrementalEvent(const char* event, const char* reason,
+                                 double lastStepMs = 0.0) const
+        {
+            const auto progress = provider_.InitializationProgress();
+            std::ostringstream stream;
+            stream << std::fixed << std::setprecision(3)
+                << "NAV 14N.3.1 INIT " << event
+                << " mode=" << NavigationInitTelemetryPolicy::TierName(currentInitTier_)
+                << " tilesTotal=" << progress.total
+                << " tilesProcessed=" << progress.processed
+                << " tilesLoaded=" << progress.loaded
+                << " tilesFailed=" << progress.failed
+                << " elapsedMs=" << progress.elapsedMs
+                << " workMs=" << progress.workMs
+                << " lastStepMs=" << lastStepMs
+                << " threadId=" << GetCurrentThreadId()
+                << " destination=\"" << destinationLabel_ << "\""
+                << " reason=" << reason;
+            Debug::Logger::Info(stream.str());
+        }
+
+        bool BeginInitializationTier(const Objects::PlayerState& player,
+                                     NavigationInitTier tier,
+                                     std::string& error)
+        {
+            currentInitTier_ = tier;
+            bool began = false;
+            if (tier == NavigationInitTier::FullMap)
+            {
+                fullMapFallbackAttempted_ = true;
+                began = provider_.BeginIncrementalFullMap(
+                    initializationDirectory_, mapId_, error);
+            }
+            else
+            {
+                began = provider_.BeginIncrementalForRoute(
+                    initializationDirectory_, mapId_, PlayerPoint(player),
+                    destination_, tier == NavigationInitTier::Route
+                        ? InitialRouteTileMargin : ExpandedRouteTileMargin,
+                    error, NavigationInitTelemetryPolicy::TierName(tier));
+            }
+            initializationPending_ = began;
+            initializationProgressLogBucket_ = 0;
+            SetState(began ? GenericNavMeshFollowState::Planning
+                           : GenericNavMeshFollowState::Failed);
+            LogIncrementalEvent(began ? "BEGIN" : "FAILED",
+                                began ? "none" : error.c_str());
+            return began;
+        }
+
+        void BeginFullMapFallback(const Objects::PlayerState& player)
+        {
+            const NavigationInitTier nextTier =
+                NavigationInitTelemetryPolicy::NextTier(
+                    NavigationInitTier::Expanded,
+                    startOptions_.allowFullMapFallback);
+            Debug::Logger::Info(
+                "NAV 14N.3 FALLBACK: from=expanded to=" +
+                std::string(NavigationInitTelemetryPolicy::TierName(nextTier)) +
+                " reason=" +
+                NavigationInitTelemetryPolicy::ReasonName(lastPlanFailure_) +
+                " destination=\"" + destinationLabel_ + "\" threadId=" +
+                std::to_string(GetCurrentThreadId()));
+            if (!startOptions_.allowFullMapFallback)
+            {
+                Debug::Logger::Info(
+                    "NAVMESH 11B.8: full-map fallback disabled for this route attempt.");
+                SetState(GenericNavMeshFollowState::Failed);
+                return;
+            }
+            Debug::Logger::Info(
+                "NAVMESH 11B.8: route-scoped loading exhausted; falling back "
+                "to the full-map loader for correctness.");
+            provider_.Shutdown();
+            std::string error;
+            BeginInitializationTier(player, NavigationInitTier::FullMap, error);
+        }
+
+        void AdvanceInitialization(const Objects::PlayerState& player,
+                                   std::uint64_t tick)
+        {
+            if (!initializationPending_)
+                return;
+            const auto stepStarted = std::chrono::steady_clock::now();
+            std::string error;
+            const auto result = provider_.StepIncremental(error);
+            const double stepMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - stepStarted).count();
+            const auto progress = provider_.InitializationProgress();
+            if (result == DetourNavigationProvider::IncrementalStatus::Pending)
+            {
+                const std::size_t bucket = progress.processed / 25;
+                if (bucket > initializationProgressLogBucket_)
+                {
+                    initializationProgressLogBucket_ = bucket;
+                    LogIncrementalEvent("PROGRESS", "none", stepMs);
+                }
+                return;
+            }
+            initializationPending_ = false;
+            LogIncrementalEvent(
+                result == DetourNavigationProvider::IncrementalStatus::Ready
+                    ? "READY" : "FAILED",
+                result == DetourNavigationProvider::IncrementalStatus::Ready
+                    ? "none" : error.c_str(), stepMs);
+            if (result == DetourNavigationProvider::IncrementalStatus::Ready &&
+                PlanFrom(player, tick, false))
+                return;
+
+            if (result == DetourNavigationProvider::IncrementalStatus::Failed)
+                lastPlanFailure_ = NavigationPlanFailure::InitializationFailed;
+            if (currentInitTier_ == NavigationInitTier::Route)
+            {
+                // The original Start stopped on route initialization failure;
+                // only an unusable planned route escalated to expanded tiles.
+                if (result == DetourNavigationProvider::IncrementalStatus::Failed)
+                {
+                    SetState(GenericNavMeshFollowState::Failed);
+                    return;
+                }
+                Debug::Logger::Info(
+                    "NAVMESH 11B.8: initial route-scoped corridor did not "
+                    "produce a usable path; retrying with expanded ADT margin.");
+                Debug::Logger::Info(
+                    "NAV 14N.3 FALLBACK: from=route to=expanded reason=" +
+                    std::string(NavigationInitTelemetryPolicy::ReasonName(
+                        lastPlanFailure_)) + " destination=\"" +
+                    destinationLabel_ + "\" threadId=" +
+                    std::to_string(GetCurrentThreadId()));
+                provider_.Shutdown();
+                if (!BeginInitializationTier(
+                        player, NavigationInitTier::Expanded, error))
+                {
+                    lastPlanFailure_ = NavigationPlanFailure::InitializationFailed;
+                    BeginFullMapFallback(player);
+                }
+                return;
+            }
+            if (currentInitTier_ == NavigationInitTier::Expanded)
+            {
+                BeginFullMapFallback(player);
+                return;
+            }
+            SetState(GenericNavMeshFollowState::Failed);
+        }
+
     public:
+        ~GenericNavMeshPathFollower()
+        {
+            if (initializationPending_)
+                LogIncrementalEvent("CANCELLED", "follower_destroyed");
+        }
+
         bool Start(
             const Objects::PlayerState& player,
             std::uint64_t tick,
@@ -4874,199 +5030,17 @@ namespace Navigation
                 )
             );
 
-            const std::string directory =
-                DetourNavigationProvider::
-                    ResolveMmapsDirectory();
-
+            (void)tick;
+            startOptions_ = options;
+            initializationDirectory_ =
+                DetourNavigationProvider::ResolveMmapsDirectory();
+            fullMapFallbackAttempted_ = false;
             std::string error;
-            currentInitTier_ = NavigationInitTier::Route;
-
-            const auto initializationStarted =
-                std::chrono::steady_clock::now();
-
-            const bool initialized =
-                provider_.InitializeForRoute(
-                    directory,
-                    mapId_,
-                    PlayerPoint(player),
-                    destination_,
-                    InitialRouteTileMargin,
-                    error,
-                    "route");
-
-            const auto initializationElapsedMs =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - initializationStarted
-                ).count();
-
-            Debug::Logger::Info(
-                "NAVMESH 11B.7: provider initialization time=" +
-                std::to_string(initializationElapsedMs) +
-                " ms."
-            );
-
-            if (!initialized)
-            {
-                Debug::Logger::Info(
-                    "NAVMESH 11B: initialization failed."
-                );
-
-                Debug::Logger::Info(
-                    "Reason: " +
-                    error
-                );
-
-                SetState(
-                    GenericNavMeshFollowState::
-                        Failed
-                );
-
-                Debug::Logger::Info(
-                    "================================"
-                );
-
-                return false;
-            }
-
-            Debug::Logger::Info(
-                "Loaded tiles: " +
-                std::to_string(
-                    provider_.LoadedTiles()
-                )
-            );
-
-            Debug::Logger::Info(
-                "================================"
-            );
-
-            if (PlanFrom(
-                    player,
-                    tick,
-                    false
-                ))
-            {
-                return true;
-            }
-
-            Debug::Logger::Info(
-                "NAVMESH 11B.8: initial route-scoped corridor did not "
-                "produce a usable path; retrying with expanded ADT margin."
-            );
-            Debug::Logger::Info(
-                "NAV 14N.3 FALLBACK: from=route to=expanded reason=" +
-                std::string(NavigationInitTelemetryPolicy::ReasonName(
-                    lastPlanFailure_)) +
-                " destination=\"" + destinationLabel_ + "\" threadId=" +
-                std::to_string(GetCurrentThreadId()));
-
-            provider_.Shutdown();
-            currentInitTier_ = NavigationInitTier::Expanded;
-
-            const auto expandedStarted =
-                std::chrono::steady_clock::now();
-
-            if (provider_.InitializeForRoute(
-                    directory,
-                    mapId_,
-                    PlayerPoint(player),
-                    destination_,
-                    ExpandedRouteTileMargin,
-                    error,
-                    "expanded"))
-            {
-                const auto expandedMs =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - expandedStarted
-                    ).count();
-
-                Debug::Logger::Info(
-                    "NAVMESH 11B.8: expanded route-tile initialization time=" +
-                    std::to_string(expandedMs) +
-                    " ms; loadedTiles=" +
-                    std::to_string(provider_.LoadedTiles())
-                );
-
-                if (PlanFrom(
-                        player,
-                        tick,
-                        false
-                    ))
-                {
-                    return true;
-                }
-            }
-            else
-            {
-                lastPlanFailure_ = NavigationPlanFailure::InitializationFailed;
-                Debug::Logger::Info(
-                    "NAVMESH 11B.8: expanded route-tile initialization failed: " +
-                    error
-                );
-            }
-
-            const NavigationInitTier nextTier =
-                NavigationInitTelemetryPolicy::NextTier(
-                    NavigationInitTier::Expanded,
-                    options.allowFullMapFallback);
-            Debug::Logger::Info(
-                "NAV 14N.3 FALLBACK: from=expanded to=" +
-                std::string(NavigationInitTelemetryPolicy::TierName(nextTier)) +
-                " reason=" +
-                NavigationInitTelemetryPolicy::ReasonName(lastPlanFailure_) +
-                " destination=\"" + destinationLabel_ + "\" threadId=" +
-                std::to_string(GetCurrentThreadId()));
-
-            if (!options.allowFullMapFallback)
-            {
-                Debug::Logger::Info(
-                    "NAVMESH 11B.8: full-map fallback disabled for this route attempt."
-                );
-                SetState(GenericNavMeshFollowState::Failed);
-                return false;
-            }
-
-            Debug::Logger::Info(
-                "NAVMESH 11B.8: route-scoped loading exhausted; falling back "
-                "to the full-map loader for correctness."
-            );
-
-            provider_.Shutdown();
-            fullMapFallbackAttempted_ = true;
-            currentInitTier_ = NavigationInitTier::FullMap;
-
-            const auto fullStarted =
-                std::chrono::steady_clock::now();
-
-            if (!provider_.Initialize(
-                    directory,
-                    mapId_,
-                    error))
-            {
-                Debug::Logger::Info(
-                    "NAVMESH 11B.8: full-map fallback initialization failed: " +
-                    error
-                );
-                SetState(GenericNavMeshFollowState::Failed);
-                return false;
-            }
-
-            const auto fullMs =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - fullStarted
-                ).count();
-
-            Debug::Logger::Info(
-                "NAVMESH 11B.8: full-map fallback initialization time=" +
-                std::to_string(fullMs) +
-                " ms; loadedTiles=" +
-                std::to_string(provider_.LoadedTiles())
-            );
-
-            return PlanFrom(
-                player,
-                tick,
-                false
-            );
+            // A prior controller may have left CTM active. Hold once while
+            // this follower owns planning; no corridor CTM is issued pending.
+            StopAtCurrentPosition(player);
+            return BeginInitializationTier(
+                player, NavigationInitTier::Route, error);
         }
 
         void Update(
@@ -5074,6 +5048,12 @@ namespace Navigation
             std::uint64_t tick)
         {
             RememberPlayerPosition(player);
+
+            if (initializationPending_ && !pausedForCombat_)
+            {
+                AdvanceInitialization(player, tick);
+                return;
+            }
 
             if (
                 state_ !=
@@ -5684,6 +5664,15 @@ namespace Navigation
                 return false;
             }
 
+            if (initializationPending_)
+            {
+                // No Detour query exists yet. Resume the same tile episode
+                // through Update rather than querying an incomplete mesh.
+                pausedForCombat_ = false;
+                SetState(GenericNavMeshFollowState::Planning);
+                return true;
+            }
+
             if (points_.size() >= 2)
             {
                 const std::size_t begin =
@@ -5833,6 +5822,22 @@ namespace Navigation
         bool FullMapFallbackAttempted() const
         {
             return fullMapFallbackAttempted_;
+        }
+
+        bool InitializationPending() const
+        {
+            return initializationPending_;
+        }
+
+        bool InitializationProgressing() const
+        {
+            return initializationPending_ && !pausedForCombat_;
+        }
+
+        bool HasUsablePath() const
+        {
+            return state_ == GenericNavMeshFollowState::Moving ||
+                state_ == GenericNavMeshFollowState::Arrived;
         }
 
         const char* StateName() const

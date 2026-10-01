@@ -2065,6 +2065,12 @@ namespace Bot
         bool Failed() const { return state_ == GrindModeState::Failed; }
         const GrindBagMonitor::Snapshot& Bags() const { return bags_; }
         const VendorController& Vendor() const { return vendor_; }
+        bool NavigationInitializationPending() const
+        {
+            return (approachNavigator_ && approachNavigator_->InitializationProgressing()) ||
+                (roamNavigator_ && roamNavigator_->InitializationProgressing()) ||
+                vendor_.NavigationInitializationPending();
+        }
         bool FirstAidActive() const { return firstAid_.IsActive(); }
         int FirstAidCraftsIssued() const { return firstAid_.CraftsIssued(); }
         int VendorTrips() const { return vendorTrips_; }
