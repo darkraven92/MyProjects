@@ -1,24 +1,33 @@
 #pragma once
 
 #include "DetourNavigationProvider.h"
+#include "EpisodeBadTransitionPolicy.h"
 #include "CorridorReplanHysteresisPolicy.h"
 #include "NavigationHazardMemory.h"
 #include "NavigationInitTelemetryPolicy.h"
+#include "RouteCostProbePolicy.h"
 #include "LongPathDiagnosticPolicy.h"
+#include "CompleteLongStagePolicy.h"
+#include "LocalRecoveryExhaustionPolicy.h"
+#include "SurfaceRecoveryEpisodePolicy.h"
 #include "SteeringSelectionPolicy.h"
+#include "LocalPortalSteeringPolicy.h"
 
 #include "../Bot/ClickToMoveController.h"
 #include "../Debug/Logger.h"
 #include "../Objects/PlayerSnapshot.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <sstream>
+#include <source_location>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Navigation
@@ -29,12 +38,30 @@ namespace Navigation
         Planning,
         Moving,
         Arrived,
-        Failed
+        Failed,
+        Planned
     };
 
     struct GenericNavMeshStartOptions
     {
         bool allowFullMapFallback = true;
+        bool planningOnly = false;
+        // Optional proven episode-local edge supplied by a strategic owner.
+        // Start still clears every other follower state and 13D.4 performs
+        // the actual alternative query; this is not a global blacklist.
+        DirectedPolyTransition initialAvoidedTransition{};
+    };
+
+    struct NavigationFailureEvidence
+    {
+        NavigationPlanFailure reason = NavigationPlanFailure::None;
+        NavPoint failurePosition{};
+        bool failurePositionKnown = false;
+        NavPoint lastSafePosition{};
+        bool lastSafePositionKnown = false;
+        DirectedPolyTransition failedTransition{};
+        DirectedPolyTransition learnedTransition{};
+        std::uint64_t corridorFingerprint = 0;
     };
 
     class GenericNavMeshPathFollower
@@ -135,6 +162,11 @@ namespace Navigation
         static constexpr float MaximumPathLength =
             2000.0f;
 
+        // Reserve 300 units for reconstruction/steering variation rather
+        // than targeting the generic single-stage limit itself.
+        static constexpr float CompleteLongStageLength = 1700.0f;
+        static constexpr int MaximumCompleteLongStages = 8;
+
         // Phase 13C.1 robust local navigation. Corridor steering CTM legs are
         // raycast against the currently loaded Detour surface before they are
         // issued.  When a direct segment is blocked, moveAlongSurface is used
@@ -218,6 +250,10 @@ namespace Navigation
         static constexpr std::uint64_t BlockedTransitionTtlTicks = 600;
         static constexpr std::size_t MaximumBlockedTransitions = 8;
 
+        // Planning-time terrain alternates are bounded inside one existing
+        // plan attempt; they do not refill the follower's replan budget.
+        static constexpr int MaximumTerrainAlternativeQueries = 2;
+
         // Phase 14G.3.1: exhausting both local escape sides is stronger
         // evidence than a normal single stall. Quarantine that transition and
         // allow a bounded last-safe/backtrack replan sequence before failing.
@@ -232,13 +268,13 @@ namespace Navigation
         // them through short ground-projected steps before normal CTM/recovery
         // is allowed to take over again.
         static constexpr float VerticalPortalGuardMinimumDelta =
-            6.0f;
+            TerrainTransitionPolicy::MinimumVerticalDelta;
 
         static constexpr float VerticalPortalGuardMaximumHorizontal =
-            14.0f;
+            TerrainTransitionPolicy::MaximumHorizontal;
 
         static constexpr float VerticalPortalGuardMinimumSlopeRatio =
-            0.75f;
+            TerrainTransitionPolicy::MinimumRiseRun;
 
         static constexpr float VerticalPortalProbeHorizontalExtent =
             1.25f;
@@ -371,6 +407,7 @@ namespace Navigation
         NavigationInitTier currentInitTier_ = NavigationInitTier::Route;
         NavigationPlanFailure lastPlanFailure_ = NavigationPlanFailure::None;
         GenericNavMeshStartOptions startOptions_{};
+        Objects::PlayerState planningOriginPlayer_{};
         std::string initializationDirectory_{};
         bool initializationPending_ = false;
         std::size_t initializationProgressLogBucket_ = 0;
@@ -390,6 +427,29 @@ namespace Navigation
             20.0f;
 
         std::string destinationLabel_{};
+        // Observational only: one ID per Start, retained through local replans
+        // and surface/backtrack recovery. Planning-only probes are not owners.
+        inline static std::atomic<std::uint64_t> nextIntentId_{0};
+        std::uint64_t intentId_=0, intentTick_=0, intentStarted_=0;
+        std::string intentOwner_{};
+        NavPoint intentDestination_{}, intentPosition_{};
+        bool intentReleased_=false;
+
+        void ReleaseIntent(const char* result)
+        {
+            if(intentId_==0 || intentReleased_) return;
+            intentReleased_=true;
+            std::ostringstream log;
+            log<<"MOVEMENT INTENT RELEASE intent="<<intentId_<<" owner={"<<intentOwner_
+               <<"} purpose={"<<destinationLabel_<<"} tick="<<intentTick_
+               <<" elapsedTicks="<<(intentTick_>=intentStarted_?intentTick_-intentStarted_:0)
+               <<" destination="<<intentDestination_.x<<","<<intentDestination_.y<<","<<intentDestination_.z
+               <<" position="<<intentPosition_.x<<","<<intentPosition_.y<<","<<intentPosition_.z
+               <<" result="<<result<<" reason="<<NavigationInitTelemetryPolicy::ReasonName(lastPlanFailure_)
+               <<" commands="<<commands_<<" replans="<<totalReplans_;
+            Debug::Logger::Info(log.str());
+        }
+        std::uint64_t lastCorpsePortalDiagnosticFingerprint_ = 0;
 
         std::vector<NavPoint> points_{};
 
@@ -423,6 +483,11 @@ namespace Navigation
 
         float plannedPathLength_ =
             0.0f;
+        NavPoint plannedProjectedDestination_{};
+
+        // Read-only probe evidence: a valid partial/staged prefix does not
+        // establish reachability of the requested destination.
+        bool planningOnlyReachedDestination_ = false;
 
         bool motionWatchdogInitialized_ =
             false;
@@ -470,6 +535,19 @@ namespace Navigation
         float surfaceRecoveryBestTargetDistance_ = 0.0f;
         std::uint64_t surfaceRecoveryProgressTick_ = 0;
         int surfaceRecoveryAttempts_ = 0;
+        std::uint64_t surfaceEpisodeSequence_ = 0;
+        std::uint64_t surfaceEpisodeId_ = 0;
+        std::uint64_t routeGeneration_ = 0;
+        int surfaceEpisodeRouteRefreshes_ = 0;
+        bool surfaceEpisodeActive_ = false;
+        bool surfaceEpisodeForwardPortal_ = false;
+        float surfaceEpisodeInitialDistance_ = 0.0f;
+        float surfaceRecoveryStartFinalDistance_ = 0.0f;
+        std::size_t surfaceRecoveryStartCorridor_ = 0;
+        std::uint64_t surfaceRecoveryStartPortal_ = 0;
+        std::uint64_t surfaceRecoveryProblemFrom_ = 0;
+        std::uint64_t surfaceRecoveryProblemTo_ = 0;
+        std::vector<NavPoint> surfaceEpisodeTargets_{};
 
         std::uint64_t lastPathFingerprint_ = 0;
         std::uint64_t lastSteeringLogTick_ = 0;
@@ -490,6 +568,16 @@ namespace Navigation
         std::uint64_t partialCorridorFingerprint_ = 0;
         float partialCorridorStartX_ = 0.0f;
         float partialCorridorStartY_ = 0.0f;
+
+        // destination_ remains the caller's final objective throughout.
+        bool completeLongStageActive_ = false;
+        bool completeLongStageNeedsFinalPlan_ = false;
+        int completeLongStageCount_ = 0;
+        NavPoint activeStageDestination_{};
+        NavPoint completeLongStageStart_{};
+        NavPoint completeLongStageCompletionPosition_{};
+        float completeLongStageStartFinalDistance_ = 0.0f;
+        std::chrono::steady_clock::time_point completeLongStageStarted_{};
 
         struct LastSafeNavState
         {
@@ -524,6 +612,9 @@ namespace Navigation
         };
 
         std::vector<BlockedTransition> blockedTransitions_{};
+        EpisodeBadTransitionPolicy badVerticalTransitions_{};
+        bool verticalTransitionAvoidancePending_ = false;
+        bool boundaryVerticalAvoidanceAttempted_ = false;
 
         // Phase 14I.0: last live player position is retained so every stall
         // path can feed the persistent spatial hazard learner without
@@ -698,6 +789,8 @@ namespace Navigation
                     return "Idle";
                 case GenericNavMeshFollowState::Planning:
                     return "Planning";
+                case GenericNavMeshFollowState::Planned:
+                    return "Planned";
                 case GenericNavMeshFollowState::Moving:
                     return "Moving";
                 case GenericNavMeshFollowState::Arrived:
@@ -715,6 +808,25 @@ namespace Navigation
             if (state_ == next)
             {
                 return;
+            }
+
+            if (next == GenericNavMeshFollowState::Failed)
+                lastPlanFailure_ = NavigationInitTelemetryPolicy::TerminalFailure(
+                    lastPlanFailure_);
+            if(next==GenericNavMeshFollowState::Failed || next==GenericNavMeshFollowState::Arrived)
+                ReleaseIntent(StateNameInternal(next));
+
+            if (next == GenericNavMeshFollowState::Failed &&
+                completeLongStageCount_ > 0)
+            {
+                Debug::Logger::Info(
+                    "NAV 14N.4.1 COMPLETE LONG STAGE FAILED"
+                    " reason=underlying_navigation_failure"
+                    " planReason=" + std::string(
+                        NavigationInitTelemetryPolicy::ReasonName(lastPlanFailure_)) +
+                    " stageIndex=" + std::to_string(completeLongStageCount_) +
+                    " stageActive=" +
+                    (completeLongStageActive_ ? "yes" : "no"));
             }
 
             Debug::Logger::Info(
@@ -745,9 +857,12 @@ namespace Navigation
                 };
         }
 
-        static void StopAtCurrentPosition(
+        void StopAtCurrentPosition(
             const Objects::PlayerState& player)
         {
+            if (!RouteCostProbePolicy::MayIssueMovement(
+                    startOptions_.planningOnly))
+                return;
             Bot::ClickToMoveController::
                 MoveTo(
                     player,
@@ -796,7 +911,9 @@ namespace Navigation
         {
             std::vector<std::uint64_t> result;
             const auto centers =
-                NavigationHazardMemory::Instance().HardCellCenters(mapId_);
+                startOptions_.planningOnly
+                    ? NavigationHazardMemory::Instance().HardCellCentersForProbe(mapId_)
+                    : NavigationHazardMemory::Instance().HardCellCenters(mapId_);
             if (centers.empty())
                 return result;
 
@@ -902,6 +1019,100 @@ namespace Navigation
                 return false;
 
             return true;
+        }
+
+        static const char* RecoveryQualityName(SurfaceRecoveryQuality quality)
+        {
+            switch(quality)
+            {
+                case SurfaceRecoveryQuality::Progress: return "progress";
+                case SurfaceRecoveryQuality::Neutral: return "neutral";
+                case SurfaceRecoveryQuality::Regression: return "regression";
+            }
+            return "neutral";
+        }
+
+        void BeginSurfaceRecoveryAttempt(const Objects::PlayerState& player,
+            const NavPoint& target, float finalDistance,
+            DirectedPolyTransition provenFailure = {})
+        {
+            if(!surfaceEpisodeActive_)
+            {
+                surfaceEpisodeActive_=true;
+                surfaceEpisodeId_=++surfaceEpisodeSequence_;
+                surfaceEpisodeInitialDistance_=finalDistance;
+                surfaceEpisodeRouteRefreshes_=0;
+                surfaceEpisodeForwardPortal_=false;
+                surfaceEpisodeTargets_.clear();
+            }
+            surfaceRecoveryStartFinalDistance_=finalDistance;
+            surfaceRecoveryStartCorridor_=pointIndex_+1;
+            surfaceRecoveryStartPortal_=pointIndex_<pointPolyRefs_.size()
+                ? pointPolyRefs_[pointIndex_] : 0;
+            surfaceRecoveryProblemFrom_=provenFailure.from;
+            surfaceRecoveryProblemTo_=provenFailure.to;
+            if (!provenFailure.Valid())
+                ResolveIssuedLocalTransition(player,surfaceRecoveryProblemFrom_,
+                    surfaceRecoveryProblemTo_);
+            surfaceEpisodeTargets_.push_back(target);
+            float clearance=0;
+            NavPoint wall{};
+            const bool known=provider_.FindWallDistance(
+                PlayerPoint(player),WallSteeringProbeRadius,clearance,wall);
+            Debug::Logger::Info("NAV RECOVERY EPISODE intent="+std::to_string(intentId_)+
+                " episode="+std::to_string(surfaceEpisodeId_)+
+                " attempt="+std::to_string(surfaceRecoveryAttempts_)+"/"+
+                    std::to_string(MaximumSurfaceRecoveryAttempts)+
+                " routeGeneration="+std::to_string(routeGeneration_)+
+                " routeRefreshes="+std::to_string(surfaceEpisodeRouteRefreshes_)+
+                " start=("+Float(player.x)+","+Float(player.y)+","+Float(player.z)+")"+
+                " target=("+Float(target.x)+","+Float(target.y)+","+Float(target.z)+")"+
+                " problemPoly="+HexPoly(surfaceRecoveryProblemFrom_)+
+                " problemNextPoly="+HexPoly(surfaceRecoveryProblemTo_)+
+                " corridorBefore="+std::to_string(surfaceRecoveryStartCorridor_)+
+                " portalBefore="+HexPoly(surfaceRecoveryStartPortal_)+
+                " destinationBefore="+Float(finalDistance)+
+                " clearanceBefore="+(known?Float(clearance):"unknown")+
+                " result=started");
+        }
+
+        bool RegisterVerifiedSurfaceTransitionFailure(
+            const Objects::PlayerState& player,std::uint64_t tick,const char* reason)
+        {
+            std::uint64_t issuedFrom=0,issuedTo=0,currentFrom=0,currentTo=0;
+            if(!ResolveIssuedLocalTransition(player,issuedFrom,issuedTo) ||
+                !CurrentCorridorTransition(currentFrom,currentTo) ||
+                issuedFrom!=currentFrom || issuedTo!=currentTo)
+            {
+                Debug::Logger::Info("NAV RECOVERY ESCALATE intent="+
+                    std::to_string(intentId_)+" episode="+
+                    std::to_string(surfaceEpisodeId_)+
+                    " decision=transition_unresolved reason=no_verified_local_directed_pair");
+                return false;
+            }
+            return RegisterCurrentTransitionFailure(tick,reason);
+        }
+
+        DirectedPolyTransition VerticalCandidateTransition(
+            std::size_t candidateIndex) const
+        {
+            if (candidateIndex >= pointPolyRefs_.size())
+                return {};
+            const std::uint64_t to = pointPolyRefs_[candidateIndex];
+            if (to == 0)
+                return {};
+
+            DirectedPolyTransition result{};
+            int occurrences = 0;
+            for (std::size_t i = 0; i < corridorPolys_.size(); ++i)
+            {
+                if (corridorPolys_[i] != to)
+                    continue;
+                ++occurrences;
+                result = {i > 0 ? corridorPolys_[i - 1] : pathStartPoly_, to};
+            }
+            return occurrences == 1 && result.Valid()
+                ? result : DirectedPolyTransition{};
         }
 
         bool RegisterCurrentTransitionFailure(
@@ -1182,20 +1393,34 @@ namespace Navigation
         void RegisterFailedCorridor(
             const Objects::PlayerState& player,
             const char* reason,
-            bool ordinarySteeringStalled)
+            bool ordinarySteeringStalled,
+            DirectedPolyTransition provenSteeringFailure = {})
         {
             if (lastPathFingerprint_ == 0)
                 return;
 
             std::uint64_t fromPoly = 0;
             std::uint64_t toPoly = 0;
-            const bool transitionKnown = ordinarySteeringStalled &&
+            const bool issuedKnown = ordinarySteeringStalled &&
                 ResolveIssuedLocalTransition(player, fromPoly, toPoly);
+            if (provenSteeringFailure.Valid())
+            {
+                fromPoly = provenSteeringFailure.from;
+                toPoly = provenSteeringFailure.to;
+            }
+            const bool transitionKnown = issuedKnown ||
+                provenSteeringFailure.Valid();
             const CorridorFailureRecord previous = failedCorridor_;
             CorridorReplanHysteresisPolicy::RecordFailure(
                 failedCorridor_, lastPathFingerprint_, player.x, player.y,
                 RecoveryResetProgressDistance,
-                transitionKnown, fromPoly, toPoly);
+                transitionKnown, fromPoly, toPoly,
+                !surfaceEpisodeActive_ ||
+                    SurfaceRecoveryEpisodePolicy::Assess(
+                        surfaceEpisodeInitialDistance_,Distance2D(player.x,player.y,
+                            destination_.x,destination_.y),
+                        RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_)==
+                        SurfaceRecoveryQuality::Progress);
             if (!previous.active ||
                 previous.fingerprint != failedCorridor_.fingerprint ||
                 previous.anchorX != failedCorridor_.anchorX ||
@@ -1447,6 +1672,8 @@ namespace Navigation
             surfaceRecoveryStartX_ = player.x;
             surfaceRecoveryStartY_ = player.y;
             surfaceRecoveryTarget_ = best;
+            BeginSurfaceRecoveryAttempt(player,best,Distance2D(
+                player.x,player.y,destination_.x,destination_.y));
             surfaceRecoveryBestTargetDistance_ = Distance2D(
                 player.x, player.y, best.x, best.y);
             surfaceRecoveryProgressTick_ = tick;
@@ -1466,8 +1693,12 @@ namespace Navigation
             const Objects::PlayerState& player,
             std::uint64_t tick,
             const NavPoint& toward,
-            const char* reason)
+            const char* reason,
+            DirectedPolyTransition provenSteeringFailure = {})
         {
+            if (!RouteCostProbePolicy::MayIssueMovement(
+                    startOptions_.planningOnly))
+                return false;
             if (surfaceRecoveryAttempts_ >= MaximumSurfaceRecoveryAttempts)
                 return false;
 
@@ -1494,6 +1725,7 @@ namespace Navigation
                 player.x, player.y, toward.x, toward.y);
 
             bool found = false;
+            bool repeatedLocalTarget = false;
             float bestScore = -1.0e30f;
             NavPoint best{};
 
@@ -1546,6 +1778,20 @@ namespace Navigation
                         continue;
                     }
 
+                    const bool repeated=std::any_of(surfaceEpisodeTargets_.begin(),
+                        surfaceEpisodeTargets_.end(),[&](const NavPoint& previous)
+                        {
+                            return SurfaceRecoveryEpisodePolicy::SameLocalTarget(
+                                previous.x,previous.y,reached.x,reached.y,
+                                SurfaceRecoveryArrivalDistance);
+                        });
+                    if(repeated && surfaceEpisodeActive_ &&
+                        SurfaceRecoveryEpisodePolicy::Assess(
+                            surfaceEpisodeInitialDistance_,currentFinalDistance,
+                            RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_)!=
+                            SurfaceRecoveryQuality::Progress)
+                    { repeatedLocalTarget=true; continue; }
+
                     const float score =
                         finalGain * 3.0f +
                         cornerGain * 1.5f +
@@ -1563,6 +1809,16 @@ namespace Navigation
 
             if (!found)
             {
+                if(repeatedLocalTarget)
+                {
+                    RegisterVerifiedSurfaceTransitionFailure(player,tick,
+                        "repeated surface recovery target without route progress");
+                    surfaceRecoveryAttempts_=MaximumSurfaceRecoveryAttempts;
+                    Debug::Logger::Info("NAV RECOVERY ESCALATE intent="+
+                        std::to_string(intentId_)+" episode="+
+                        std::to_string(surfaceEpisodeId_)+
+                        " decision=backtrack_or_fail reason=no_distinct_connected_recovery_target");
+                }
                 Debug::Logger::Info(
                     std::string("NAVMESH 13C.1: SURFACE RECOVERY unavailable reason=") +
                     reason);
@@ -1579,13 +1835,30 @@ namespace Navigation
                 return false;
             }
 
-            RegisterFailedCorridor(player, reason, false);
+            if(surfaceEpisodeActive_ &&
+                SurfaceRecoveryEpisodePolicy::Assess(
+                    surfaceEpisodeInitialDistance_,currentFinalDistance,
+                    RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_)!=
+                    SurfaceRecoveryQuality::Progress)
+            {
+                const bool blocked=RegisterVerifiedSurfaceTransitionFailure(
+                    player,tick,"repeated surface recovery without forward route progress");
+                if(blocked)
+                    Debug::Logger::Info("NAV RECOVERY ESCALATE intent="+
+                        std::to_string(intentId_)+" episode="+
+                        std::to_string(surfaceEpisodeId_)+
+                        " decision=block_transition reason=bounded_directed_failure_evidence");
+            }
+            RegisterFailedCorridor(player, reason, false,
+                provenSteeringFailure);
             ++commands_;
             ++surfaceRecoveryAttempts_;
             surfaceRecoveryActive_ = true;
             surfaceRecoveryStartX_ = player.x;
             surfaceRecoveryStartY_ = player.y;
             surfaceRecoveryTarget_ = best;
+            BeginSurfaceRecoveryAttempt(player,best,currentFinalDistance,
+                provenSteeringFailure);
             surfaceRecoveryBestTargetDistance_ = Distance2D(
                 player.x, player.y, best.x, best.y);
             surfaceRecoveryProgressTick_ = tick;
@@ -1627,11 +1900,45 @@ namespace Navigation
                     player.y,
                     surfaceRecoveryStartX_,
                     surfaceRecoveryStartY_);
+                const float after=Distance2D(player.x,player.y,
+                    destination_.x,destination_.y);
+                const auto quality=SurfaceRecoveryEpisodePolicy::Assess(
+                    surfaceEpisodeInitialDistance_,after,
+                    RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_);
+                float clearance=0;
+                NavPoint wall{};
+                const bool known=provider_.FindWallDistance(
+                    PlayerPoint(player),WallSteeringProbeRadius,clearance,wall);
+                Debug::Logger::Info("NAV RECOVERY EPISODE intent="+
+                    std::to_string(intentId_)+" episode="+
+                    std::to_string(surfaceEpisodeId_)+" attempt="+
+                    std::to_string(surfaceRecoveryAttempts_)+
+                    " routeGeneration="+std::to_string(routeGeneration_)+
+                    " routeRefreshes="+std::to_string(surfaceEpisodeRouteRefreshes_)+
+                    " end=("+Float(player.x)+","+Float(player.y)+","+Float(player.z)+")"+
+                    " destinationBefore="+Float(surfaceRecoveryStartFinalDistance_)+
+                    " destinationAfter="+Float(after)+
+                    " progress="+Float(surfaceRecoveryStartFinalDistance_-after)+
+                    " displacement="+Float(moved)+
+                    " corridorBefore="+std::to_string(surfaceRecoveryStartCorridor_)+
+                    " corridorAfter="+std::to_string(pointIndex_+1)+
+                    " portalBefore="+HexPoly(surfaceRecoveryStartPortal_)+
+                    " portalAfter="+HexPoly(pointIndex_<pointPolyRefs_.size()
+                        ?pointPolyRefs_[pointIndex_]:0)+
+                    " problemPoly="+HexPoly(surfaceRecoveryProblemFrom_)+
+                    " problemNextPoly="+HexPoly(surfaceRecoveryProblemTo_)+
+                    " clearanceAfter="+(known?Float(clearance):"unknown")+
+                    " result="+RecoveryQualityName(quality));
+                if(quality!=SurfaceRecoveryQuality::Progress)
+                    Debug::Logger::Info("NAV RECOVERY RESET intent="+
+                        std::to_string(intentId_)+" episode="+
+                        std::to_string(surfaceEpisodeId_)+
+                        " earnedProgress=no reason=target_reached_without_verified_forward_route");
 
                 Debug::Logger::Info(
-                    "NAVMESH 13C.1: SURFACE RECOVERY COMPLETE moved=" +
-                    Float(moved) +
-                    " -> full route refresh from connected live surface.");
+                    "NAVMESH 13C.1: SURFACE RECOVERY TARGET REACHED moved=" +
+                    Float(moved) + " quality="+RecoveryQualityName(quality)+
+                    " -> route refresh; episode budget retained until verified corridor progress.");
 
                 surfaceRecoveryActive_ = false;
                 ResetMotionWatchdog(player, tick);
@@ -1650,6 +1957,18 @@ namespace Navigation
             if (tick >= surfaceRecoveryProgressTick_ &&
                 tick - surfaceRecoveryProgressTick_ >= SurfaceRecoveryStallTicks)
             {
+                const float after=Distance2D(player.x,player.y,
+                    destination_.x,destination_.y);
+                Debug::Logger::Info("NAV RECOVERY EPISODE intent="+
+                    std::to_string(intentId_)+" episode="+
+                    std::to_string(surfaceEpisodeId_)+" attempt="+
+                    std::to_string(surfaceRecoveryAttempts_)+
+                    " destinationBefore="+Float(surfaceRecoveryStartFinalDistance_)+
+                    " destinationAfter="+Float(after)+
+                    " progress="+Float(surfaceRecoveryStartFinalDistance_-after)+
+                    " displacement="+Float(Distance2D(player.x,player.y,
+                        surfaceRecoveryStartX_,surfaceRecoveryStartY_))+
+                    " result=stalled");
                 Debug::Logger::Info(
                     "NAVMESH 13C.1: SURFACE RECOVERY STALLED remaining=" +
                     Float(targetDistance) +
@@ -1843,6 +2162,42 @@ namespace Navigation
             float length,
             bool replan) const
         {
+            if (!replan &&
+                destinationLabel_.find("death recovery corpse route") !=
+                    std::string::npos)
+            {
+                std::ostringstream prefixPolys;
+                const std::size_t polyCount =
+                    std::min<std::size_t>(path.corridorPolys.size(), 12);
+                for (std::size_t i = 0; i < polyCount; ++i)
+                {
+                    if (i != 0) prefixPolys << ',';
+                    prefixPolys << HexPoly(path.corridorPolys[i]);
+                }
+                std::ostringstream prefixPoints;
+                const std::size_t pointCount =
+                    std::min<std::size_t>(path.points.size(), 8);
+                for (std::size_t i = 0; i < pointCount; ++i)
+                {
+                    if (i != 0) prefixPoints << ';';
+                    prefixPoints << '(' << Float(path.points[i].x) << ','
+                                 << Float(path.points[i].y) << ','
+                                 << Float(path.points[i].z) << ')';
+                }
+                Debug::Logger::Info(
+                    "NAV 15B.0 CORPSE ROUTE: mode=" +
+                    std::string(NavigationInitTelemetryPolicy::TierName(currentInitTier_)) +
+                    " destination=(" + Float(destination_.x) + "," +
+                    Float(destination_.y) + "," + Float(destination_.z) + ")" +
+                    " pathLength=" + Float(length) +
+                    " corridorFingerprint=" +
+                    std::to_string(FingerprintPath(path.points)) +
+                    " polygonCount=" + std::to_string(path.polygonCount) +
+                    " startPoly=" + HexPoly(path.startPoly) +
+                    " endPoly=" + HexPoly(path.endPoly) +
+                    " prefixPolys=" + prefixPolys.str() +
+                    " prefixPoints=" + prefixPoints.str());
+            }
             Debug::Logger::Info(
                 "================================"
             );
@@ -1923,8 +2278,43 @@ namespace Navigation
             std::uint64_t tick,
             float finalDistance)
         {
+            // Local escape/backtrack completion is not destination progress.
+            // Preserve episode counters and bad-transition evidence unless the
+            // same progress condition used by ordinary following is satisfied.
+            const auto quality=SurfaceRecoveryEpisodePolicy::Assess(
+                surfaceEpisodeInitialDistance_,finalDistance,
+                RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_);
+            const bool earned=surfaceEpisodeActive_
+                ? quality==SurfaceRecoveryQuality::Progress
+                : LocalRecoveryExhaustionPolicy::EarnedProgressReset(
+                    finalDistance,hardStallBestFinalDistance_,RecoveryResetProgressDistance);
+            if (!earned)
+            {
+                ResetMotionWatchdog(player, tick);
+                if(surfaceEpisodeActive_)
+                    Debug::Logger::Info("NAV RECOVERY RESET intent="+
+                        std::to_string(intentId_)+" episode="+
+                        std::to_string(surfaceEpisodeId_)+
+                        " earnedProgress=no reason=forward_portal_and_destination_progress_required");
+                Debug::Logger::Info(
+                    "NAV STUCK RECOVERY action=refresh_position budgetReset=no reason="+
+                    std::string(surfaceEpisodeActive_
+                        ?"no_verified_corridor_progress":"no_destination_progress"));
+                return;
+            }
             NavigationHazardMemory::Instance().ObserveTraversalSuccess(
                 mapId_, PlayerPoint(player), tick);
+            if(surfaceEpisodeActive_)
+            {
+                Debug::Logger::Info("NAV RECOVERY RESET intent="+
+                    std::to_string(intentId_)+" episode="+
+                    std::to_string(surfaceEpisodeId_)+
+                    " earnedProgress=yes reason=ordinary_portal_crossed_and_destination_gain");
+                surfaceEpisodeActive_=false;
+                surfaceEpisodeTargets_.clear();
+                surfaceEpisodeForwardPortal_=false;
+                surfaceEpisodeRouteRefreshes_=0;
+            }
             hardStallEpisodes_ = 0;
             hardStallBestFinalDistance_ = finalDistance;
 
@@ -1938,12 +2328,18 @@ namespace Navigation
             }
 
             replans_ = 0;
+            badVerticalTransitions_.ClearStallEvidence();
+            boundaryVerticalAvoidanceAttempted_ = false;
             escapeProbeActive_ = false;
             escapeProbeSide_ = 0;
             escapeProbeIssuedTick_ = 0;
             escapeExhaustionRecoveries_ = 0;
             surfaceRecoveryActive_ = false;
             surfaceRecoveryAttempts_ = 0;
+            surfaceEpisodeActive_ = false;
+            surfaceEpisodeTargets_.clear();
+            surfaceEpisodeForwardPortal_ = false;
+            surfaceEpisodeRouteRefreshes_ = 0;
             surfaceRecoveryProgressTick_ = 0;
             repeatedCorridorPlans_ = 0;
             finalApproachActive_ = false;
@@ -1958,29 +2354,11 @@ namespace Navigation
             float& horizontal,
             float& vertical) const
         {
-            horizontal = Distance2D(
-                player.x,
-                player.y,
-                point.x,
-                point.y
-            );
-
-            vertical = std::fabs(
-                point.z - player.z
-            );
-
-            if (
-                !std::isfinite(horizontal) ||
-                !std::isfinite(vertical) ||
-                horizontal < 0.10f)
-            {
-                return false;
-            }
-
-            return
-                vertical >= VerticalPortalGuardMinimumDelta &&
-                horizontal <= VerticalPortalGuardMaximumHorizontal &&
-                vertical / horizontal >= VerticalPortalGuardMinimumSlopeRatio;
+            const auto geometry = TerrainTransitionPolicy::Assess(
+                player, point);
+            horizontal = geometry.horizontal;
+            vertical = geometry.vertical;
+            return geometry.rejected;
         }
 
         bool ValidateVerticalBarrierBypassRoute(
@@ -2688,7 +3066,8 @@ namespace Navigation
             std::uint64_t tick,
             const NavPoint& point,
             float horizontal,
-            float vertical)
+            float vertical,
+            std::size_t candidateIndex)
         {
             const float currentFinalDistance = Distance2D(
                 player.x,
@@ -2742,6 +3121,7 @@ namespace Navigation
                 verticalPortalRecoveryAttempts_ = 0;
                 verticalPortalRecoveryBudgetBestFinalDistance_ =
                     currentFinalDistance;
+                badVerticalTransitions_.ClearObservation();
             }
 
             Debug::Logger::Info(
@@ -2753,6 +3133,37 @@ namespace Navigation
                 Float(horizontal) + " vertical=" + Float(vertical) +
                 " ratio=" + Float(vertical / horizontal)
             );
+
+            const DirectedPolyTransition portalEdge =
+                VerticalCandidateTransition(candidateIndex);
+            if ((verticalPortalRecoveryAttempts_ >=
+                     MaximumVerticalPortalRecoveryAttempts ||
+                 verticalPortalRecoveryTotalAttempts_ >=
+                     MaximumVerticalPortalRecoveryTotalAttempts) &&
+                badVerticalTransitions_.ExhaustionProvesEdge(
+                    portalEdge, verticalPortalRecoveryAttempts_,
+                    MaximumVerticalPortalRecoveryAttempts) &&
+                badVerticalTransitions_.Learn(portalEdge))
+            {
+                verticalTransitionAvoidancePending_ = true;
+                Debug::Logger::Info(
+                    "NAV 15B.1 TRANSITION LEARNED fromPoly=" +
+                    HexPoly(portalEdge.from) + " toPoly=" +
+                    HexPoly(portalEdge.to) +
+                    " reason=vertical_recovery_exhausted" +
+                    " stalledObservations=" + std::to_string(
+                        badVerticalTransitions_.StalledObservations()) +
+                    " verticalAttempts=" + std::to_string(
+                        verticalPortalRecoveryAttempts_) +
+                    " corridorFingerprint=" +
+                    std::to_string(lastPathFingerprint_) +
+                    " occurrence=" + std::to_string(
+                        badVerticalTransitions_.ConsecutiveIssued()) +
+                    " avoidedTransitions=" + std::to_string(
+                        badVerticalTransitions_.Size()));
+                StopAtCurrentPosition(player);
+                return true; // Replan on the next Update, never recursively here.
+            }
 
             if (
                 verticalPortalRecoveryTotalAttempts_ >=
@@ -2987,6 +3398,98 @@ namespace Navigation
                 return false;
             }
 
+            if (destinationLabel_.find("death recovery corpse route") !=
+                    std::string::npos &&
+                (resetEpisode ||
+                 lastCorpsePortalDiagnosticFingerprint_ != lastPathFingerprint_))
+            {
+                lastCorpsePortalDiagnosticFingerprint_ = lastPathFingerprint_;
+                NavPoint projectedPlayer{};
+                NavPoint projectedPortal{};
+                NavPoint projectedRecovery{};
+                std::uint64_t playerNearestPoly = 0;
+                std::uint64_t portalNearestPoly = 0;
+                std::uint64_t recoveryNearestPoly = 0;
+                const bool playerProjectionKnown = provider_.ProjectToNavMesh(
+                    PlayerPoint(player), projectedPlayer, playerNearestPoly);
+                const bool portalProjectionKnown = provider_.ProjectToNavMesh(
+                    point, projectedPortal, portalNearestPoly);
+                const bool recoveryProjectionKnown = provider_.ProjectToNavMesh(
+                    best, projectedRecovery, recoveryNearestPoly);
+                const std::uint64_t candidatePoly =
+                    candidateIndex < pointPolyRefs_.size()
+                        ? pointPolyRefs_[candidateIndex] : 0;
+                std::uint64_t nextCorridorPoly = 0;
+                int playerPolyOccurrences = 0;
+                std::uint64_t candidatePredecessorPoly = 0;
+                int candidatePolyOccurrences = 0;
+                for (std::size_t i = 0; i < corridorPolys_.size(); ++i)
+                {
+                    if (playerProjectionKnown &&
+                        corridorPolys_[i] == playerNearestPoly)
+                    {
+                        ++playerPolyOccurrences;
+                        nextCorridorPoly = i + 1 < corridorPolys_.size()
+                            ? corridorPolys_[i + 1] : 0;
+                    }
+                    if (corridorPolys_[i] != candidatePoly || candidatePoly == 0)
+                        continue;
+                    ++candidatePolyOccurrences;
+                    candidatePredecessorPoly = i > 0 ? corridorPolys_[i - 1] : 0;
+                }
+                if (candidatePolyOccurrences != 1)
+                    candidatePredecessorPoly = 0;
+                if (playerPolyOccurrences != 1)
+                    nextCorridorPoly = 0;
+                float remainingStraightLength = 0.0f;
+                for (std::size_t i = candidateIndex + 1; i < points_.size(); ++i)
+                {
+                    const float dx = points_[i].x - points_[i - 1].x;
+                    const float dy = points_[i].y - points_[i - 1].y;
+                    const float dz = points_[i].z - points_[i - 1].z;
+                    remainingStraightLength += std::sqrt(dx * dx + dy * dy + dz * dz);
+                }
+                const NavPoint currentPoint = pointIndex_ < points_.size()
+                    ? points_[pointIndex_] : NavPoint{};
+                Debug::Logger::Info(
+                    "NAV 15B.0 CORPSE VERTICAL PORTAL: mode=" +
+                    std::string(cliffDetourTarget ? "cliff-detour" :
+                        (bypassTarget ? "bypass" : "forward")) +
+                    " corridorFingerprint=" + std::to_string(lastPathFingerprint_) +
+                    " destination=(" + Float(destination_.x) + "," +
+                    Float(destination_.y) + "," + Float(destination_.z) + ")" +
+                    " player=(" + Float(player.x) + "," + Float(player.y) +
+                    "," + Float(player.z) + ")" +
+                    " playerNearestPoly=" + HexPoly(playerNearestPoly) +
+                    " nextCorridorPoly=" + HexPoly(nextCorridorPoly) +
+                    " playerPolyOnCorridor=" +
+                    (playerPolyOccurrences == 1 ? "yes" : "no") +
+                    " playerProjectionKnown=" + (playerProjectionKnown ? "yes" : "no") +
+                    " playerProjected=(" + Float(projectedPlayer.x) + "," +
+                    Float(projectedPlayer.y) + "," + Float(projectedPlayer.z) + ")" +
+                    " pointIndex=" + std::to_string(pointIndex_) +
+                    " candidateIndex=" + std::to_string(candidateIndex) +
+                    " candidatePredecessorPoly=" + HexPoly(candidatePredecessorPoly) +
+                    " candidatePoly=" + HexPoly(candidatePoly) +
+                    " currentPoint=(" + Float(currentPoint.x) + "," +
+                    Float(currentPoint.y) + "," + Float(currentPoint.z) + ")" +
+                    " portal=(" + Float(point.x) + "," + Float(point.y) +
+                    "," + Float(point.z) + ")" +
+                    " portalNearestPoly=" + HexPoly(portalNearestPoly) +
+                    " portalProjectionKnown=" + (portalProjectionKnown ? "yes" : "no") +
+                    " portalProjected=(" + Float(projectedPortal.x) + "," +
+                    Float(projectedPortal.y) + "," + Float(projectedPortal.z) + ")" +
+                    " recoveryTarget=(" + Float(best.x) + "," +
+                    Float(best.y) + "," + Float(best.z) + ")" +
+                    " recoveryNearestPoly=" + HexPoly(recoveryNearestPoly) +
+                    " recoveryProjectionKnown=" + (recoveryProjectionKnown ? "yes" : "no") +
+                    " recoveryProjected=(" + Float(projectedRecovery.x) + "," +
+                    Float(projectedRecovery.y) + "," + Float(projectedRecovery.z) + ")" +
+                    " delta2D=" + Float(horizontal) +
+                    " deltaZ=" + Float(point.z - player.z) +
+                    " remainingStraightLength=" + Float(remainingStraightLength));
+            }
+
             ++verticalPortalRecoveryAttempts_;
             ++verticalPortalRecoveryTotalAttempts_;
 
@@ -3041,6 +3544,7 @@ namespace Navigation
                         tick,
                         "initial"))
                 {
+                    badVerticalTransitions_.ObserveDispatch(portalEdge, false);
                     Debug::Logger::Info(
                         "NAVMESH 12B.14: bypass local route could not issue "
                         "its first CTM point; returning control to normal recovery."
@@ -3052,6 +3556,7 @@ namespace Navigation
                     return false;
                 }
 
+                badVerticalTransitions_.ObserveDispatch(portalEdge, true);
                 return true;
             }
 
@@ -3065,6 +3570,7 @@ namespace Navigation
                     best.z,
                     0.50f))
             {
+                badVerticalTransitions_.ObserveDispatch(portalEdge, false);
                 Debug::Logger::Info(
                     "NAVMESH 12B.10: projected recovery CTM was rejected; "
                     "returning control to normal CTM/recovery."
@@ -3073,6 +3579,7 @@ namespace Navigation
                 return false;
             }
 
+            badVerticalTransitions_.ObserveDispatch(portalEdge, true);
             ++commands_;
             lastCommandTick_ = tick;
             lastProgressTick_ = tick;
@@ -3144,7 +3651,8 @@ namespace Navigation
                     if (!PlanFrom(
                             player,
                             tick,
-                            true))
+                            true,
+                            "vertical_bypass_refresh"))
                     {
                         SetState(GenericNavMeshFollowState::Failed);
                         StopAtCurrentPosition(player);
@@ -3251,8 +3759,17 @@ namespace Navigation
                     verticalPortalRecoveryBypassActive_ = false;
                     verticalPortalBypassRoutePoints_.clear();
                     verticalPortalBypassRouteIndex_ = 0;
+                    const DirectedPolyTransition stalledEdge =
+                        badVerticalTransitions_.ObserveStalled();
+                    if (stalledEdge.Valid())
+                        Debug::Logger::Info(
+                            "NAV 15B.1 VERTICAL STALL fromPoly=" +
+                            HexPoly(stalledEdge.from) + " toPoly=" +
+                            HexPoly(stalledEdge.to) +
+                            " stalledObservations=" + std::to_string(
+                                badVerticalTransitions_.StalledObservations()));
                     ResetMotionWatchdog(player, tick);
-                    Replan(player, tick);
+                    Replan(player, tick, stalledEdge.Valid());
                     return true;
                 }
 
@@ -3291,7 +3808,8 @@ namespace Navigation
                 if (!PlanFrom(
                         player,
                         tick,
-                        true))
+                        true,
+                        "vertical_recovery_refresh"))
                 {
                     SetState(GenericNavMeshFollowState::Failed);
                     StopAtCurrentPosition(player);
@@ -3312,8 +3830,17 @@ namespace Navigation
 
                 verticalPortalRecoveryActive_ = false;
                 verticalPortalRecoveryBypassActive_ = false;
+                const DirectedPolyTransition stalledEdge =
+                    badVerticalTransitions_.ObserveStalled();
+                if (stalledEdge.Valid())
+                    Debug::Logger::Info(
+                        "NAV 15B.1 VERTICAL STALL fromPoly=" +
+                        HexPoly(stalledEdge.from) + " toPoly=" +
+                        HexPoly(stalledEdge.to) +
+                        " stalledObservations=" + std::to_string(
+                            badVerticalTransitions_.StalledObservations()));
                 ResetMotionWatchdog(player, tick);
-                Replan(player, tick);
+                Replan(player, tick, stalledEdge.Valid());
                 return true;
             }
 
@@ -3572,9 +4099,7 @@ namespace Navigation
 
                 escapeProbeActive_ = false;
                 escapeProbeSide_ = 0;
-                hardStallEpisodes_ = 0;
-                hardStallBestFinalDistance_ = finalDistance;
-                ResetMotionWatchdog(player, tick);
+                ResetEscalatingRecovery(player, tick, finalDistance);
                 Replan(player, tick);
                 return true;
             }
@@ -3687,6 +4212,145 @@ namespace Navigation
                 Float(target.y) + "," + Float(target.z) + ")");
         }
 
+        DirectedPolyTransition AttributeFailedSteering(
+            const Objects::PlayerState& player, std::size_t fromIndex,
+            std::size_t candidateIndex) const
+        {
+            DirectedPolyTransition proven{};
+            DirectedPolyTransition candidateEdge{};
+            NavSurfaceRayTrace trace{};
+            float fraction = 0.0f;
+            NavPoint reached{};
+            bool adjacent = false;
+            const char* attribution = "unknown";
+            const std::uint64_t candidatePoly =
+                candidateIndex < pointPolyRefs_.size()
+                    ? pointPolyRefs_[candidateIndex] : 0;
+            if (candidateIndex < points_.size() && candidatePoly &&
+                provider_.IsSurfaceSegmentReachable(PlayerPoint(player),
+                    points_[candidateIndex], fraction, reached, &trace) &&
+                trace.complete && fraction <
+                    SteeringSelectionPolicy::MinimumRaycastFraction)
+            {
+                candidateEdge = LocalPortalSteeringPolicy::CandidateEdge(
+                    corridorPolys_, trace.lastVisitedPoly, candidatePoly);
+                NavPoint portalA{}, portalB{};
+                adjacent = candidateEdge.Valid() &&
+                    provider_.GetDirectedPortal(candidateEdge.from,
+                        candidateEdge.to, portalA, portalB);
+                if (adjacent)
+                {
+                    proven = LocalPortalSteeringPolicy::AttributeRayFailure(
+                        corridorPolys_, trace.startPoly, candidatePoly,
+                        trace.lastVisitedPoly,
+                        {reached.x, reached.y, reached.z},
+                        {portalA.x, portalA.y, portalA.z},
+                        {portalB.x, portalB.y, portalB.z},
+                        SteeringSelectionPolicy::MinimumWallClearance);
+                    attribution = proven.Valid() ? "ray_hit_at_directed_portal"
+                        : "ray_hit_not_at_proven_portal";
+                }
+                else attribution = "directed_portal_unavailable";
+            }
+            else attribution = "no_complete_local_blocked_ray";
+            Debug::Logger::Info(
+                "STEERING FAILURE ATTRIBUTION map="+std::to_string(mapId_)+
+                " position=("+Float(player.x)+","+Float(player.y)+","+
+                    Float(player.z)+")"+
+                " corridorFingerprint="+
+                std::to_string(lastPathFingerprint_)+
+                " fromIndex="+std::to_string(fromIndex)+
+                " candidateIndex="+std::to_string(candidateIndex)+
+                " playerPoly="+HexPoly(trace.startPoly)+
+                " candidatePoly="+HexPoly(candidatePoly)+
+                " hitPoly="+HexPoly(trace.lastVisitedPoly)+
+                " fromPoly="+HexPoly(proven.from)+
+                " toPoly="+HexPoly(proven.to)+
+                " adjacent="+(adjacent?"yes":"no")+
+                " transitionKnown="+(proven.Valid()?"yes":"no")+
+                " reason="+attribution);
+            return proven;
+        }
+
+        bool IssueVerifiedPortalStage(const Objects::PlayerState& player,
+            std::uint64_t tick, DirectedPolyTransition edge)
+        {
+            if (!edge.Valid() || startOptions_.planningOnly ||
+                surfaceRecoveryAttempts_ >= MaximumSurfaceRecoveryAttempts)
+                return false;
+            NavPoint a{}, b{}, stage{};
+            if (!provider_.GetDirectedPortal(edge.from,edge.to,a,b) ||
+                !provider_.ProjectGroundNear(
+                    {(a.x+b.x)*0.5f,(a.y+b.y)*0.5f,(a.z+b.z)*0.5f},
+                    1.5f,3.0f,stage))
+                return false;
+            NavPoint projected{};
+            std::uint64_t stagePoly=0;
+            if (!provider_.ProjectToNavMesh(stage,projected,stagePoly) ||
+                (stagePoly!=edge.from && stagePoly!=edge.to))
+                return false;
+            float horizontal=0.0f, vertical=0.0f;
+            if (IsUnsafeVerticalPortal(player,stage,horizontal,vertical) ||
+                vertical>SurfaceRecoveryMaximumVerticalDelta ||
+                Distance2D(player.x,player.y,stage.x,stage.y)>
+                    SurfaceRecoveryMaximumStep)
+                return false;
+            float fraction=0.0f;
+            NavPoint reached{};
+            const bool rayKnown=provider_.IsSurfaceSegmentReachable(
+                PlayerPoint(player),stage,fraction,reached);
+            float clearance=0.0f;
+            NavPoint wall{};
+            if (!provider_.FindWallDistance(stage,WallSteeringProbeRadius,
+                    clearance,wall) ||
+                !LocalPortalSteeringPolicy::AssessStage(
+                    {player.x,player.y,player.z},
+                    {a.x,a.y,a.z},{b.x,b.y,b.z},
+                    {stage.x,stage.y,stage.z},clearance,rayKnown,fraction,
+                    SteeringSelectionPolicy::MinimumWallClearance,
+                    SurfaceRecoveryMinimumStep).allowed)
+                return false;
+            const float finalDistance=Distance2D(player.x,player.y,
+                destination_.x,destination_.y);
+            if (surfaceEpisodeActive_ &&
+                SurfaceRecoveryEpisodePolicy::Assess(
+                    surfaceEpisodeInitialDistance_,finalDistance,
+                    RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_)!=
+                    SurfaceRecoveryQuality::Progress &&
+                std::any_of(surfaceEpisodeTargets_.begin(),
+                    surfaceEpisodeTargets_.end(),[&](const NavPoint& previous)
+                    {
+                        return SurfaceRecoveryEpisodePolicy::SameLocalTarget(
+                            previous.x,previous.y,stage.x,stage.y,
+                            SurfaceRecoveryArrivalDistance);
+                    }))
+                return false;
+            if (!Bot::ClickToMoveController::MoveTo(player,
+                    stage.x,stage.y,stage.z,CtmPrecision))
+                return false;
+            RegisterFailedCorridor(player,
+                "no clearance-safe corridor steering target",false,edge);
+            ++commands_;
+            ++surfaceRecoveryAttempts_;
+            surfaceRecoveryActive_=true;
+            surfaceRecoveryStartX_=player.x;
+            surfaceRecoveryStartY_=player.y;
+            surfaceRecoveryTarget_=stage;
+            BeginSurfaceRecoveryAttempt(player,stage,finalDistance,edge);
+            surfaceRecoveryBestTargetDistance_=Distance2D(
+                player.x,player.y,stage.x,stage.y);
+            surfaceRecoveryProgressTick_=tick;
+            lastCommandTick_=tick;
+            Debug::Logger::Info("NAV ENTRANCE STAGE intent="+
+                std::to_string(intentId_)+" fromPoly="+HexPoly(edge.from)+
+                " toPoly="+HexPoly(edge.to)+" target=("+
+                Float(stage.x)+","+Float(stage.y)+","+Float(stage.z)+")"+
+                " attempt="+std::to_string(surfaceRecoveryAttempts_)+"/"+
+                std::to_string(MaximumSurfaceRecoveryAttempts)+
+                " reason=verified_clipped_portal_midpoint");
+            return true;
+        }
+
         bool IssueCurrentCorner(
             const Objects::PlayerState& player,
             std::uint64_t tick,
@@ -3694,6 +4358,9 @@ namespace Navigation
             std::size_t minimumIndex = 0,
             std::size_t proposedStartIndex = static_cast<std::size_t>(-1))
         {
+            if (!RouteCostProbePolicy::MayIssueMovement(
+                    startOptions_.planningOnly))
+                return false;
             if (pointIndex_ >= points_.size())
                 return true;
 
@@ -3727,6 +4394,7 @@ namespace Navigation
                 firstCandidate + SurfaceLookaheadPoints);
             bool rejectedFarther = false;
             bool haveVerticalRecovery = false;
+            std::size_t verticalRecoveryCandidateIndex = 0;
             float verticalRecoveryHorizontal = 0.0f;
             float verticalRecoveryDelta = 0.0f;
             NavPoint verticalRecoveryPoint{};
@@ -3772,6 +4440,7 @@ namespace Navigation
                         verticalRecoveryHorizontal = unsafeHorizontal;
                         verticalRecoveryDelta = unsafeVertical;
                         verticalRecoveryPoint = point;
+                        verticalRecoveryCandidateIndex = candidate;
                     }
                 }
 
@@ -3889,18 +4558,99 @@ namespace Navigation
                 "recovery", points_[firstCandidate]);
             if (haveVerticalRecovery && IssueVerticalPortalRecovery(
                     player, tick, verticalRecoveryPoint,
-                    verticalRecoveryHorizontal, verticalRecoveryDelta))
+                    verticalRecoveryHorizontal, verticalRecoveryDelta,
+                    verticalRecoveryCandidateIndex))
             {
                 return true;
             }
+            const DirectedPolyTransition localFailure=
+                AttributeFailedSteering(player,fromIndex,firstCandidate);
+            if (IssueVerifiedPortalStage(player,tick,localFailure))
+                return true;
             if (IssueSurfaceRecovery(
                     player, tick, points_[firstCandidate],
-                    "no clearance-safe corridor steering target"))
+                    "no clearance-safe corridor steering target",
+                    localFailure))
             {
                 return true;
             }
             if (IssueWallTrapRecovery(player, tick, points_[firstCandidate]))
                 return true;
+            const auto exhaustion = LocalRecoveryExhaustionPolicy::Assess(
+                surfaceRecoveryAttempts_, MaximumSurfaceRecoveryAttempts,
+                lastSafeNav_.valid && !lastSafeBacktrackActive_,
+                lastSafeBacktrackAttempts_, MaximumLastSafeBacktracks);
+            if (exhaustion != LocalRecoveryExhaustionDecision::NotExhausted)
+            {
+                const char* routeKind = completeLongStageActive_
+                    ? "complete_long_stage" : "ordinary";
+                Debug::Logger::Info(
+                    "NAV 14N.4.1c LOCAL RECOVERY EXHAUSTED"
+                    " routeKind=" + std::string(routeKind) +
+                    " stageIndex=" + std::to_string(completeLongStageCount_) +
+                    " destination=(" + Float(destination_.x) + "," +
+                    Float(destination_.y) + "," + Float(destination_.z) + ")" +
+                    " activeStageDestination=" +
+                    (completeLongStageActive_
+                        ? "(" + Float(activeStageDestination_.x) + "," +
+                            Float(activeStageDestination_.y) + "," +
+                            Float(activeStageDestination_.z) + ")"
+                        : std::string("none")) +
+                    " playerPosition=(" + Float(player.x) + "," +
+                    Float(player.y) + "," + Float(player.z) + ")" +
+                    " surfaceRecoveryAttempts=" +
+                    std::to_string(surfaceRecoveryAttempts_) +
+                    " failedFromPoly=" + HexPoly(failedCorridor_.failedFromPoly) +
+                    " failedToPoly=" + HexPoly(failedCorridor_.failedToPoly) +
+                    " transitionKnown=" +
+                    (failedCorridor_.transitionKnown ? "yes" : "no") +
+                    " lastSafePoly=" + HexPoly(lastSafeNav_.valid
+                        ? lastSafeNav_.polyRef : 0) +
+                    " lastSafeDistance=" + Float(lastSafeNav_.valid
+                        ? Distance2D(player.x, player.y,
+                            lastSafeNav_.position.x, lastSafeNav_.position.y)
+                        : 0.0f) +
+                    " lastSafeBacktrackAttempts=" +
+                    std::to_string(lastSafeBacktrackAttempts_) +
+                    " persistentHazardCount=" + std::to_string(
+                        NavigationHazardMemory::Instance().HardCellCount(mapId_)) +
+                    " corridorFingerprint=" + std::to_string(lastPathFingerprint_) +
+                    " physicalProgress=" + Float(Distance2D(
+                        player.x, player.y,
+                        surfaceRecoveryStartX_, surfaceRecoveryStartY_)) +
+                    " distanceToStage=" + Float(completeLongStageActive_
+                        ? Distance2D(player.x, player.y,
+                            activeStageDestination_.x, activeStageDestination_.y)
+                        : 0.0f) +
+                    " classification=surface_recovery_exhausted");
+                if (exhaustion ==
+                        LocalRecoveryExhaustionDecision::TryLastSafeBacktrack &&
+                    BeginLastSafeBacktrack(
+                        player, tick, "14N.4.1c surface recovery exhausted"))
+                {
+                    Debug::Logger::Info("NAV RECOVERY ESCALATE intent="+
+                        std::to_string(intentId_)+" episode="+
+                        std::to_string(surfaceEpisodeId_)+
+                        " decision=backtrack reason=surface_attempt_budget_exhausted");
+                    Debug::Logger::Info(
+                        "NAV 14N.4.1c LOCAL RECOVERY ESCALATION"
+                        " decision=last_safe_backtrack"
+                        " routeKind=" + std::string(routeKind) +
+                        " reason=surface_recovery_exhausted"
+                        " stageIndex=" + std::to_string(completeLongStageCount_));
+                    return true;
+                }
+                lastPlanFailure_ = NavigationPlanFailure::SurfaceRecoveryExhausted;
+                Debug::Logger::Info("NAV RECOVERY ESCALATE intent="+
+                    std::to_string(intentId_)+" episode="+
+                    std::to_string(surfaceEpisodeId_)+
+                    " decision=fail reason=surface_and_backtrack_budget_exhausted");
+                Debug::Logger::Info(
+                    "NAV 14N.4.1c LOCAL RECOVERY ESCALATION"
+                    " decision=fail reason=surface_recovery_exhausted"
+                    " routeKind=" + std::string(routeKind) +
+                    " stageIndex=" + std::to_string(completeLongStageCount_));
+            }
             return false;
         }
 
@@ -4041,6 +4791,9 @@ namespace Navigation
             std::uint64_t tick,
             const char* reason)
         {
+            if (!RouteCostProbePolicy::MayIssueMovement(
+                    startOptions_.planningOnly))
+                return false;
             if (!lastSafeNav_.valid ||
                 lastSafeBacktrackAttempts_ >= MaximumLastSafeBacktracks)
             {
@@ -4124,7 +4877,7 @@ namespace Navigation
                         player.y,
                         destination_.x,
                         destination_.y));
-                PlanFrom(player, tick, true);
+                PlanFrom(player, tick, true, "last_safe_backtrack");
                 return true;
             }
 
@@ -4155,9 +4908,36 @@ namespace Navigation
         bool PlanFrom(
             const Objects::PlayerState& player,
             std::uint64_t tick,
-            bool replan)
+            bool replan,
+            const char* planReason = "ordinary_replan",
+            bool countOrdinaryReplan = true)
         {
             lastPlanFailure_ = NavigationPlanFailure::None;
+            const bool reusingActiveStage =
+                CompleteLongStagePolicy::PlanTarget(
+                    completeLongStageActive_, completeLongStageNeedsFinalPlan_) ==
+                CompleteLongPlanTarget::ActiveStage;
+            const NavPoint& planningDestination = reusingActiveStage
+                ? activeStageDestination_ : destination_;
+            if (reusingActiveStage)
+            {
+                Debug::Logger::Info(
+                    "NAV 14N.4.1 COMPLETE LONG STAGE REPLAN"
+                    " stageIndex=" + std::to_string(completeLongStageCount_) +
+                    " activeStageDestination=(" + Float(activeStageDestination_.x) +
+                    "," + Float(activeStageDestination_.y) + "," +
+                    Float(activeStageDestination_.z) + ")" +
+                    " originalDestination=(" + Float(destination_.x) + "," +
+                    Float(destination_.y) + "," + Float(destination_.z) + ")" +
+                    " playerPosition=(" + Float(player.x) + "," +
+                    Float(player.y) + "," + Float(player.z) + ")" +
+                    " distanceToStage=" + Float(Distance2D(
+                        player.x, player.y, activeStageDestination_.x,
+                        activeStageDestination_.y)) +
+                    " distanceToFinal=" + Float(Distance2D(
+                        player.x, player.y, destination_.x, destination_.y)) +
+                    " reason=" + planReason + " decision=reuse_active_stage");
+            }
             SetState(
                 GenericNavMeshFollowState::
                     Planning
@@ -4206,10 +4986,21 @@ namespace Navigation
                 std::chrono::steady_clock::now();
 
             std::vector<std::uint64_t> blockedPolygons =
-                ActiveBlockedPolygons(tick);
+                startOptions_.planningOnly
+                    ? std::vector<std::uint64_t>{}
+                    : ActiveBlockedPolygons(tick);
             const std::size_t transientBlockedCount = blockedPolygons.size();
             const std::vector<std::uint64_t> persistentHazardPolygons =
                 ResolvePersistentHazardPolygons(player);
+
+            Debug::Logger::Info(
+                "NAV ROUTE CONTRACT mode=" + std::string(startOptions_.planningOnly ? "probe" : "execution") +
+                " origin=(" + Float(player.x) + "," + Float(player.y) + "," + Float(player.z) +
+                ") destination=(" + Float(planningDestination.x) + "," + Float(planningDestination.y) +
+                "," + Float(planningDestination.z) + ") persistentHazardPolys=" +
+                std::to_string(persistentHazardPolygons.size()) + " hazardFingerprint=" +
+                std::to_string(RouteCostProbePolicy::HazardFingerprint(persistentHazardPolygons)) +
+                " validation=14O.1 revalidation=every_plan maximumPathLength=" + Float(MaximumPathLength));
 
             for (const std::uint64_t ref : persistentHazardPolygons)
             {
@@ -4221,6 +5012,10 @@ namespace Navigation
             }
 
             bool queryOk = false;
+            bool directedNoAlternative = false;
+            bool terrainRejected = false;
+            std::vector<std::uint64_t> effectiveBlockedPolygons =
+                blockedPolygons;
             if (!blockedPolygons.empty())
             {
                 Debug::Logger::Info(
@@ -4232,7 +5027,7 @@ namespace Navigation
 
                 queryOk = provider_.FindPathAvoidingPolygons(
                     PlayerPoint(player),
-                    destination_,
+                    planningDestination,
                     blockedPolygons,
                     path);
 
@@ -4246,9 +5041,10 @@ namespace Navigation
                         "retrying with persistent hard hazards only.");
                     queryOk = provider_.FindPathAvoidingPolygons(
                         PlayerPoint(player),
-                        destination_,
+                        planningDestination,
                         persistentHazardPolygons,
                         path);
+                    effectiveBlockedPolygons = persistentHazardPolygons;
                 }
 
                 if (!queryOk && persistentHazardPolygons.empty())
@@ -4259,8 +5055,9 @@ namespace Navigation
                         "the transition failure history.");
                     queryOk = provider_.FindPath(
                         PlayerPoint(player),
-                        destination_,
+                        planningDestination,
                         path);
+                    effectiveBlockedPolygons.clear();
                 }
                 else if (!queryOk)
                 {
@@ -4274,7 +5071,8 @@ namespace Navigation
                             "NAV HAZARD 14I.0: no hazard-free corpse corridor exists; "
                             "using one critical recovery fallback while local stall guards remain active.");
                         queryOk = provider_.FindPath(
-                            PlayerPoint(player), destination_, path);
+                            PlayerPoint(player), planningDestination, path);
+                        effectiveBlockedPolygons.clear();
                     }
                     else
                     {
@@ -4290,8 +5088,143 @@ namespace Navigation
             {
                 queryOk = provider_.FindPath(
                     PlayerPoint(player),
-                    destination_,
+                    planningDestination,
                     path);
+            }
+
+            // 13D.4 can only mask a whole target polygon. Apply that
+            // approximation *after* proving that this particular route uses
+            // the learned directed edge. A reverse B->A route is untouched.
+            const DirectedPolyTransition matchedBadEdge = queryOk
+                ? badVerticalTransitions_.FirstMatch(path.corridorPolys)
+                : DirectedPolyTransition{};
+            if (matchedBadEdge.Valid())
+            {
+                const std::uint64_t candidateFingerprint =
+                    FingerprintPath(path.points);
+                std::vector<std::uint64_t> avoidancePolygons =
+                    effectiveBlockedPolygons;
+                const auto matchedTargets =
+                    badVerticalTransitions_.MatchedTargetPolygons(
+                        path.corridorPolys);
+                for (const std::uint64_t target : matchedTargets)
+                {
+                    if (std::find(avoidancePolygons.begin(),
+                                  avoidancePolygons.end(), target) ==
+                        avoidancePolygons.end())
+                        avoidancePolygons.push_back(target);
+                }
+                NavPathResult alternative{};
+                const bool alternateQueryOk = provider_.FindPathAvoidingPolygons(
+                    PlayerPoint(player), planningDestination,
+                    avoidancePolygons, alternative);
+                const auto alternativeDecision =
+                    badVerticalTransitions_.AssessAlternative(
+                        path.corridorPolys, alternateQueryOk,
+                        alternative.corridorPolys);
+                const bool alternativeAvoidsBadEdge =
+                    alternativeDecision == EpisodeBadTransitionPolicy::
+                        AlternativeDecision::UseAlternative;
+                Debug::Logger::Info(
+                    "NAV 15B.1 TRANSITION AVOIDANCE fromPoly=" +
+                    HexPoly(matchedBadEdge.from) + " toPoly=" +
+                    HexPoly(matchedBadEdge.to) +
+                    " decision=" + (alternativeAvoidsBadEdge
+                        ? std::string("applied") : std::string("no_alternative")) +
+                    " requestedTargets=" + std::to_string(matchedTargets.size()) +
+                    " appliedPolygons=" +
+                    std::to_string(alternative.avoidanceAppliedCount) +
+                    " corridorFingerprint=" +
+                    std::to_string(candidateFingerprint));
+                if (alternativeAvoidsBadEdge)
+                    path = std::move(alternative);
+                else
+                {
+                    directedNoAlternative = true;
+                    queryOk = false;
+                    path.error =
+                        "No alternate corridor around exhausted vertical transition.";
+                }
+            }
+
+            // A Detour link is not proof that WoW can walk its portal. Check
+            // every ALL_CROSSINGS movement leg before entering Moving. Reuse
+            // the same directed episode memory/13D.4 polygon masking for a
+            // bounded alternate, rather than issuing a CTM toward the cliff.
+            for (int terrainQuery = 0; queryOk; ++terrainQuery)
+            {
+                const NavTerrainValidation terrain =
+                    provider_.ValidateTerrainRoute(PlayerPoint(player), path);
+                if (terrain.valid)
+                    break;
+
+                const DirectedPolyTransition rejected{
+                    terrain.fromPoly, terrain.toPoly};
+                Debug::Logger::Info(
+                    "NAV 14O.1 TERRAIN REJECT fromPoly=" +
+                    HexPoly(terrain.fromPoly) + " toPoly=" +
+                    HexPoly(terrain.toPoly) +
+                    " horizontal=" + Float(terrain.geometry.horizontal) +
+                    " vertical=" + Float(terrain.geometry.vertical) +
+                    " riseRun=" + Float(terrain.geometry.riseRun) +
+                    " fromFlags=" + std::to_string(terrain.fromFlags) +
+                    " toFlags=" + std::to_string(terrain.toFlags) +
+                    " portalKnown=" +
+                    std::string(terrain.portalKnown ? "yes" : "no") +
+                    " portalA=(" + Float(terrain.portalA.x) + "," +
+                    Float(terrain.portalA.y) + "," +
+                    Float(terrain.portalA.z) + ")" +
+                    " portalB=(" + Float(terrain.portalB.x) + "," +
+                    Float(terrain.portalB.y) + "," +
+                    Float(terrain.portalB.z) + ")" +
+                    " reason=" + terrain.reason);
+
+                if (!rejected.Valid() ||
+                    terrainQuery >= MaximumTerrainAlternativeQueries)
+                {
+                    queryOk = false;
+                    terrainRejected = true;
+                    path.error = "Terrain route contains an unsafe vertical transition.";
+                    break;
+                }
+
+                badVerticalTransitions_.Learn(rejected);
+                std::vector<std::uint64_t> avoidancePolygons =
+                    effectiveBlockedPolygons;
+                for (const std::uint64_t target :
+                     badVerticalTransitions_.MatchedTargetPolygons(
+                         path.corridorPolys))
+                    if (std::find(avoidancePolygons.begin(),
+                                  avoidancePolygons.end(), target) ==
+                        avoidancePolygons.end())
+                        avoidancePolygons.push_back(target);
+
+                NavPathResult alternative{};
+                const bool alternativeOk = provider_.FindPathAvoidingPolygons(
+                    PlayerPoint(player), planningDestination,
+                    avoidancePolygons, alternative);
+                const bool useAlternative =
+                    badVerticalTransitions_.AssessAlternative(
+                        path.corridorPolys, alternativeOk,
+                        alternative.corridorPolys) ==
+                    EpisodeBadTransitionPolicy::AlternativeDecision::
+                        UseAlternative;
+                Debug::Logger::Info(
+                    "NAV 14O.1 FALLBACK reason=unsafe_vertical_transition "
+                    "decision=" + std::string(useAlternative
+                        ? "alternate" : "no_alternative") +
+                    " fromPoly=" + HexPoly(rejected.from) +
+                    " toPoly=" + HexPoly(rejected.to) +
+                    " attempt=" + std::to_string(terrainQuery + 1) +
+                    "/" + std::to_string(MaximumTerrainAlternativeQueries));
+                if (!useAlternative)
+                {
+                    queryOk = false;
+                    terrainRejected = true;
+                    path.error = "No alternate corridor around unsafe terrain transition.";
+                    break;
+                }
+                path = std::move(alternative);
             }
 
             const auto queryElapsedMs =
@@ -4309,8 +5242,11 @@ namespace Navigation
 
             if (!queryOk)
             {
-                lastPlanFailure_ = NavigationInitTelemetryPolicy::QueryFailure(
-                    path.error);
+                lastPlanFailure_ = directedNoAlternative
+                    ? NavigationPlanFailure::SurfaceRecoveryExhausted
+                    : terrainRejected
+                        ? NavigationPlanFailure::PathValidationFailed
+                        : NavigationInitTelemetryPolicy::QueryFailure(path.error);
                 Debug::Logger::Info(
                     "NAVMESH 11B: path query failed."
                 );
@@ -4335,12 +5271,13 @@ namespace Navigation
             if (LongPathDiagnosticPolicy::UsesPartialStaging(path.partial))
             {
                 const float startFinalDistance = Distance2D(
-                    player.x, player.y, destination_.x, destination_.y);
+                    player.x, player.y,
+                    planningDestination.x, planningDestination.y);
                 const float residualDistance = Distance2D(
                     path.corridorEnd.x, path.corridorEnd.y,
-                    destination_.x, destination_.y);
+                    planningDestination.x, planningDestination.y);
                 const float verticalResidual = std::fabs(
-                    path.corridorEnd.z - destination_.z);
+                    path.corridorEnd.z - planningDestination.z);
                 const float destinationProgress =
                     startFinalDistance - residualDistance;
                 const float reachableAdvance = Distance2D(
@@ -4490,14 +5427,17 @@ namespace Navigation
                     return false;
                 }
 
-                ++partialStageAttempts_;
-                partialStageActive_ = true;
-                partialStageStartFinalDistance_ = startFinalDistance;
-                partialStageBestResidualDistance_ = std::min(
-                    partialStageBestResidualDistance_, residualDistance);
-                partialCorridorFingerprint_ = geometryFingerprint;
-                partialCorridorStartX_ = player.x;
-                partialCorridorStartY_ = player.y;
+                if (!startOptions_.planningOnly)
+                {
+                    ++partialStageAttempts_;
+                    partialStageActive_ = true;
+                    partialStageStartFinalDistance_ = startFinalDistance;
+                    partialStageBestResidualDistance_ = std::min(
+                        partialStageBestResidualDistance_, residualDistance);
+                    partialCorridorFingerprint_ = geometryFingerprint;
+                    partialCorridorStartX_ = player.x;
+                    partialCorridorStartY_ = player.y;
+                }
 
                 Debug::Logger::Info(
                     "NAVMESH 13D.7.1: LONG/LOCAL PARTIAL STAGE ACCEPTED partialAttempt=" +
@@ -4536,15 +5476,85 @@ namespace Navigation
             float length =
                 0.0f;
 
+            bool selectedCompleteLongStage = false;
+            NavPoint selectedStageDestination{};
+            std::size_t selectedStagePointIndex = 0;
+            double selectedStageTotalLength = 0.0;
+            double selectedStagePrefixLength = 0.0;
+
             const auto validationStarted = std::chrono::steady_clock::now();
-            if (!ValidatePath(
-                    path,
-                    error,
-                    length,
-                    &lastPlanFailure_))
+            bool pathValid = ValidatePath(
+                path, error, length, &lastPlanFailure_);
+            if (!pathValid &&
+                lastPlanFailure_ == NavigationPlanFailure::PathLengthExceeded &&
+                !reusingActiveStage)
             {
-                if (lastPlanFailure_ == NavigationPlanFailure::PathLengthExceeded)
-                    LogLongPathDiagnostic(player, path, length);
+                LogLongPathDiagnostic(player, path, length);
+                const bool complete = !path.partial &&
+                    !path.findPathPartialResult &&
+                    !path.findPathOutOfNodes &&
+                    path.corridorConnected && path.endPoly != 0 &&
+                    path.lastPoly == path.endPoly;
+                const bool capacityAvailable =
+                    !path.findPathBufferTooSmall &&
+                    !path.findStraightPathBufferTooSmall &&
+                    path.maximumPolygons > 0 &&
+                    path.polygonCount < path.maximumPolygons &&
+                    path.maximumStraightPoints > 0 &&
+                    path.points.size() <
+                        static_cast<std::size_t>(path.maximumStraightPoints) &&
+                    path.pointPolys.size() == path.points.size();
+                std::vector<CompleteLongStagePoint> stagePoints;
+                stagePoints.reserve(path.points.size());
+                for (const NavPoint& point : path.points)
+                    stagePoints.push_back({point.x, point.y, point.z});
+                const CompleteLongStageSelection stage =
+                    CompleteLongStagePolicy::Select(
+                        stagePoints, complete, capacityAvailable,
+                        MaximumPathLength, CompleteLongStageLength,
+                        MaximumSegment, MaximumVerticalSegment,
+                        RecoveryResetProgressDistance,
+                        RecoveryResetProgressDistance);
+                if (stage.result == CompleteLongStageResult::Selected)
+                {
+                    if (!CompleteLongStagePolicy::CanStartStage(
+                            completeLongStageCount_, MaximumCompleteLongStages))
+                    {
+                        Debug::Logger::Info(
+                            "NAV 14N.4.1 COMPLETE LONG STAGE FAILED reason=stage_budget_exhausted"
+                            " stageIndex=" + std::to_string(completeLongStageCount_));
+                        lastPlanFailure_ = NavigationPlanFailure::PathLengthExceeded;
+                        SetState(GenericNavMeshFollowState::Failed);
+                        StopAtCurrentPosition(player);
+                        return false;
+                    }
+                    selectedStagePointIndex = stage.pointIndex;
+                    selectedStageDestination = path.points[stage.pointIndex];
+                    selectedStageTotalLength = stage.totalLength;
+                    selectedStagePrefixLength = stage.prefixLength;
+                    path.points.resize(stage.pointIndex + 1);
+                    path.pointPolys.resize(stage.pointIndex + 1);
+                    pathValid = ValidatePath(path, error, length,
+                                             &lastPlanFailure_);
+                    selectedCompleteLongStage = pathValid;
+                }
+                if (!pathValid)
+                {
+                    if (stage.result == CompleteLongStageResult::UnsafeSegment)
+                    {
+                        lastPlanFailure_ = NavigationPlanFailure::PathValidationFailed;
+                        error = "complete path contains an unsafe later segment.";
+                    }
+                    Debug::Logger::Info(
+                        "NAV 14N.4.1 COMPLETE LONG STAGE FAILED reason=" +
+                        std::string(stage.result == CompleteLongStageResult::UnsafeSegment
+                            ? "unsafe_segment" : stage.result == CompleteLongStageResult::NoForwardStage
+                                ? "no_forward_stage" : stage.result == CompleteLongStageResult::Ineligible
+                                    ? "ineligible" : "prefix_validation_failed"));
+                }
+            }
+            if (!pathValid)
+            {
                 planProfile.validationMs = std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - validationStarted).count();
                 Debug::Logger::Info(
@@ -4568,14 +5578,73 @@ namespace Navigation
                 return false;
             }
 
+            if (selectedCompleteLongStage)
+            {
+                const float priorStageDistance = Distance2D(
+                    activeStageDestination_.x, activeStageDestination_.y,
+                    selectedStageDestination.x, selectedStageDestination.y);
+                const float progressSinceCompletion = Distance2D(
+                    player.x, player.y,
+                    completeLongStageCompletionPosition_.x,
+                    completeLongStageCompletionPosition_.y);
+                if (CompleteLongStagePolicy::RejectRepeatedNewStage(
+                        completeLongStageCount_ > 0 &&
+                            !completeLongStageActive_,
+                        priorStageDistance, progressSinceCompletion,
+                        RecoveryResetProgressDistance))
+                {
+                    Debug::Logger::Info(
+                        "NAV 14N.4.1 COMPLETE LONG STAGE FAILED reason=repeated_stage_without_progress"
+                        " stageIndex=" + std::to_string(completeLongStageCount_) +
+                        " progressSinceCompletion=" +
+                        Float(progressSinceCompletion));
+                    lastPlanFailure_ = NavigationPlanFailure::OtherUnknown;
+                    SetState(GenericNavMeshFollowState::Failed);
+                    StopAtCurrentPosition(player);
+                    return false;
+                }
+            }
+
             planProfile.pathLength = length;
             planProfile.pathLengthKnown = true;
             planProfile.validationMs = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - validationStarted).count();
 
+            Debug::Logger::Info(
+                "NAV 14O.1 ROUTE ACCEPT mode=" +
+                std::string(path.steepFallback
+                    ? "validated_steep_fallback" : "non_steep") +
+                " polygons=" + std::to_string(path.polygonCount) +
+                " steepPolygons=" +
+                std::to_string(path.steepPolygonCount) +
+                " length=" + Float(length));
+
+            Debug::Logger::Info("NAV ROUTE VALIDATED mode=" +
+                std::string(startOptions_.planningOnly ? "probe" : "execution") +
+                " startPoly=" + HexPoly(path.startPoly) + " endPoly=" + HexPoly(path.endPoly) +
+                " pathFingerprint=" + std::to_string(FingerprintPath(path.points)) +
+                " length=" + Float(length) + " proof=validated_current_plan");
+
+            if (startOptions_.planningOnly)
+            {
+                // A probe shares Detour initialization/query and the normal
+                // path validation, but stops before movement, steering,
+                // recovery, or mutable hazard/hysteresis episode state.
+                plannedPathLength_ = length;
+                plannedProjectedDestination_ = path.projectedDestination;
+                planningOnlyReachedDestination_ =
+                    !selectedCompleteLongStage && !path.partial &&
+                    !path.findPathPartialResult && path.corridorConnected &&
+                    path.endPoly != 0 && path.lastPoly == path.endPoly;
+                planProfile.result = "planning_only_ready";
+                SetState(GenericNavMeshFollowState::Planned);
+                return true;
+            }
+
             if (replan)
             {
-                ++replans_;
+                if (countOrdinaryReplan)
+                    ++replans_;
                 ++totalReplans_;
             }
 
@@ -4596,7 +5665,13 @@ namespace Navigation
                         failedCorridor_, fingerprint, player.x, player.y,
                         RecoveryResetProgressDistance, recoveryAvailable,
                         candidateTransitionKnown,
-                        candidateFromPoly, candidateToPoly);
+                        candidateFromPoly, candidateToPoly,
+                        !surfaceEpisodeActive_ ||
+                            SurfaceRecoveryEpisodePolicy::Assess(
+                                surfaceEpisodeInitialDistance_,Distance2D(player.x,player.y,
+                                    destination_.x,destination_.y),
+                                RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_)==
+                                SurfaceRecoveryQuality::Progress);
                 const bool meaningfulProgress =
                     assessment.decision ==
                     CorridorReplanDecision::AllowAfterProgress;
@@ -4700,6 +5775,20 @@ namespace Navigation
 
             points_ =
                 path.points;
+            ++routeGeneration_;
+            if(surfaceEpisodeActive_ && replan)
+            {
+                ++surfaceEpisodeRouteRefreshes_;
+                Debug::Logger::Info("NAV RECOVERY EPISODE intent="+
+                    std::to_string(intentId_)+" episode="+
+                    std::to_string(surfaceEpisodeId_)+
+                    " routeGeneration="+std::to_string(routeGeneration_)+
+                    " routeRefreshes="+std::to_string(surfaceEpisodeRouteRefreshes_)+
+                    " candidateLocalFromPoly="+HexPoly(path.startPoly)+
+                    " candidateLocalNextPoly="+HexPoly(path.corridorPolys.size()>1
+                        ?path.corridorPolys[1]:0)+
+                    " result=validated_route_refresh_no_reset");
+            }
             corridorPolys_ = path.corridorPolys;
             pointPolyRefs_ = path.pointPolys;
             pathStartPoly_ = path.startPoly;
@@ -4753,7 +5842,8 @@ namespace Navigation
                         ? "replan"
                         : "initial"))
             {
-                lastPlanFailure_ = NavigationPlanFailure::OtherUnknown;
+                if (lastPlanFailure_ == NavigationPlanFailure::None)
+                    lastPlanFailure_ = NavigationPlanFailure::OtherUnknown;
                 SetState(
                     GenericNavMeshFollowState::
                         Failed
@@ -4766,6 +5856,45 @@ namespace Navigation
                 return false;
             }
 
+            if (selectedCompleteLongStage)
+            {
+                completeLongStageCount_ =
+                    CompleteLongStagePolicy::StageIndexAfterAcceptedPlan(
+                        completeLongStageCount_, true);
+                completeLongStageActive_ = true;
+                activeStageDestination_ = selectedStageDestination;
+                completeLongStageStart_ = PlayerPoint(player);
+                completeLongStageStartFinalDistance_ = Distance2D(
+                    player.x, player.y, destination_.x, destination_.y);
+                completeLongStageStarted_ = std::chrono::steady_clock::now();
+                const std::string stageEvent = completeLongStageCount_ == 1
+                    ? "BEGIN" : "ADVANCE";
+                Debug::Logger::Info(
+                    "NAV 14N.4.1 COMPLETE LONG STAGE " + stageEvent +
+                    " mode=" + NavigationInitTelemetryPolicy::TierName(currentInitTier_) +
+                    " originalDestination=(" + Float(destination_.x) + "," +
+                    Float(destination_.y) + "," + Float(destination_.z) + ")" +
+                    " stageDestination=(" + Float(selectedStageDestination.x) + "," +
+                    Float(selectedStageDestination.y) + "," +
+                    Float(selectedStageDestination.z) + ")" +
+                    " directDistanceToFinal=" +
+                    Float(completeLongStageStartFinalDistance_) +
+                    " remainingStraightPathLength=" +
+                    Float(static_cast<float>(selectedStageTotalLength -
+                                             selectedStagePrefixLength)) +
+                    " stagePrefixLength=" +
+                    Float(static_cast<float>(selectedStagePrefixLength)) +
+                    " stageIndex=" + std::to_string(completeLongStageCount_) +
+                    " polygonCount=" + std::to_string(path.polygonCount) +
+                    " straightPointIndex=" + std::to_string(selectedStagePointIndex) +
+                    " reason=complete_long_path");
+            }
+            else if (!reusingActiveStage)
+            {
+                completeLongStageActive_ = false;
+            }
+            completeLongStageNeedsFinalPlan_ = false;
+
             planProfile.result = issuedOrdinarySteeringTargetValid_
                 ? "accepted" : "started_non_corridor";
             return true;
@@ -4773,15 +5902,56 @@ namespace Navigation
 
         bool Replan(
             const Objects::PlayerState& player,
-            std::uint64_t tick)
+            std::uint64_t tick,
+            bool fromVerticalStall = false)
         {
             if (
                 replans_ >=
                     MaximumReplans)
             {
+                const DirectedPolyTransition failedEdge =
+                    badVerticalTransitions_.BoundaryEvidence(
+                        fromVerticalStall, true,
+                        !boundaryVerticalAvoidanceAttempted_);
+                if (failedEdge.Valid() &&
+                    badVerticalTransitions_.Learn(failedEdge))
+                {
+                    boundaryVerticalAvoidanceAttempted_ = true;
+                    Debug::Logger::Info(
+                        "NAV 15B.1 TRANSITION LEARNED fromPoly=" +
+                        HexPoly(failedEdge.from) + " toPoly=" +
+                        HexPoly(failedEdge.to) +
+                        " reason=replan_boundary_after_vertical_stalls" +
+                        " stalledObservations=" + std::to_string(
+                            badVerticalTransitions_.StalledObservations()) +
+                        " verticalAttempts=" + std::to_string(
+                            verticalPortalRecoveryAttempts_) +
+                        " corridorFingerprint=" +
+                        std::to_string(lastPathFingerprint_) +
+                        " occurrence=" + std::to_string(
+                            badVerticalTransitions_.ConsecutiveIssued()) +
+                        " avoidedTransitions=" + std::to_string(
+                            badVerticalTransitions_.Size()));
+                    // Replace the would-be terminal replan with one directed
+                    // alternative query. Do not refill the ordinary budget.
+                    if (PlanFrom(player, tick, true,
+                                 "vertical_stall_replan_boundary", false))
+                        return true;
+                    Debug::Logger::Info(
+                        "NAV 15B.1 TRANSITION AVOIDANCE fromPoly=" +
+                        HexPoly(failedEdge.from) + " toPoly=" +
+                        HexPoly(failedEdge.to) +
+                        " decision=no_alternative reason=boundary_plan_failed" +
+                        " planFailure=" +
+                        NavigationInitTelemetryPolicy::ReasonName(
+                            lastPlanFailure_));
+                }
                 Debug::Logger::Info(
                     "NAVMESH 11B: replan safety limit reached."
                 );
+
+                lastPlanFailure_ = NavigationPlanFailure::ReplanBudgetExhausted;
+                Debug::Logger::Info("NAV STUCK RESULT result=failed reason=replan_budget_exhausted");
 
                 SetState(
                     GenericNavMeshFollowState::
@@ -4850,6 +6020,8 @@ namespace Navigation
             }
             initializationPending_ = began;
             initializationProgressLogBucket_ = 0;
+            if (!began && startOptions_.planningOnly)
+                lastPlanFailure_ = NavigationPlanFailure::InitializationFailed;
             SetState(began ? GenericNavMeshFollowState::Planning
                            : GenericNavMeshFollowState::Failed);
             LogIncrementalEvent(began ? "BEGIN" : "FAILED",
@@ -4956,6 +6128,7 @@ namespace Navigation
     public:
         ~GenericNavMeshPathFollower()
         {
+            ReleaseIntent("owner_released");
             if (initializationPending_)
                 LogIncrementalEvent("CANCELLED", "follower_destroyed");
         }
@@ -4968,7 +6141,8 @@ namespace Navigation
             float arrivalDistance,
             const std::string& label,
             bool healthSafetyEnabled = true,
-            const GenericNavMeshStartOptions& options = {})
+            const GenericNavMeshStartOptions& options = {},
+            const std::source_location& source = std::source_location::current())
         {
             if (
                 state_ !=
@@ -4978,14 +6152,18 @@ namespace Navigation
                 return false;
             }
 
+            ReleaseIntent("restarted");
             destination_ =
                 destination;
 
             mapId_ =
                 mapId;
 
+            startOptions_ = options;
+            planningOriginPlayer_ = player;
             RememberPlayerPosition(player);
-            NavigationHazardMemory::Instance().InitializeForMap(mapId_);
+            if (!startOptions_.planningOnly)
+                NavigationHazardMemory::Instance().InitializeForMap(mapId_);
 
             healthSafetyEnabled_ =
                 healthSafetyEnabled;
@@ -4995,8 +6173,27 @@ namespace Navigation
 
             destinationLabel_ =
                 label;
+            if(!options.planningOnly)
+            {
+                intentId_=++nextIntentId_;
+                intentReleased_=false;
+                intentOwner_=source.function_name();
+                intentTick_=intentStarted_=tick;
+                intentPosition_={player.x,player.y,player.z};
+                intentDestination_=destination;
+                std::ostringstream log;
+                log<<"MOVEMENT INTENT intent="<<intentId_<<" owner={"<<intentOwner_
+                   <<"} purpose={"<<label<<"} tick="<<tick<<" map="<<mapId
+                   <<" origin="<<player.x<<","<<player.y<<","<<player.z
+                   <<" destination="<<destination.x<<","<<destination.y<<","<<destination.z
+                   <<" reason=owner_started_navigation";
+                Debug::Logger::Info(log.str());
+            }
+            lastCorpsePortalDiagnosticFingerprint_ = 0;
 
             commands_ = 0;
+            planningOnlyReachedDestination_ = false;
+            plannedProjectedDestination_ = NavPoint{};
             replans_ = 0;
             totalReplans_ = 0;
             hardStallEpisodes_ = 0;
@@ -5004,6 +6201,13 @@ namespace Navigation
                 player.x, player.y, destination_.x, destination_.y);
             surfaceRecoveryActive_ = false;
             surfaceRecoveryAttempts_ = 0;
+            surfaceEpisodeActive_ = false;
+            surfaceEpisodeSequence_ = 0;
+            surfaceEpisodeId_ = 0;
+            surfaceEpisodeTargets_.clear();
+            surfaceEpisodeForwardPortal_ = false;
+            surfaceEpisodeRouteRefreshes_ = 0;
+            routeGeneration_ = 0;
             surfaceRecoveryProgressTick_ = 0;
             surfaceRecoveryBestTargetDistance_ = 0.0f;
             repeatedCorridorPlans_ = 0;
@@ -5017,6 +6221,13 @@ namespace Navigation
             partialCorridorFingerprint_ = 0;
             partialCorridorStartX_ = player.x;
             partialCorridorStartY_ = player.y;
+            completeLongStageActive_ = false;
+            completeLongStageNeedsFinalPlan_ = false;
+            completeLongStageCount_ = 0;
+            activeStageDestination_ = NavPoint{};
+            completeLongStageStart_ = NavPoint{};
+            completeLongStageCompletionPosition_ = NavPoint{};
+            completeLongStageStartFinalDistance_ = 0.0f;
             lastSafeNav_ = LastSafeNavState{};
             lastSafeCandidate_ = LastSafeNavState{};
             lastSafeBacktrackActive_ = false;
@@ -5029,6 +6240,11 @@ namespace Navigation
             pathStartPoly_ = 0;
             pathEndPoly_ = 0;
             blockedTransitions_.clear();
+            badVerticalTransitions_.Reset();
+            if (options.initialAvoidedTransition.Valid())
+                badVerticalTransitions_.Learn(options.initialAvoidedTransition);
+            verticalTransitionAvoidancePending_ = false;
+            boundaryVerticalAvoidanceAttempted_ = false;
             escapeProbeActive_ = false;
             escapeProbeSide_ = 0;
             escapeExhaustionRecoveries_ = 0;
@@ -5099,13 +6315,12 @@ namespace Navigation
             );
 
             (void)tick;
-            startOptions_ = options;
             initializationDirectory_ =
                 DetourNavigationProvider::ResolveMmapsDirectory();
             fullMapFallbackAttempted_ = false;
             std::string error;
-            // A prior controller may have left CTM active. Hold once while
-            // this follower owns planning; no corridor CTM is issued pending.
+            // Active followers retain their existing hold-on-start behavior.
+            // Planning-only probes never issue a movement command.
             StopAtCurrentPosition(player);
             return BeginInitializationTier(
                 player, NavigationInitTier::Route, error);
@@ -5115,13 +6330,20 @@ namespace Navigation
             const Objects::PlayerState& player,
             std::uint64_t tick)
         {
-            RememberPlayerPosition(player);
+            intentTick_=tick;
+            intentPosition_={player.x,player.y,player.z};
+            const Objects::PlayerState& effectivePlayer =
+                startOptions_.planningOnly ? planningOriginPlayer_ : player;
+            RememberPlayerPosition(effectivePlayer);
 
             if (initializationPending_ && !pausedForCombat_)
             {
-                AdvanceInitialization(player, tick);
+                AdvanceInitialization(effectivePlayer, tick);
                 return;
             }
+
+            if (startOptions_.planningOnly)
+                return;
 
             if (
                 state_ !=
@@ -5167,12 +6389,22 @@ namespace Navigation
                     destination_.y
                 );
 
+            if (verticalTransitionAvoidancePending_)
+            {
+                verticalTransitionAvoidancePending_ = false;
+                Replan(player, tick);
+                return;
+            }
+
             if (UpdateLastSafeBacktrack(player, tick))
                 return;
 
             UpdateLastSafeNavState(player, tick);
 
             if (
+                CompleteLongStagePolicy::FinalArrivalAllowed(
+                    completeLongStageActive_,
+                    completeLongStageNeedsFinalPlan_) &&
                 finalDistance <=
                     finalArrivalDistance_)
             {
@@ -5225,11 +6457,63 @@ namespace Navigation
                     "================================"
                 );
 
+                if (completeLongStageCount_ > 0)
+                {
+                    Debug::Logger::Info(
+                        "NAV 14N.4.1 COMPLETE LONG ROUTE COMPLETE"
+                        " stageCount=" + std::to_string(completeLongStageCount_) +
+                        " finalDistance=" + Float(finalDistance));
+                    completeLongStageActive_ = false;
+                }
+
                 SetState(
                     GenericNavMeshFollowState::
                         Arrived
                 );
 
+                return;
+            }
+
+            if (completeLongStageActive_ &&
+                Distance2D(player.x, player.y, activeStageDestination_.x,
+                           activeStageDestination_.y) <= CornerArrivalDistance)
+            {
+                const float physicalProgress = Distance2D(
+                    player.x, player.y, completeLongStageStart_.x,
+                    completeLongStageStart_.y);
+                const float finalImprovement =
+                    completeLongStageStartFinalDistance_ - finalDistance;
+                if (CompleteLongStagePolicy::OnArrival(
+                        physicalProgress, finalImprovement,
+                        RecoveryResetProgressDistance) ==
+                    CompleteLongStageArrivalDecision::Fail)
+                {
+                    Debug::Logger::Info(
+                        "NAV 14N.4.1 COMPLETE LONG STAGE FAILED"
+                        " reason=no_meaningful_stage_progress"
+                        " stageIndex=" + std::to_string(completeLongStageCount_) +
+                        " physicalProgress=" + Float(physicalProgress) +
+                        " finalImprovement=" + Float(finalImprovement));
+                    completeLongStageActive_ = false;
+                    SetState(GenericNavMeshFollowState::Failed);
+                    StopAtCurrentPosition(player);
+                    return;
+                }
+                const auto elapsedMs = std::chrono::duration_cast<
+                    std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() -
+                        completeLongStageStarted_).count();
+                Debug::Logger::Info(
+                    "NAV 14N.4.1 COMPLETE LONG STAGE REACHED"
+                    " stageIndex=" + std::to_string(completeLongStageCount_) +
+                    " physicalProgress=" + Float(physicalProgress) +
+                    " remainingDirectDistance=" + Float(finalDistance) +
+                    " elapsedMs=" + std::to_string(elapsedMs));
+                completeLongStageCompletionPosition_ = PlayerPoint(player);
+                completeLongStageActive_ = false;
+                completeLongStageNeedsFinalPlan_ = true;
+                steeringAtCorridorEnd_ = false;
+                Replan(player, tick);
                 return;
             }
 
@@ -5256,6 +6540,9 @@ namespace Navigation
             }
 
             if (
+                CompleteLongStagePolicy::FinalArrivalAllowed(
+                    completeLongStageActive_,
+                    completeLongStageNeedsFinalPlan_) &&
                 !finalApproachSuppressed_ &&
                 finalDistance <= FinalApproachEnterDistance)
             {
@@ -5265,9 +6552,13 @@ namespace Navigation
                 }
             }
 
-            if (
-                finalDistance + RecoveryResetProgressDistance <
-                    hardStallBestFinalDistance_)
+            if (LocalRecoveryExhaustionPolicy::EarnedProgressReset(
+                    finalDistance, hardStallBestFinalDistance_,
+                    RecoveryResetProgressDistance) &&
+                (!surfaceEpisodeActive_ || SurfaceRecoveryEpisodePolicy::Assess(
+                    surfaceEpisodeInitialDistance_,finalDistance,
+                    RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_)==
+                    SurfaceRecoveryQuality::Progress))
             {
                 if (hardStallEpisodes_ > 0)
                 {
@@ -5343,6 +6634,11 @@ namespace Navigation
                     tick - lastMotionTick_ >= HardStallTicks)
                 {
                     ++hardStallEpisodes_;
+
+                    Debug::Logger::Info("NAV STUCK DETECT owner=current_navigator distance="+
+                        Float(finalDistance)+" displacement="+Float(motionDistance)+
+                        " elapsedTicks="+std::to_string(tick-lastMotionTick_)+
+                        " reason=movement_expected_without_displacement");
 
                     Debug::Logger::Info(
                         "NAVMESH 12B.2: HARD STALL - no physical movement; "
@@ -5438,8 +6734,18 @@ namespace Navigation
 
             if (
                 cornerDistance <=
-                    CornerArrivalDistance)
+                CornerArrivalDistance)
             {
+                if(surfaceEpisodeActive_ && issuedOrdinarySteeringTargetValid_ &&
+                    pointIndex_+1<points_.size())
+                {
+                    surfaceEpisodeForwardPortal_=true;
+                    if(SurfaceRecoveryEpisodePolicy::Assess(
+                        surfaceEpisodeInitialDistance_,finalDistance,
+                        RecoveryResetProgressDistance,true)==
+                        SurfaceRecoveryQuality::Progress)
+                        ResetEscalatingRecovery(player,tick,finalDistance);
+                }
                 if (
                     pointIndex_ + 1 >=
                         points_.size())
@@ -5644,6 +6950,9 @@ namespace Navigation
                 return false;
             }
 
+            if(intentId_!=0 && !pausedForCombat_)
+                Debug::Logger::Info("MOVEMENT INTENT SUSPEND intent="+std::to_string(intentId_)+
+                    " tick="+std::to_string(intentTick_)+" reason="+reason);
             Debug::Logger::Info(
                 "================================"
             );
@@ -5731,6 +7040,12 @@ namespace Navigation
                 );
                 return false;
             }
+
+            intentTick_=tick;
+            intentPosition_={player.x,player.y,player.z};
+            if(intentId_!=0)
+                Debug::Logger::Info("MOVEMENT INTENT RESUME intent="+std::to_string(intentId_)+
+                    " tick="+std::to_string(tick)+" reason=defensive_combat_released");
 
             if (initializationPending_)
             {
@@ -5885,6 +7200,66 @@ namespace Navigation
                 state_ ==
                     GenericNavMeshFollowState::
                         Failed;
+        }
+
+        NavigationPlanFailure LastPlanFailure() const
+        {
+            return lastPlanFailure_;
+        }
+
+        NavigationFailureEvidence FailureEvidence() const
+        {
+            NavigationFailureEvidence evidence{};
+            evidence.reason = lastPlanFailure_;
+            evidence.failurePosition = lastObservedPlayerPosition_;
+            evidence.failurePositionKnown = lastObservedPlayerPositionValid_;
+            evidence.lastSafePosition = lastSafeNav_.position;
+            evidence.lastSafePositionKnown = lastSafeNav_.valid;
+            evidence.corridorFingerprint = lastPathFingerprint_;
+            if (failedCorridor_.transitionKnown)
+                evidence.failedTransition = {
+                    failedCorridor_.failedFromPoly,
+                    failedCorridor_.failedToPoly};
+            evidence.learnedTransition = badVerticalTransitions_.LatestLearned();
+            return evidence;
+        }
+
+        bool PlanningOnlyCorridorContainsTransition(
+            DirectedPolyTransition edge) const
+        {
+            if (!startOptions_.planningOnly || !edge.Valid())
+                return false;
+            for (std::size_t i = 1; i < corridorPolys_.size(); ++i)
+                if (corridorPolys_[i - 1] == edge.from &&
+                    corridorPolys_[i] == edge.to)
+                    return true;
+            return false;
+        }
+
+        RouteCostProbeResult PlanningOnlyResult() const
+        {
+            if (!startOptions_.planningOnly)
+                return RouteCostProbePolicy::Failed(
+                    NavigationPlanFailure::OtherUnknown);
+            if (state_ == GenericNavMeshFollowState::Planned)
+                return RouteCostProbePolicy::Ready(plannedPathLength_);
+            if (state_ == GenericNavMeshFollowState::Failed)
+                return RouteCostProbePolicy::Failed(lastPlanFailure_);
+            return {};
+        }
+
+        bool PlanningOnlyReachedDestination() const
+        {
+            return startOptions_.planningOnly &&
+                state_ == GenericNavMeshFollowState::Planned &&
+                planningOnlyReachedDestination_;
+        }
+
+        NavPoint PlanningOnlyProjectedDestination() const
+        {
+            return startOptions_.planningOnly &&
+                state_ == GenericNavMeshFollowState::Planned
+                ? plannedProjectedDestination_ : NavPoint{};
         }
 
         bool FullMapFallbackAttempted() const

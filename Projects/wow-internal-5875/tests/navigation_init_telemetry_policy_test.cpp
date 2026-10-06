@@ -42,6 +42,12 @@ int main()
         NavigationPlanFailure::PathLengthExceeded)) == "path_length_exceeded");
     assert(std::string_view(NavigationInitTelemetryPolicy::ReasonName(
         NavigationPlanFailure::PartialOrUnusablePath)) == "partial_or_unusable_path");
+    assert(std::string_view(NavigationInitTelemetryPolicy::ReasonName(
+        NavigationPlanFailure::ReplanBudgetExhausted)) == "replan_budget_exhausted");
+    assert(NavigationInitTelemetryPolicy::TerminalFailure(
+        NavigationPlanFailure::None) == NavigationPlanFailure::OtherUnknown);
+    assert(NavigationInitTelemetryPolicy::TerminalFailure(
+        NavigationPlanFailure::NoPath) == NavigationPlanFailure::NoPath);
     assert(std::string_view(NavigationInitTelemetryPolicy::TierName(
         NavigationInitTier::FullMap)) == "full_map");
 }

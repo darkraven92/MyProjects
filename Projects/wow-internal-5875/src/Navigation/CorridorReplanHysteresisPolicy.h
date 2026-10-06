@@ -53,7 +53,8 @@ namespace Navigation
             float meaningfulProgressDistance,
             bool transitionKnown = false,
             std::uint64_t fromPoly = 0,
-            std::uint64_t toPoly = 0)
+            std::uint64_t toPoly = 0,
+            bool forwardRouteProgressConfirmed = true)
         {
             if (fingerprint == 0)
                 return;
@@ -66,8 +67,8 @@ namespace Navigation
                  (record.transitionKnown && transitionKnown &&
                   record.failedFromPoly == fromPoly &&
                   record.failedToPoly == toPoly));
-            if (sameFailure && std::isfinite(moved) &&
-                moved < meaningfulProgressDistance)
+            if (sameFailure && (!forwardRouteProgressConfirmed ||
+                (std::isfinite(moved) && moved < meaningfulProgressDistance)))
             {
                 // A second failure at the same passage cannot move the anchor.
                 // It may, however, resolve a previously unknown transition.
@@ -94,13 +95,15 @@ namespace Navigation
             bool boundedRecoveryAvailable,
             bool candidateTransitionKnown = false,
             std::uint64_t candidateFromPoly = 0,
-            std::uint64_t candidateToPoly = 0)
+            std::uint64_t candidateToPoly = 0,
+            bool forwardRouteProgressConfirmed = true)
         {
             if (!record.active)
                 return {};
 
             const float moved = std::hypot(x - record.anchorX, y - record.anchorY);
-            if (std::isfinite(moved) && moved >= meaningfulProgressDistance)
+            if (forwardRouteProgressConfirmed && std::isfinite(moved) &&
+                moved >= meaningfulProgressDistance)
                 return {CorridorReplanDecision::AllowAfterProgress,
                     CorridorReplanReason::PhysicalProgress, moved, false};
 

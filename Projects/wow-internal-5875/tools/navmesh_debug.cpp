@@ -347,6 +347,11 @@ void AuditProjections(dtNavMeshQuery& query, const dtNavMesh& mesh,
         float nearest[3]{};
         const auto nearestStatus = query.findNearestPoly(
             position.data(), extents, &filter, &selected, nearest);
+        float wallClearance = 0.0f;
+        float wallHit[3]{}, wallNormal[3]{};
+        const bool clearanceKnown = selected != 0 &&
+            dtStatusSucceed(query.findDistanceToWall(selected, nearest, 3.0f,
+                &filter, &wallClearance, wallHit, wallNormal));
         std::array<dtPolyRef, 64> refs{};
         int count = 0;
         const auto status = query.queryPolygons(position.data(), extents,
@@ -355,7 +360,10 @@ void AuditProjections(dtNavMeshQuery& query, const dtNavMesh& mesh,
             << " position=" << PointText(point) << " status=" << status
             << " nearestStatus=" << nearestStatus << " candidates=" << count
             << " truncated=" << ((status & DT_BUFFER_TOO_SMALL) ? "yes" : "no")
-            << " selected=" << Ref(selected) << '\n';
+            << " selected=" << Ref(selected) << " selectedClearance=";
+        if (clearanceKnown) out << wallClearance;
+        else out << "unknown";
+        out << '\n';
         if (dtStatusFailed(status)) continue;
         std::sort(refs.begin(), refs.begin() + count);
         for (int i = 0; i < count; ++i)
@@ -723,6 +731,7 @@ int main(int argc, char** argv)
             AuditProjections(*query, *mesh, *options.observedPortal, "observed_portal", selected, report);
         std::ofstream contract(options.out / "corridor_contract.csv");
         AuditCorridor(*query, *mesh, selected, contract);
+        AuditLocalRay(*query, options.player, *options.destination, 0, report);
         // First local candidates only; do not imply that a ray from the
         // original player position should reach the entire distant route.
         for (std::size_t i = 1; i < selected.straight.size() && i <= 8; ++i)

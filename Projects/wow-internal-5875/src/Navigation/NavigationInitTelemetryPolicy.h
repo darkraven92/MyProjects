@@ -20,11 +20,21 @@ namespace Navigation
         PathValidationFailed,
         PathLengthExceeded,
         PartialOrUnusablePath,
+        SurfaceRecoveryExhausted,
+        ReplanBudgetExhausted,
         OtherUnknown
     };
 
     struct NavigationInitTelemetryPolicy
     {
+        static constexpr NavigationPlanFailure TerminalFailure(
+            NavigationPlanFailure reason)
+        {
+            // A terminal follower failure must never be reported as success.
+            return reason == NavigationPlanFailure::None
+                ? NavigationPlanFailure::OtherUnknown : reason;
+        }
+
         static constexpr NavigationPlanFailure QueryFailure(
             std::string_view error)
         {
@@ -66,6 +76,8 @@ namespace Navigation
                 case NavigationPlanFailure::PathValidationFailed: return "path_validation_failed";
                 case NavigationPlanFailure::PathLengthExceeded: return "path_length_exceeded";
                 case NavigationPlanFailure::PartialOrUnusablePath: return "partial_or_unusable_path";
+                case NavigationPlanFailure::SurfaceRecoveryExhausted: return "surface_recovery_exhausted";
+                case NavigationPlanFailure::ReplanBudgetExhausted: return "replan_budget_exhausted";
                 default: return "other_unknown";
             }
         }

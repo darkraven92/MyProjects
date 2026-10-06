@@ -3,10 +3,12 @@
 #include "../Debug/Logger.h"
 
 #include "DetourAlloc.h"
+#include "DetourCommon.h"
 #include "DetourNavMesh.h"
 #include "DetourNavMeshQuery.h"
 #include "DetourStatus.h"
 #include "IncrementalTileInitializationPolicy.h"
+#include "TerrainTransitionPolicy.h"
 
 #include <windows.h>
 
@@ -20,6 +22,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Navigation
@@ -29,6 +32,15 @@ namespace Navigation
         float x = 0.0f;
         float y = 0.0f;
         float z = 0.0f;
+    };
+
+    struct NavSurfaceRayTrace
+    {
+        std::uint64_t startPoly = 0;
+        std::uint64_t lastVisitedPoly = 0;
+        NavPoint hitPoint{};
+        int visitedCount = 0;
+        bool complete = false;
     };
 
     struct NavPathResult
@@ -55,13 +67,15 @@ namespace Navigation
         int maximumPolygons = 0;
         int maximumStraightPoints = 0;
 
-        // Phase 13D.7.2: preserve the Detour terrain flags used to build
-        // the route. Ground remains the primary query; NAV_WATER is enabled
-        // only as a fallback for player routes that cross legitimate swim
-        // connections such as mainland-to-island travel.
+        // Preserve the exact Detour terrain filter used for this route.
+        // Ground remains ahead of water; 14O.1 excludes steep first and
+        // identifies a steep-enabled fallback for pre-movement validation.
         unsigned short includeFlags = 0;
+        unsigned short excludeFlags = 0;
         bool waterFallbackAttempted = false;
         bool waterAwareRoute = false;
+        bool steepFallback = false;
+        int steepPolygonCount = 0;
 
         NavPoint projectedStart{};
         NavPoint projectedDestination{};
@@ -84,6 +98,21 @@ namespace Navigation
         std::string error;
     };
 
+    struct NavTerrainValidation
+    {
+        bool valid = true;
+        std::uint64_t fromPoly = 0;
+        std::uint64_t toPoly = 0;
+        unsigned short fromFlags = 0;
+        unsigned short toFlags = 0;
+        NavPoint portalA{};
+        NavPoint portalB{};
+        bool portalKnown = false;
+        TerrainTransitionPolicy::Geometry geometry{};
+        std::size_t pointIndex = 0;
+        const char* reason = "none";
+    };
+
     class DetourNavigationProvider
     {
     private:
@@ -94,10 +123,10 @@ namespace Navigation
             6;
 
         static constexpr unsigned short NavGround =
-            0x01;
+            TerrainTransitionPolicy::GroundFlag;
 
         static constexpr unsigned short NavWater =
-            0x08;
+            TerrainTransitionPolicy::WaterFlag;
 
         static constexpr unsigned short PlayerNavFlags =
             static_cast<unsigned short>(NavGround | NavWater);
@@ -1646,6 +1675,49 @@ namespace Navigation
                 std::isfinite(wallPoint.z);
         }
 
+        // Return the exact directed, possibly clipped Detour portal. This is
+        // evidence for local steering only; it never authorizes crossing an
+        // otherwise rejected terrain transition.
+        bool GetDirectedPortal(std::uint64_t fromRef,
+            std::uint64_t toRef, NavPoint& a, NavPoint& b) const
+        {
+            a={}; b={};
+            if (!mesh_ || !fromRef || !toRef || fromRef==toRef) return false;
+            const dtMeshTile* tile=nullptr;
+            const dtPoly* poly=nullptr;
+            if (dtStatusFailed(mesh_->getTileAndPolyByRef(
+                    static_cast<dtPolyRef>(fromRef),&tile,&poly)) ||
+                !tile || !poly) return false;
+            for (unsigned i=poly->firstLink;i!=DT_NULL_LINK;
+                 i=tile->links[i].next)
+            {
+                const dtLink& link=tile->links[i];
+                if (link.ref!=toRef || link.edge>=poly->vertCount) continue;
+                const float* first=&tile->verts[poly->verts[link.edge]*3];
+                const float* second=&tile->verts[
+                    poly->verts[(link.edge+1)%poly->vertCount]*3];
+                float left[3]{},right[3]{};
+                if(link.side==0xff)
+                {
+                    dtVcopy(left,first);dtVcopy(right,second);
+                }
+                else
+                {
+                    if(link.bmin>link.bmax) return false;
+                    dtVlerp(left,first,second,
+                        static_cast<float>(link.bmin)/255.0f);
+                    dtVlerp(right,first,second,
+                        static_cast<float>(link.bmax)/255.0f);
+                }
+                a=ToWow(left);b=ToWow(right);
+                return std::isfinite(a.x) && std::isfinite(a.y) &&
+                    std::isfinite(a.z) && std::isfinite(b.x) &&
+                    std::isfinite(b.y) && std::isfinite(b.z) &&
+                    std::hypot(a.x-b.x,a.y-b.y)>0.01f;
+            }
+            return false;
+        }
+
         // Phase 13C.1: validate a local steering segment against the
         // currently loaded Detour surface before handing it to WoW CTM.
         // A point can be on NavMesh yet still be separated from the live
@@ -1655,10 +1727,12 @@ namespace Navigation
             const NavPoint& start,
             const NavPoint& destination,
             float& reachableFraction,
-            NavPoint& reachablePoint) const
+            NavPoint& reachablePoint,
+            NavSurfaceRayTrace* trace = nullptr) const
         {
             reachableFraction = 0.0f;
             reachablePoint = start;
+            if (trace) *trace = {};
 
             if (query_ == nullptr)
                 return false;
@@ -1717,6 +1791,15 @@ namespace Navigation
             };
 
             reachablePoint = ToWow(reached);
+            if (trace)
+            {
+                trace->startPoly=static_cast<std::uint64_t>(startReference);
+                trace->lastVisitedPoly=visitedCount>0
+                    ?static_cast<std::uint64_t>(visited[visitedCount-1]):0;
+                trace->visitedCount=visitedCount;
+                trace->complete=(rayStatus & DT_BUFFER_TOO_SMALL)==0;
+                trace->hitPoint=reachablePoint;
+            }
             return true;
         }
 
@@ -1900,13 +1983,17 @@ namespace Navigation
             const NavPoint& start,
             const NavPoint& destination,
             NavPathResult& result,
-            unsigned short includeFlags)
+            unsigned short includeFlags,
+            unsigned short excludeFlags)
         {
             result =
                 NavPathResult{};
 
             result.includeFlags =
                 includeFlags;
+
+            result.excludeFlags =
+                excludeFlags;
 
             result.waterAwareRoute =
                 (includeFlags & NavWater) != 0;
@@ -1965,7 +2052,7 @@ namespace Navigation
             );
 
             filter.setExcludeFlags(
-                0
+                excludeFlags
             );
 
             dtPolyRef startReference =
@@ -2107,6 +2194,11 @@ namespace Navigation
             {
                 result.corridorPolys.push_back(
                     static_cast<std::uint64_t>(polygons[index]));
+                unsigned short flags = 0;
+                if (dtStatusSucceed(mesh_->getPolyFlags(
+                        polygons[index], &flags)) &&
+                    TerrainTransitionPolicy::UsesSteep(flags))
+                    ++result.steepPolygonCount;
             }
 
             // findPath() normally guarantees this, but keep the invariant
@@ -2271,75 +2363,317 @@ namespace Navigation
             return true;
         }
 
-        // Phase 13D.7.2: prefer a normal ground-only player route. If the
-        // ground graph cannot reach the destination, retry once with the
-        // water terrain flag enabled. This avoids making swimming a shortcut
-        // preference while still allowing legitimate mainland/island travel.
+        // ALL_CROSSINGS supplies a movement point for each traversed portal.
+        // Check those actual player-facing legs before a follower may issue
+        // CTM. Polygon centers alone can exaggerate a wide sloped polygon.
+        NavTerrainValidation ValidateTerrainRoute(
+            const NavPoint& start, const NavPathResult& path) const
+        {
+            NavTerrainValidation result{};
+            if (mesh_ == nullptr || path.points.size() < 2 ||
+                path.pointPolys.size() != path.points.size() ||
+                path.corridorPolys.empty())
+            {
+                result.valid = false;
+                result.reason = "missing_corridor_geometry";
+                return result;
+            }
+
+            // Inspect every Detour adjacency, including polygons that funnel
+            // simplification omitted from the straight-point list. Center
+            // geometry is only a rejection signal on a steep-enabled route
+            // crossing a flagged steep polygon; ordinary wide polygons may
+            // have misleading center-to-center slopes.
+            for (std::size_t i = 1; i < path.corridorPolys.size(); ++i)
+            {
+                const dtMeshTile* fromTile = nullptr;
+                const dtMeshTile* toTile = nullptr;
+                const dtPoly* fromPoly = nullptr;
+                const dtPoly* toPoly = nullptr;
+                const dtPolyRef fromRef =
+                    static_cast<dtPolyRef>(path.corridorPolys[i - 1]);
+                const dtPolyRef toRef =
+                    static_cast<dtPolyRef>(path.corridorPolys[i]);
+                if (dtStatusFailed(mesh_->getTileAndPolyByRef(
+                        fromRef, &fromTile, &fromPoly)) ||
+                    dtStatusFailed(mesh_->getTileAndPolyByRef(
+                        toRef, &toTile, &toPoly)) ||
+                    !fromTile || !toTile || !fromPoly || !toPoly)
+                {
+                    result.valid = false;
+                    result.reason = "missing_corridor_polygon";
+                    return result;
+                }
+                const dtLink* portal = nullptr;
+                for (unsigned linkIndex = fromPoly->firstLink;
+                     linkIndex != DT_NULL_LINK;
+                     linkIndex = fromTile->links[linkIndex].next)
+                    if (fromTile->links[linkIndex].ref == toRef)
+                    {
+                        portal = &fromTile->links[linkIndex];
+                        break;
+                    }
+                if (!portal)
+                {
+                    result.valid = false;
+                    result.reason = "unlinked_corridor_transition";
+                    return result;
+                }
+                if (!path.steepFallback ||
+                    !TerrainTransitionPolicy::UsesSteep(
+                        fromPoly->flags | toPoly->flags) ||
+                    fromPoly->vertCount == 0 || toPoly->vertCount == 0)
+                    continue;
+
+                const auto center = [](const dtMeshTile* tile,
+                                       const dtPoly* poly)
+                {
+                    NavPoint value{};
+                    for (unsigned vertex = 0; vertex < poly->vertCount;
+                         ++vertex)
+                    {
+                        const NavPoint point = ToWow(&tile->verts[
+                            poly->verts[vertex] * 3]);
+                        value.x += point.x;
+                        value.y += point.y;
+                        value.z += point.z;
+                    }
+                    const float count = static_cast<float>(poly->vertCount);
+                    value.x /= count;
+                    value.y /= count;
+                    value.z /= count;
+                    return value;
+                };
+                const auto geometry = TerrainTransitionPolicy::Assess(
+                    center(fromTile, fromPoly), center(toTile, toPoly));
+                if (!geometry.rejected)
+                    continue;
+                result.valid = false;
+                result.fromPoly = path.corridorPolys[i - 1];
+                result.toPoly = path.corridorPolys[i];
+                result.fromFlags = fromPoly->flags;
+                result.toFlags = toPoly->flags;
+                result.geometry = geometry;
+                result.reason = "unsafe_steep_corridor_transition";
+                if (portal->edge < fromPoly->vertCount)
+                {
+                    const float* a = &fromTile->verts[
+                        fromPoly->verts[portal->edge] * 3];
+                    const float* b = &fromTile->verts[
+                        fromPoly->verts[(portal->edge + 1) %
+                            fromPoly->vertCount] * 3];
+                    result.portalA = ToWow(a);
+                    result.portalB = ToWow(b);
+                    result.portalKnown = true;
+                }
+                return result;
+            }
+
+            std::size_t corridorIndex = 0;
+            for (std::size_t i = 1; i < path.points.size(); ++i)
+            {
+                // This Detour fork reports ref=0 for the final straight-path
+                // endpoint. It still lies on the corridor's final polygon.
+                const std::uint64_t enteredRef =
+                    TerrainTransitionPolicy::EnteredRef(
+                        path.pointPolys[i], i + 1 == path.points.size(),
+                        path.corridorPolys.back());
+                std::size_t entered = corridorIndex;
+                while (entered < path.corridorPolys.size() &&
+                       path.corridorPolys[entered] != enteredRef)
+                    ++entered;
+                if (entered == path.corridorPolys.size())
+                {
+                    result.valid = false;
+                    result.pointIndex = i;
+                    result.reason = "straight_point_outside_corridor";
+                    return result;
+                }
+
+                const NavPoint& from = i == 1 ? start : path.points[i - 1];
+                const auto geometry = TerrainTransitionPolicy::Assess(
+                    from, path.points[i]);
+                if (geometry.rejected)
+                {
+                    result.valid = false;
+                    result.geometry = geometry;
+                    result.pointIndex = i;
+                    result.reason = "unsafe_vertical_portal";
+                    // A skipped polygon crossing cannot safely identify just
+                    // one directed edge for the existing avoidance policy.
+                    if (entered != corridorIndex + 1)
+                        return result;
+                    result.fromPoly = path.corridorPolys[corridorIndex];
+                    result.toPoly = path.corridorPolys[entered];
+                    mesh_->getPolyFlags(
+                        static_cast<dtPolyRef>(result.fromPoly),
+                        &result.fromFlags);
+                    mesh_->getPolyFlags(
+                        static_cast<dtPolyRef>(result.toPoly),
+                        &result.toFlags);
+
+                    const dtMeshTile* tile = nullptr;
+                    const dtPoly* poly = nullptr;
+                    if (dtStatusSucceed(mesh_->getTileAndPolyByRef(
+                            static_cast<dtPolyRef>(result.fromPoly),
+                            &tile, &poly)) && tile && poly)
+                    {
+                        for (unsigned linkIndex = poly->firstLink;
+                             linkIndex != DT_NULL_LINK;
+                             linkIndex = tile->links[linkIndex].next)
+                        {
+                            const dtLink& link = tile->links[linkIndex];
+                            if (link.ref != result.toPoly ||
+                                link.edge >= poly->vertCount)
+                                continue;
+                            const float* a = &tile->verts[
+                                poly->verts[link.edge] * 3];
+                            const float* b = &tile->verts[
+                                poly->verts[(link.edge + 1) %
+                                    poly->vertCount] * 3];
+                            float left[3] = {a[0], a[1], a[2]};
+                            float right[3] = {b[0], b[1], b[2]};
+                            if (link.side != 0xff)
+                            {
+                                dtVlerp(left, a, b,
+                                    static_cast<float>(link.bmin) / 255.0f);
+                                dtVlerp(right, a, b,
+                                    static_cast<float>(link.bmax) / 255.0f);
+                            }
+                            result.portalA = ToWow(left);
+                            result.portalB = ToWow(right);
+                            result.portalKnown = true;
+                            break;
+                        }
+                    }
+                    return result;
+                }
+                corridorIndex = entered;
+            }
+            return result;
+        }
+
+        // Excluding steep must not silently project a steep start/end onto a
+        // different nearby height layer and call that a complete route to
+        // the requested location. Compare polygon identity using the same
+        // search extents with only the steep exclusion removed.
+        bool PreferredEndpointsMatchUnrestricted(
+            const NavPoint& start, const NavPoint& destination,
+            unsigned short includeFlags,
+            const NavPathResult& preferred) const
+        {
+            if (!query_ || preferred.startPoly == 0 ||
+                preferred.endPoly == 0)
+                return false;
+            const float extents[3] = {5.0f, 10.0f, 5.0f};
+            float startPosition[3]{}, destinationPosition[3]{};
+            float closestStart[3]{}, closestDestination[3]{};
+            ToDetour(start, startPosition);
+            ToDetour(destination, destinationPosition);
+            dtQueryFilter filter;
+            filter.setIncludeFlags(includeFlags);
+            filter.setExcludeFlags(0);
+            dtPolyRef startRef = 0, endRef = 0;
+            return dtStatusSucceed(query_->findNearestPoly(
+                       startPosition, extents, &filter,
+                       &startRef, closestStart)) &&
+                dtStatusSucceed(query_->findNearestPoly(
+                    destinationPosition, extents, &filter,
+                    &endRef, closestDestination)) &&
+                TerrainTransitionPolicy::SameEndpointPolygons(
+                    preferred.startPoly, preferred.endPoly,
+                    startRef, endRef);
+        }
+
+        // Keep ground before water, but first ask each terrain class for a
+        // complete route without NAV_STEEP_SLOPES. A steep-enabled result is
+        // only a fallback; the follower validates its movement geometry
+        // before it can enter Moving/issue CTM.
         bool FindPath(
             const NavPoint& start,
             const NavPoint& destination,
             NavPathResult& result)
         {
-            NavPathResult groundResult{};
-            const bool groundOk =
-                FindPathWithFlags(
-                    start,
-                    destination,
-                    groundResult,
-                    NavGround
-                );
-
-            if (groundOk && groundResult.success && !groundResult.partial)
+            NavPathResult preferredGround{};
+            const bool preferredGroundOk = FindPathWithFlags(
+                start, destination, preferredGround, NavGround,
+                TerrainTransitionPolicy::SteepFlag);
+            const bool preferredQueryComplete = TerrainTransitionPolicy::Complete(
+                preferredGroundOk, preferredGround.success,
+                preferredGround.partial);
+            const bool groundProjectionMatches = preferredQueryComplete &&
+                PreferredEndpointsMatchUnrestricted(
+                    start, destination, NavGround, preferredGround);
+            const bool preferredComplete = preferredQueryComplete &&
+                groundProjectionMatches;
+            Debug::Logger::Info(
+                "NAV 14O.1 ROUTE POLICY preferred=non_steep result=" +
+                std::string(preferredComplete ? "complete" : "incomplete") +
+                " polygons=" + std::to_string(preferredGround.polygonCount) +
+                " projectionMatch=" +
+                std::string(groundProjectionMatches ? "yes" : "no"));
+            if (preferredComplete)
             {
-                result = groundResult;
+                result = std::move(preferredGround);
                 return true;
             }
 
+            NavPathResult groundFallback{};
+            const bool groundOk = FindPathWithFlags(
+                start, destination, groundFallback, NavGround, 0);
+            const bool groundComplete = TerrainTransitionPolicy::Complete(
+                groundOk, groundFallback.success, groundFallback.partial);
             Debug::Logger::Info(
-                "NAVMESH 13D.7.2: GROUND-ONLY ROUTE INCOMPLETE "
-                "ok=" + std::string(groundOk ? "yes" : "no") +
-                " partial=" + std::string(groundResult.partial ? "yes" : "no") +
-                " outOfNodes=" + std::string(groundResult.findPathOutOfNodes ? "yes" : "no") +
-                " pathCount=" + std::to_string(groundResult.polygonCount) +
-                " includeFlags=0x01"
-            );
+                "NAV 14O.1 FALLBACK reason=no_complete_non_steep_route "
+                "terrain=ground result=" +
+                std::string(groundComplete ? "complete" : "incomplete") +
+                " polygons=" + std::to_string(groundFallback.polygonCount));
+            if (groundComplete)
+            {
+                groundFallback.steepFallback = true;
+                result = std::move(groundFallback);
+                return true;
+            }
 
-            Debug::Logger::Info(
-                "NAVMESH 13D.7.2: PLAYER WATER FALLBACK START includeFlags=0x09"
-            );
-
-            NavPathResult waterResult{};
-            const bool waterOk =
-                FindPathWithFlags(
-                    start,
-                    destination,
-                    waterResult,
-                    PlayerNavFlags
-                );
-
-            waterResult.waterFallbackAttempted = true;
-
-            if (waterOk && waterResult.success && !waterResult.partial)
+            // Preserve 13D.7.2's water fallback only after ground queries.
+            NavPathResult preferredWater{};
+            const bool preferredWaterOk = FindPathWithFlags(
+                start, destination, preferredWater, PlayerNavFlags,
+                TerrainTransitionPolicy::SteepFlag);
+            preferredWater.waterFallbackAttempted = true;
+            if (TerrainTransitionPolicy::Complete(preferredWaterOk,
+                    preferredWater.success, preferredWater.partial) &&
+                PreferredEndpointsMatchUnrestricted(
+                    start, destination, PlayerNavFlags, preferredWater))
             {
                 Debug::Logger::Info(
                     "NAVMESH 13D.7.2: WATER-AWARE COMPLETE CORRIDOR RECOVERED "
-                    "pathCount=" + std::to_string(waterResult.polygonCount) +
-                    " includeFlags=0x09"
-                );
-                result = waterResult;
+                    "includeFlags=0x09 excludeFlags=0x10");
+                result = std::move(preferredWater);
                 return true;
             }
 
-            Debug::Logger::Info(
-                "NAVMESH 13D.7.2: WATER FALLBACK DID NOT RECOVER COMPLETE CORRIDOR "
-                "ok=" + std::string(waterOk ? "yes" : "no") +
-                " partial=" + std::string(waterResult.partial ? "yes" : "no") +
-                " outOfNodes=" + std::string(waterResult.findPathOutOfNodes ? "yes" : "no") +
-                " pathCount=" + std::to_string(waterResult.polygonCount)
-            );
+            NavPathResult waterFallback{};
+            const bool waterOk = FindPathWithFlags(
+                start, destination, waterFallback, PlayerNavFlags, 0);
+            waterFallback.waterFallbackAttempted = true;
+            if (TerrainTransitionPolicy::Complete(waterOk,
+                    waterFallback.success, waterFallback.partial))
+            {
+                waterFallback.steepFallback = true;
+                Debug::Logger::Info(
+                    "NAVMESH 13D.7.2: WATER-AWARE COMPLETE CORRIDOR RECOVERED "
+                    "includeFlags=0x09 excludeFlags=0x00");
+                result = std::move(waterFallback);
+                return true;
+            }
 
-            groundResult.waterFallbackAttempted = true;
-            result = groundResult;
+            // No complete route was found. Preserve 13D.7's original
+            // ground-prefix choice and let its existing bounded partial
+            // staging policy decide whether that prefix is usable.
+            groundFallback.waterFallbackAttempted = true;
+            groundFallback.steepFallback = groundOk && groundFallback.success;
+            result = std::move(groundFallback);
             return groundOk;
         }
     };

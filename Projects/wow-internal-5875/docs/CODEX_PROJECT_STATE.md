@@ -9,8 +9,8 @@ Updated: 2026-10-06. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- This is an initial continuity/navigation-audit checkpoint, NOT completion of
-  the roadmap or an unattended qualification.
+- This is a bounded P0.1 source/test checkpoint, NOT completion of the roadmap
+  or an unattended qualification.
 
 # Current architecture
 
@@ -67,7 +67,7 @@ do not present them as reverified by this checkpoint.
 - Existing 16J safe pulling and 16J.1 failure 1->2->3/defer/skip and safe revisit.
 - Generic starter acquisition/turn-in/chain progression previously verified.
 
-Current inspected log: `build/wow-internal.log`, 2026-10-06 17:02-17:06 UTC,
+Earlier inspected log: `build/wow-internal.log`, 2026-10-06 17:02-17:06 UTC,
 session `1404.134357533165383490.42335680.1980`. Level 21 Grinding run, NOT a
 fresh Orc/cave qualification. Intent 1 arrived at tick 75, intent 2 arrived at
 269; later roam intents were released during acquisition/watchdog activity.
@@ -75,6 +75,73 @@ Intent 8 failed `no_path` at tick 820. Acquisition watchdog reset at tick 856;
 world became unavailable and GUI reported process absent at 17:06:43 UTC.
 Cause of process exit is unknown. No surface-recovery episode appears in this
 log. No WoW process was running at audit time.
+
+Newest inspected live capture (2026-10-06 19:39 local, 1,449,498 bytes)
+supersedes that earlier cave/navigation sample for P0.1. Intent 11 retained one
+owner while crossing the region near (-587,-4208,39) and later reached combat
+handoff near (-457,-4216,50). `NAV RECOVERY RESET earnedProgress=no`
+followed target arrival without verified forward corridor progress; ordinary
+portal crossing plus destination gain logged `earnedProgress=yes`. Bounded
+recovery/backtrack and terminal release worked. The new code below has NOT
+yet run in WoW; these observations are pre-fix evidence only.
+
+# P0.1 local steering and directed failure attribution (2026-10-06)
+
+SOURCE VERIFIED root cause: after every steering candidate failed,
+`IssueCurrentCorner` cleared the prior ordinary CTM evidence, then called
+`IssueSurfaceRecovery`, which intentionally passed `ordinarySteeringStalled=false`
+to `RegisterFailedCorridor`. The failed record therefore had refs 0/0. A later
+`PlanFrom` computed a nonzero **candidate** pair from a newly planned corridor;
+that pair was never evidence for the earlier failed ray and must not be copied
+backward. Straight-path `fromIndex`/`candidateIndex` are not Detour corridor
+indices; `pointPolyRefs_` identifies the polygon entered at a straight-path
+point. Unknown ray/portal relationships remain unknown.
+
+Concrete live sequence: intent 11 near (-587.299,-4208.641,39.114) accepted
+the nearer wall-inset point with a full ray, then rejected a farther point
+with ray fraction 0.304. Recovery episode 4 began with problem refs 0/0.
+The following replan logged candidate 0x10000880002BCB ->
+0x10000880002BCA but failed refs 0/0 and allowed `transition_unknown`.
+Do not infer identical transitions merely from proximity. The runtime also
+showed non-steep complete versus validated steep fallback from changed local
+positions; offline geometry does not prove unstable projection or a 14O.1 bug.
+
+Offline inspector at the exact failed-ray position found the ray stopped in
+the live-start polygon near a clipped 8.707-yard portal, about 0.675 yard
+from its edge. A direct ray to the NavMesh-derived portal midpoint was full,
+with 3.0-yard measured clearance, and a ray onward from that midpoint reached
+the previously failed target. Other exact positions near (-577,-4210),
+(-570,-4215) and (-560,-4285) projected to different local polygons; nearby
+routes are traversable. Offline Detour refs have different salt bits from live
+tile loads, so match geometry/suffixes, not full 64-bit values across sessions.
+The inspector does not replay live collision/hazards and grants no runtime pass.
+
+Minimal generic P0.1 change: provider exposes the exact directed clipped
+portal and optional ray hit/visited refs; follower attributes a failed pair
+only when the complete blocked ray's last polygon is uniquely on the forward
+corridor and its hit lies within the existing wall-clearance threshold of that
+directed portal. It logs one `STEERING FAILURE ATTRIBUTION` per total steering
+failure. Otherwise refs remain 0/0. A known local pair can drive one
+geometry-derived portal-midpoint stage after projection, connected-poly,
+vertical, ray, clearance, distance and duplicate-target checks. Staging uses
+the existing four-attempt surface-recovery episode; no budget or 14O.1 change.
+These steering observations are not automatically promoted to persistent
+hazard exclusions. Later V6 hazard memory must require its own evidence.
+
+Test-first evidence: the new strict local-portal regression failed to compile
+before its policy existed, then passed. The initial full run found an existing
+source-wiring assertion tied to the old call signature; it was updated without
+changing recovery policy. Final `python3 tools/validate.py --jobs 4` result:
+TEST PASS 70/70 C++ tests (C++20, Wall/extra/Werror), QuestDB 13/13 plus SQL
+fixture, Lua 5 fixtures/89 checks; BUILD PASS; DIFF CHECK PASS. Artifact:
+`/tmp/wow-validation-3hgjt6he/results.json` (temporary).
+
+P0.1 RUNTIME PENDING: two natural traversals of the same problematic corridor
+with zero human movement intervention are required. Inspect new
+`STEERING FAILURE ATTRIBUTION`, `NAV ENTRANCE STAGE`, 14N.2, recovery and
+movement-intent logs. A stage command alone is not proof of portal crossing.
+Current validated worktree is still dirty; a source/test/build pass does not
+establish a clean-checkout or WoW runtime pass.
 
 # Source/test verified
 
@@ -91,7 +158,7 @@ log. No WoW process was running at audit time.
 - Detailed validation artifact from this run:
   `/tmp/wow-validation-9mu_8ta_/results.json` (temporary, not durable evidence).
 
-New checkpoint changes are diagnostic/tooling only:
+Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 - `tools/validate.py`: reproducible full test/build/diff runner; bounded test
   subprocesses, no gameplay, no git mutations. A new Lua fixture without a
@@ -107,11 +174,11 @@ New checkpoint changes are diagnostic/tooling only:
 
 # Runtime pending
 
-- Surface-recovery episode patch: current source requires ordinary portal
-  progress plus destination gain before resetting; route refresh/combat retain
-  evidence. No qualifying live run of this patch in the current log.
-- Cave/interior navigation: P0.1 investigation incomplete. No narrow-entrance
-  movement patch or runtime pass at this checkpoint.
+- Surface-recovery episode semantics have live pre-fix evidence above; the
+  new local attribution/staging change is not yet runtime validated.
+- Cave/interior navigation: generic portal staging is SOURCE VERIFIED and TEST
+  PASS but RUNTIME PENDING. Do not advance to P0.2 swimming until two natural
+  P0.1 traversals pass or an external runtime blocker is documented.
 - Combat attack continuity, acquisition liveness and AFK prevention need live
   diagnosis. Do not infer combat success from arrival events.
 - Vendor/repair, equipment and trainer end-to-end qualification remains distinct
@@ -123,9 +190,9 @@ New checkpoint changes are diagnostic/tooling only:
 
 # Known blockers
 
-1. Current log replaced the cave run. Need a natural failure capture including
-   actual player XYZ, current route generation and recovery events. A previous
-   recovery TARGET is not proof of actual player position.
+1. The newer live capture supplied actual player XYZ and recovery/route events;
+   this source fix still needs two post-fix natural traversals. Do not confuse
+   recovery target with player position or new-route pair with failed-ray pair.
 2. Detour's local `raycast` is explicitly 2D (local VMaNGOS
    `DetourNavMeshQuery.cpp`, raycast contract). Runtime
    `IsSurfaceSegmentReachable` interpolates requested Z and does not verify end
@@ -151,8 +218,9 @@ New checkpoint changes are diagnostic/tooling only:
 
 # Current phase
 
-V6 continuity bootstrap and P0.1 evidence tooling complete; P0.1 gameplay
-reliability is still RUNTIME PENDING. No later subsystem behavior patched.
+V6 P0.1 local steering and directed-failure attribution source/test/build
+complete; gameplay reliability is RUNTIME PENDING. No later V6 subsystem
+behavior patched.
 
 Proceed in requested order, with source/test/build/diff and checkpoint after
 each bounded subphase. Do not stack speculative fixes on the unproven cave
@@ -161,14 +229,14 @@ separate.
 
 # Runtime validation gates
 
-1. Preserve one continuous session log before another GUI log clear/restart.
-2. Natural cave route: intent acquisition -> source-backed corridor -> steering
-   choice -> bounded recovery -> meaningful portal/destination progress OR
-   bounded failure/release. Capture rejected target and actual player position.
-3. Re-run offline audit at THAT player position, destination and portal; compare
-   projection layers and clipped portal geometry before selecting a correction.
-4. Repeat representative Questing and Grinding movement. No unearned attempt
-   reset and no repeated same-target recovery loop.
+1. Preserve one continuous post-fix session log before another GUI log clear.
+2. Repeat the SAME natural corridor twice: intent -> exact steering attribution
+   (known only if ray/portal proves it) -> safe stage/alternate route -> verified
+   crossing and combat handoff or bounded failure/release. Zero manual movement.
+3. No repeated known directed edge, anonymous pair where ray/portal evidence
+   is sufficient, unearned attempt reset, same-target loop or safety weakening.
+4. Compare actual player XYZ, route generation, projection and clipped portal
+   geometry if post-fix behavior differs; offline reports are not live proof.
 5. P0 water source audit next; then hazards, combat, AFK, invariants, consolidation
    and cross-workload validation. Do not claim implemented water safety early.
 6. AFK requires two natural windows; drowning tests must not deliberately risk
@@ -187,7 +255,7 @@ git diff --check -- .
 
 set -gx WOW_INTERNAL_QUEST_FOCUS_ID 0
 # Start through the existing GUI workflow. No unsafe synthetic input.
-tail -F build/wow-internal.log | rg --line-buffered 'LOGGER SESSION|BOT SESSION|MOVEMENT INTENT|NAV RECOVERY|NAV 14N.1 STEERING|LOCAL RECOVERY|NAV 14O.1|COMBAT STALL|AFK'
+tail -F build/wow-internal.log | rg --line-buffered 'LOGGER SESSION|BOT SESSION|MOVEMENT INTENT|STEERING FAILURE ATTRIBUTION|NAV ENTRANCE STAGE|NAV RECOVERY|NAV 14N.1 STEERING|NAV 14N.2 HYSTERESIS|LOCAL RECOVERY|NAV 14O.1|COMBAT STALL|AFK'
 
 # At the end of the natural run, preserve its full log locally (not in Git).
 set capture (mktemp -d /tmp/wow-v6-runtime.XXXXXX)
@@ -204,14 +272,17 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
-- Inspected base HEAD: `3c097cf` (`Diagnose long-distance route rejection`).
+- Inspected base HEAD for this P0.1 phase: `f5d04e5` (offline cave audit).
 - Branch: `codex/wow-internal-continuation`.
 - Remote verified from configuration: `origin`,
   `git@github.com:darkraven92/MyProjects.git`.
 - Last fully validated clean runtime commit: **not established**. Validation
   above applies to the existing dirty worktree, not just base HEAD.
-- This checkpoint includes this document, validation runner, offline inspector,
-  inspector build script/helper/test and its unchanged terrain-policy dependency.
+- This P0.1 checkpoint reviews and includes the navigation follower/provider,
+  their required navigation policy headers and focused navigation regressions,
+  the inspector extension, and this document. Older unrelated dirty Questing,
+  Grinding, vendor and GUI work remains unstaged and is not represented by
+  this checkpoint.
 - Do not stage build, state, cache, SQL database/WAL/SHM, captures, debug exports,
   private talent configs, or unrelated existing edits.
 - Resolve continuity checkpoint with:

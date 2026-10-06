@@ -146,7 +146,7 @@ namespace Navigation
             return moduleDir;
         }
 
-        bool BuildStatePathLocked(std::uint32_t mapId)
+        bool BuildStatePathLocked(std::uint32_t mapId, bool readOnly = false)
         {
             const auto root = ResolveProjectRoot();
             if (root.empty())
@@ -154,7 +154,8 @@ namespace Navigation
 
             const auto dir = root / "data" / "state" / "navigation_hazards";
             std::error_code ec;
-            std::filesystem::create_directories(dir, ec);
+            if (!readOnly)
+                std::filesystem::create_directories(dir, ec);
             if (ec)
             {
                 Debug::Logger::Info(
@@ -636,6 +637,30 @@ namespace Navigation
                 if (cell.mapId == mapId && IsHard(cell))
                     result.push_back(Center(cell));
             }
+            return result;
+        }
+
+        // A route-cost probe must see the same hazards as execution without
+        // initializing/flushing the runtime singleton or learning from a probe.
+        std::vector<NavPoint> HardCellCentersForProbe(std::uint32_t mapId) const
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (initialized_ && activeMapId_ == mapId)
+            {
+                std::vector<NavPoint> result;
+                for (const auto& cell : cells_)
+                    if (cell.mapId == mapId && IsHard(cell))
+                        result.push_back(Center(cell));
+                return result;
+            }
+            NavigationHazardMemory snapshot;
+            snapshot.activeMapId_ = mapId;
+            if (mapId != 0 && snapshot.BuildStatePathLocked(mapId, true))
+                snapshot.LoadLocked();
+            std::vector<NavPoint> result;
+            for (const auto& cell : snapshot.cells_)
+                if (cell.mapId == mapId && IsHard(cell))
+                    result.push_back(Center(cell));
             return result;
         }
 
