@@ -429,6 +429,11 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- Validated P0.0 AFK code checkpoint:
+  `afde8e9a4157f2114ec8fa916b3fe21dc36a82c3`
+  (`afk: add shared input verification and bounded qualification`). Pushed to
+  origin; independent `git ls-remote` returned the same full hash before this
+  documentation follow-up. Runtime remains pending; WoW login/start is needed.
 - P0.0 AFK checkpoint is scoped to the new AFK files, validation registration,
   documentation and isolated WorldMonitor/QuestPlanner integration hunks.
   Existing dirty gameplay work remains unstaged; full-worktree validation does
