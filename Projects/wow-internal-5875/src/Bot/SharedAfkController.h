@@ -2,6 +2,7 @@
 #include "AfkClient5875.h"
 #include "AfkPreventionWindow.h"
 #include "AfkQualificationHold.h"
+#include "AfkQualificationPolicy.h"
 #include "../Debug/Logger.h"
 #include <cstdlib>
 #include <string>
@@ -14,6 +15,8 @@ namespace Bot
         bool known=false, active=false, thresholdMeasured=false;
         std::uint32_t inputAgeMs=0, sourceThresholdMs=0, observedThresholdMs=0;
         unsigned verifiedInputs=0;
+        bool candidateDeliveryVerified=false, candidateClearVerified=false;
+        unsigned preventionWindows=0;
         std::string reason="not_observed";
     };
     class SharedAfkController
@@ -24,14 +27,13 @@ namespace Bot
         std::uint64_t playerGuid_=0, nextDispatchProbe_=0;
         bool observeOnly_=false, baselineComplete_=false;
         AfkQualificationHold qualification_{};
+        AfkQualificationPolicy qualificationFlow_{};
         std::uint64_t nextQualificationUiProbe_=0;
         std::uint32_t candidateInputBefore_=0;
         bool candidateAfkBefore_=false;
         AfkCandidateScene candidateSceneBefore_{};
         bool havePrevious_=false, safeBaseline_=false;
         std::uint64_t qualificationStart_=0;
-        unsigned preventionWindows_=0;
-        AfkPreventionWindow preventionWindow_{};
         std::string lastDecision_{}, lastDispatchBlock_{};
 
         void LogDecision(const AfkDecision& d, const char* owner)
@@ -72,8 +74,6 @@ namespace Bot
             const auto observation=AfkClient5875::Read(player);
             if (!AfkProtectionPolicy::Valid(observation))
             { EndControlledIdle(AfkProtectionPolicy::ObservationReason(observation)); return false; }
-            if (acquiring && (observation.clientAfk || observation.serverAfk))
-            { EndControlledIdle("initial_afk_state_not_clear"); return false; }
             if (qualification_.Advance(nullptr) && acquiring)
             {
                 Debug::Logger::Info("AFK QUALIFICATION START reason=safe_world inputClock="+
@@ -90,7 +90,7 @@ namespace Bot
             Debug::Logger::Info(std::string("AFK QUALIFICATION HOLD state=aborted reason=")+reason);
             Debug::Logger::Info(std::string("AFK QUALIFICATION HOLD state=released reason=")+reason);
             if (baselineComplete_)
-                Debug::Logger::Info("AFK PREVENTION WINDOW index="+std::to_string(preventionWindows_+1)+
+                Debug::Logger::Info("AFK PREVENTION WINDOW index="+std::to_string(qualificationFlow_.Windows()+1)+
                     " result=fail reason="+reason);
             // An aborted diagnostic must not silently test its candidate later
             // during normal work. A new bot session explicitly re-arms it.
@@ -103,7 +103,7 @@ namespace Bot
                 Debug::Logger::Info("AFK SESSION RESET reason=world_gap_or_stop pendingEvidence=discarded");
             policy_.Reset(); status_={}; previous_={}; playerGuid_=0;
             havePrevious_=false; safeBaseline_=false; baselineComplete_=false;
-            qualificationStart_=0; preventionWindows_=0; preventionWindow_={};
+            qualificationStart_=0; qualificationFlow_={};
             nextDispatchProbe_=0; lastDecision_.clear(); lastDispatchBlock_.clear();
         }
         void Update(const Objects::PlayerState& player, std::uint64_t playerGuid,
@@ -120,8 +120,10 @@ namespace Bot
                 if (!valid) EndControlledIdle("afk_observation_unavailable");
                 else if (now-qualificationStart_ > std::uint64_t(o.thresholdMs)*4+30000)
                     EndControlledIdle("bounded_qualification_deadline");
-                else if (baselineComplete_ && havePrevious_ && o.lastInput!=previous_.lastInput &&
-                    policy_.PendingAction()==AfkAction::None)
+                else if (havePrevious_ && o.lastInput!=previous_.lastInput &&
+                    qualificationFlow_.Phase()!=AfkQualificationPhase::Initial &&
+                    qualificationFlow_.Phase()!=AfkQualificationPhase::Synchronizing &&
+                    qualificationFlow_.PendingAction()==AfkAction::None)
                     EndControlledIdle("unattributed_input_during_qualification");
             }
             if (!havePrevious_ || valid!=status_.known ||
@@ -161,13 +163,21 @@ namespace Bot
             status_.active=valid && (o.serverAfk || o.clientAfk);
             status_.inputAgeMs=valid ? std::uint32_t(o.clientNow-o.lastInput) : 0;
             status_.sourceThresholdMs=valid ? o.thresholdMs : 0;
-            const bool observe=observeOnly_ || (qualification_.Requested() && !baselineComplete_);
             auto checkedSafety=safety;
             if (!AfkClient5875::StationaryAliveLand(player)) checkedSafety.healthyIdle=false;
-            preventionWindow_.Observe(o,checkedSafety.Safe());
-            const auto pendingAction=policy_.PendingAction();
-            auto decision=policy_.Update(o,checkedSafety,now,observe);
-            if (pendingAction==AfkAction::InputPulse && decision.result==AfkResult::Confirmed)
+            const bool qualifying=qualification_.InhibitsWorkloadAcquisition();
+            const auto beforePhase=qualificationFlow_.Phase();
+            const auto beforeWindows=qualificationFlow_.Windows();
+            const auto pendingAction=qualifying ? qualificationFlow_.PendingAction() : policy_.PendingAction();
+            // Check the candidate scene throughout delivery AND asynchronous AFK
+            // propagation, not merely on the first clock-advance snapshot.
+            bool sceneSame=true;
+            if (qualifying && qualificationFlow_.Verifying())
+                sceneSame=AfkCandidateScene::Unchanged(candidateSceneBefore_,AfkClient5875::ReadScene(player)) &&
+                    AfkClient5875::SafeInputReason()=="ready";
+            auto decision=qualifying ? qualificationFlow_.Update(o,checkedSafety.Safe(),sceneSame,now) :
+                policy_.Update(o,checkedSafety,now,observeOnly_);
+            if (!qualifying && pendingAction==AfkAction::InputPulse && decision.result==AfkResult::Confirmed)
             {
                 const bool sceneSame=AfkCandidateScene::Unchanged(candidateSceneBefore_,AfkClient5875::ReadScene(player));
                 const auto ui=AfkClient5875::SafeInputReason();
@@ -184,11 +194,58 @@ namespace Bot
                 AfkWorkloadSafetyPolicy::Classify(safety,benignWorkEvidence)==AfkWorkloadSafety::BenignWork)
                 decision.reason="benign_work_awaiting_runtime_verified_noop";
             status_.status=decision.status; status_.reason=decision.reason;
+            if (qualifying)
+            {
+                status_.candidateDeliveryVerified=qualificationFlow_.DeliveryVerified();
+                status_.candidateClearVerified=qualificationFlow_.ClearVerified();
+                status_.preventionWindows=qualificationFlow_.Windows();
+                const auto phase=qualificationFlow_.Phase();
+                if (beforePhase==AfkQualificationPhase::Initial ||
+                    (beforePhase==AfkQualificationPhase::Synchronizing && phase!=beforePhase))
+                    Debug::Logger::Info("AFK QUALIFICATION INITIAL state="+
+                        std::string(!valid ? "unknown" : o.clientAfk || o.serverAfk ? "active" : "clear")+
+                        " inputAge="+std::to_string(status_.inputAgeMs)+" decision="+
+                        (phase==AfkQualificationPhase::Synchronizing ? "synchronize" :
+                         phase==AfkQualificationPhase::Baseline ? "baseline" :
+                         phase==AfkQualificationPhase::Failed ? "abort" : "candidate_clear")+
+                        " reason="+decision.reason);
+                if (beforePhase==AfkQualificationPhase::Clear || phase==AfkQualificationPhase::Clear)
+                {
+                    // Sparse: entering clear verification, flag transitions, or terminal result.
+                    if (phase!=beforePhase || o.clientAfk!=previous_.clientAfk || o.serverAfk!=previous_.serverAfk)
+                        Debug::Logger::Info("AFK CLEAR VERIFY clientActive="+
+                            std::string(valid ? (o.clientAfk ? "yes" : "no") : "unknown")+
+                            " serverActive="+(valid ? (o.serverAfk ? "yes" : "no") : "unknown")+
+                            " elapsedSinceCandidate="+std::to_string(now-qualificationFlow_.IssuedAt())+
+                            " result="+(phase==AfkQualificationPhase::Failed ? "failed" :
+                                phase==AfkQualificationPhase::Clear ? "pending" : "confirmed")+
+                            " reason="+decision.reason);
+                }
+                if (std::string(decision.reason)=="candidate_clear_confirmed" && beforeWindows==0 &&
+                    qualificationFlow_.Windows()==0)
+                {
+                    baselineComplete_=true;
+                    Debug::Logger::Info("AFK QUALIFICATION BASELINE RESET reason=candidate_clear_confirmed");
+                }
+                if (qualificationFlow_.Windows()>beforeWindows)
+                    Debug::Logger::Info("AFK PREVENTION WINDOW index="+std::to_string(qualificationFlow_.Windows())+
+                        " result=pass reason=continuous_clear_and_verified_paired_input");
+                if (phase==AfkQualificationPhase::Complete)
+                {
+                    qualification_.Complete();
+                    Debug::Logger::Info("AFK QUALIFICATION COMPLETE windows=2 result=pass");
+                    Debug::Logger::Info("AFK QUALIFICATION HOLD state=released reason=two_prevention_windows");
+                    Debug::Logger::Info("AFK PRODUCTION GATE activeWork=blocked reason=harmless_input_runtime_review_required");
+                }
+            }
             LogDecision(decision,owner);
             if (pendingAction==AfkAction::InputPulse &&
                 (decision.result==AfkResult::Confirmed || decision.result==AfkResult::Failed))
             {
                 Debug::Logger::Info("AFK CANDIDATE TEST action=F12 phase=verify");
+                Debug::Logger::Info("AFK CANDIDATE DELIVERY inputClockBefore="+std::to_string(candidateInputBefore_)+
+                    " inputClockAfter="+std::to_string(o.lastInput)+" advanced="+
+                    (valid && o.lastInput!=candidateInputBefore_ ? std::string("yes") : "no"));
                 Debug::Logger::Info("AFK CANDIDATE VERIFY timestampBefore="+std::to_string(candidateInputBefore_)+
                     " timestampAfter="+std::to_string(o.lastInput)+
                     " advanced="+(valid && o.lastInput!=candidateInputBefore_ ? std::string("yes") : "no")+
@@ -198,29 +255,15 @@ namespace Bot
             }
             if (decision.result==AfkResult::Confirmed)
             {
-                const bool preventionComplete=preventionWindow_.Confirmed(pendingAction,o);
                 if (std::string(decision.reason)=="client_input_clock_advanced")
                 {
                     ++status_.verifiedInputs;
-                    if (qualification_.InhibitsWorkloadAcquisition() && preventionComplete)
-                    {
-                        ++preventionWindows_;
-                        Debug::Logger::Info("AFK PREVENTION WINDOW index="+std::to_string(preventionWindows_)+
-                            " result=pass reason=continuous_clear_and_verified_paired_input");
-                        if (preventionWindows_>=2)
-                        {
-                            qualification_.Complete();
-                            Debug::Logger::Info("AFK QUALIFICATION COMPLETE windows=2 result=pass");
-                            Debug::Logger::Info("AFK QUALIFICATION HOLD state=released reason=two_prevention_windows");
-                            Debug::Logger::Info("AFK PRODUCTION GATE activeWork=blocked reason=harmless_input_runtime_review_required");
-                        }
-                    }
                 }
                 Debug::Logger::Info("AFK ACTION RESULT result=confirmed reason="+
                     std::string(decision.reason)+" verifiedInputs="+std::to_string(status_.verifiedInputs));
             }
             if (decision.status==AfkStatus::Fault)
-                EndControlledIdle("verification_failed");
+                EndControlledIdle(decision.reason);
             if (decision.action!=AfkAction::None && now>=nextDispatchProbe_)
             {
                 nextDispatchProbe_=now+10000; // UI guard backoff; not an input interval.
@@ -239,9 +282,8 @@ namespace Bot
                         Debug::Logger::Info("AFK INPUT RELEASE action=unbound_F12 result="+
                             std::string(dispatch.releaseDelivered ? "paired_message_delivered" : "failed"));
                     Debug::Logger::Info("AFK ACTION RESULT action="+action+" result=pending reason="+dispatch.reason);
-                    policy_.Issued(decision.action,dispatch.before,now);
-                    if (decision.action==AfkAction::InputPulse)
-                        preventionWindow_.Issued(dispatch.before);
+                    if (qualifying) qualificationFlow_.Issued(dispatch.before,now);
+                    else policy_.Issued(decision.action,dispatch.before,now);
                 }
                 else if (!dispatch.blocked)
                 {

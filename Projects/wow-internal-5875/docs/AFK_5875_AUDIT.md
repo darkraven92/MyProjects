@@ -2,7 +2,9 @@
 
 Status: SOURCE VERIFIED / TEST PASS (policy and Lua guards); RUNTIME PENDING.
 The first live qualification started observing but aborted before any F12.
-No running WoW/Wine process was available at the subsequent P0.0.1 audit.
+The next live run aborted at `initial_afk_state_not_clear` with authoritative
+client/server AFK active and native input age 354 ms. P0.0.2 removes that harness
+defect; it does not establish that F12 works.
 Neither a qualifying input nor either prevention window has been demonstrated.
 Do not label the character protected merely because this controller is enabled.
 
@@ -107,9 +109,11 @@ Only a subsequently advanced native input timestamp confirms qualifying
 activity. If it does not advance, stop with verification_timeout; do not
 silently substitute movement or reset the clock in memory.
 
-P0.0.1 also compares freshly read position, facing, target and movement flags
-before/after the pulse, plus a post-input UI guard. Changes or unknown evidence
-fail candidate verification. `AFK CANDIDATE SCENE` reports the result. This is
+P0.0.2 compares freshly read position, facing, target and movement flags
+throughout delivery AND AFK-clear verification, plus the read-only UI guard.
+Unknown evidence, changed target/flags/UI, displacement above 0.01 yard or
+angular change above 0.001 radian fails verification (shortest angle handles
+wrap). These are numerical tolerances, not permission to move. This is
 bounded observational evidence, not a claim about untested navigation input.
 
 Ordinary roaming/acquisition is classified separately as BenignWork when
@@ -119,20 +123,53 @@ qualification requires review of the real capture, then implementation/testing
 of navigation-safe production dispatch. Idle-only protection is not sufficient
 for indefinite busy-workload AFK prevention; that requirement remains open.
 
-An already-AFK character may additionally need a separate guarded empty AFK
-chat after input verification (autoClearAFK may be disabled). That request is
-confirmed only when **both** live flags become false. Flags/timers are never
-written by the bot. A server/client disagreement remains blocked.
+Production retains its separate guarded empty-AFK-chat fallback after verified
+input. **Qualification never uses that toggle**: it tests F12 alone. Otherwise
+the toggle could clear AFK and falsely qualify F12. If autoClearAFK is disabled
+or the input path does not clear the flags, qualification must fail honestly.
+Flags/timers are never written by the bot.
+
+## P0.0.2 entry and asynchronous verification
+
+`AfkQualificationPolicy` is a diagnostic-only state machine behind the existing
+shared hold. An authoritative AFK-active start is not itself unsafe. A clear
+start observes the natural baseline without input. An active start with input
+age <= the existing 3000-ms verification bound observes fresh snapshots for at
+most 1000 ms: naturally clear goes to baseline, still active goes to candidate
+clear. An older active start goes directly to candidate clear. This short grace
+is an engineering observation bound, **not a measured client propagation time**.
+
+The three gates are separate: paired F12/native-clock delivery; authoritative
+client AND server AFK clear; two continuously clear prevention intervals.
+Delivery and clear share the existing 3000-ms deadline from dispatch, with no
+new pulse/toggle while waiting and no timeout restart when the clock advances.
+Mixed client/server flags can settle within this window. A clock change alone
+never completes a clear or prevention gate. Unsafe state, unknown evidence,
+side effects or timeout abort/release the hold; synchronous paired input leaves
+no cross-tick key state. Normal work remains blocked while qualification holds.
+
+Successful initial candidate clear arms a fresh baseline using the real input
+timestamp, with **zero** completed prevention windows. Each later window still
+needs safe/clear observations, age reaching the source safety margin, paired
+input delivery and clear verification. AFK during a prevention window fails
+instead of resetting and silently trying again. Unattributed input aborts after
+startup synchronization. Threshold measurement remains independent: an already
+AFK entry cannot manufacture a measured timeout.
+If AFK clears naturally before dispatch, observation returns to baseline. If
+the adapter's fresher pre-command read catches that race only after dispatch,
+the run fails rather than crediting F12 with a clear that preceded it.
 
 `AfkRuntimeStatus` exposes a read-only snapshot with known/active state, input
-age, source threshold, independently observed threshold and verification count.
+age, source threshold, independently observed threshold, delivery/clear gates
+and prevention-window count.
 GUI transport/display is not yet integrated. No fabricated measured countdown.
 
 ## Controlled runtime gate (fish)
 
 Run on safe stationary land, healthy and out of combat, with dialogs closed.
-Ensure F12 is unbound. This deliberately lets natural AFK occur once to measure
-the baseline; then tests input and two prevention intervals. Do not manually
+Ensure F12 is unbound. A clear entry lets natural AFK occur once to measure
+the baseline; an already-AFK entry tests clearing first. Both require two later
+prevention intervals. Do not manually
 press keys or interact with the WoW window after starting the test.
 
 Launch the GUI with the mode, then use **Start WoW**, log in on safe land and
@@ -158,19 +195,21 @@ tail -n 0 -F build/wow-internal.log | tee "$capture/afk-live.log" | rg --line-bu
 Require `AFK QUALIFICATION HOLD state=acquired` before waiting. Qualification
 suppresses voluntary work only while no conflicting gameplay owner exists.
 Threat, movement, death or another owner aborts it and returns to normal work.
-Unknown observations, verification failure, unattributed input after baseline
+Unknown observations, verification failure, unattributed input after startup sync
 or a bounded overall deadline also abort. No safe input candidate => BLOCKED,
-not PASS. A baseline already AFK at startup is insufficient: begin from clear
-state on a fresh run. Default `protect` mode does not intentionally wait for AFK;
+not PASS. An already-AFK start is now supported, but is not itself a measured
+baseline or a successful prevention window. Default `protect` mode does not intentionally wait for AFK;
 `observe` mode never issues AFK input.
 
 Required log sequence:
 
-1. AFK QUALIFICATION START/HOLD acquired; AFK STATE known=yes clear; natural local/server AFK transition and AFK
-   THRESHOLD OBSERVATION continuousSafeIdle=yes (inspect actual elapsed value).
+1. AFK QUALIFICATION START/HOLD acquired; AFK QUALIFICATION INITIAL clear =>
+   baseline, or active => bounded synchronization/candidate_clear. For a clear
+   baseline, inspect the natural AFK THRESHOLD OBSERVATION elapsed value.
 2. AFK ACTION unbound_F12; matching AFK INPUT RELEASE; native input clock
-   advances. If necessary, separately issued clear_existing_afk followed by
-   client_and_server_afk_clear. Do not attribute a toggle's success to the key.
+   advances (`AFK CANDIDATE DELIVERY advanced=yes`). Separately require
+   `AFK CLEAR VERIFY result=confirmed`, then `AFK QUALIFICATION BASELINE RESET
+   reason=candidate_clear_confirmed`. No AFK-chat toggle during qualification.
 3. Two complete safe/clear intervals, each ending near the safety margin with
    a verified paired pulse. AFK PREVENTION WINDOW 1 then 2. Missing observation,
    intervening AFK, unsafe ownership or early pulses cannot count as windows.
@@ -193,6 +232,11 @@ dialogs, keyboard handlers, visible edit boxes and error fail-closed behavior.
 abort/release, no automatic re-arm, unchanged input/state, raw client flag 2,
 scene changes, production classification without permission, monitor wiring
 and GUI environment inheritance.
+`afk_qualification_policy_test.cpp`: clear/active/unknown entry, bounded startup
+sync, natural clear, delayed two-flag clear, delivery != clear, shared deadline,
+scene/UI changes, fresh baseline, mandatory first/second windows, prevention
+AFK failure and wiring to the shared runtime. Its startup assertion failed
+against the old controller before the fix.
 These do not prove Windows/Wine event handling or client AFK prevention.
 
 Native signature mismatch disables the adapter. All held-input guarantees

@@ -234,6 +234,44 @@ claim that the cave/vendor corridor itself is fixed.
 
 # Source/test verified
 
+## P0.0.2 qualification from an already-AFK character
+
+SOURCE VERIFIED: newest `build/wow-internal.log` aborts at
+`initial_afk_state_not_clear`; the following signature-verified native read has
+both flags active, clientNow=54969271, lastInput=54968917 (354 ms age). The
+explicit startup predicate in `SharedAfkController::AdvanceQualificationHold`
+caused the abort. This proves neither failure nor success of F12.
+
+`AfkQualificationPolicy.h` now separates startup synchronization, natural
+baseline, candidate delivery, asynchronous two-flag clear and two prevention
+windows. Already-active AFK can acquire the unchanged shared qualification
+hold. Recent input gets <=1000 ms of observation, not sleep; persistent AFK
+tests the candidate, natural clear takes the baseline path. Delivery and clear
+share the existing 3000-ms verification deadline. Qualification never uses the
+production AFK-chat toggle. Initial clear success resets the baseline with zero
+windows; both later windows are mandatory. Unsafe/unknown/side-effect evidence
+and timeouts fail closed. Scene/UI guards remain active throughout verification;
+position/facing permit only small documented numerical tolerances.
+
+Files: new qualification policy/test; `SharedAfkController.h`,
+`AfkQualificationHold.h`, this state file and `AFK_5875_AUDIT.md`. No navigation,
+workload, input driver or production active-owner permissions changed. Runtime
+snapshot/telemetry distinguish delivery, clear and prevention. The startup
+regression failed against the old controller before integration.
+
+TEST PASS: `python3 tools/validate.py --jobs 4`: 75 strict C++ executables,
+13 Python tests plus the QuestDB SQL fixture, six Lua fixtures (113 checks).
+BUILD PASS and DIFF CHECK PASS. Artifacts:
+`/tmp/wow-validation-c5nhun5h/results.json` (final repeat after adding the
+pre-dispatch natural-clear race regression). Ninja reported its existing
+`premature end of file; recovering` warning and successfully rebuilt the DLL.
+RUNTIME PENDING: user must launch the rebuilt fresh client, log in on safe land,
+Start Bot with qualify mode and leave input alone. Already-AFK entry is valid.
+Need native clock advance, both flags clearing within the bounded deadline,
+then prevention windows 1 and 2. Do not label F12 runtime verified before that
+evidence. Production active-workload protection remains a later AFK gate, not
+silently enabled here. AFK remains first priority; no swimming work.
+
 ## P0.0.1 qualification ownership and native AFK flag correction
 
 Latest live evidence: `build/wow-internal.log`, session starting 19:41:43 UTC
@@ -338,7 +376,7 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 - **AFK first:** launch a logged-in safe client with
   `WOW_INTERNAL_AFK_MODE=qualify` in the WoW process environment. Detailed fish
   commands and evidence sequence are in `docs/AFK_5875_AUDIT.md`. Need natural
-  baseline, individually verified input, then two clear prevention intervals
+  baseline or initial-AFK clear, individually verified input, then two clear prevention intervals
   and both workload integrations. No automatic RUNTIME PASS from log counters.
 
 - 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
@@ -397,8 +435,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    wall-inset steering or collision. Its report cannot grant runtime PASS.
 6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-7. AFK: first qualification aborted before F12; P0.0.1 hold/native-flag changes
-   await a new run. WoW is currently closed. The input candidate must advance the
+7. AFK: both qualification attempts aborted before F12; the latest hit the
+   initial-active predicate. P0.0.2 permits that entry and bounded asynchronous
+   clear verification, but awaits a new client run. The input candidate must advance the
    native input clock in Wine. If ignored, it faults once instead of pretending
    protection. Actual threshold and two windows require user login/start.
    GUI status transport and a broader water-state model remain unimplemented.
@@ -408,10 +447,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.1 AFK FIRST (user priority override):** qualification hold/native-flag correction.
-Shared source/test implementation
-is SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS.
-RUNTIME PENDING because no live WoW process is available. Do not advance to
+**P0.0.2 AFK FIRST (user priority override):** already-AFK entry and asynchronous
+candidate clearing. SOURCE VERIFIED; validation results recorded above.
+RUNTIME PENDING until the user runs the rebuilt client qualification. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a
 blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
 default protection cannot interfere with active gameplay owners. Candidate
@@ -481,6 +519,11 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.2 base: `2eb8889199d6b2fefd2d9c02687e35d785e55120`.
+  Scoped checkpoint: `afk: qualify already-AFK entry with asynchronous clear verification`.
+  Resolve its hash using `git log -1 --format='%H' -- src/Bot/AfkQualificationPolicy.h`.
+  Remaining pre-existing dirty work is not included. Remote verification is
+  recorded after push; no runtime success is implied.
 - P0.0.1 code checkpoint: `afc8cff640068e1f9ce10e787cfed4328d6d6487`
   (`afk: retain qualification hold and decode synchronized AFK state`). Pushed
   to origin; independent remote HEAD matched before this documentation follow-up.
@@ -542,7 +585,8 @@ override their location. It writes reports only, never controls WoW.
 # Next steps
 
 1. **AFK runtime gate first:** user launches/logs in on safe land with qualify
-   mode; capture baseline, input-clock confirmation, flag clear and two windows.
+   mode; clear OR already-AFK entry, input-clock confirmation, asynchronous
+   two-flag clear and two prevention windows. Neither flag may be fabricated.
    If targeted messages fail, inspect exact evidence before considering a
    bounded targeted Wine/X11 alternative. Never substitute a blind W loop.
 2. Capture/reconstruct the failing live cave transition with current recovery
