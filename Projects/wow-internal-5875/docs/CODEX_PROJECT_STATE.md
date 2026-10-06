@@ -9,7 +9,7 @@ Updated: 2026-10-06. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- This is a bounded P0.1 source/test checkpoint, NOT completion of the roadmap
+- This is a bounded P0.1.1 source/test checkpoint, NOT completion of the roadmap
   or an unattended qualification.
 
 # Current architecture
@@ -143,6 +143,58 @@ movement-intent logs. A stage command alone is not proof of portal crossing.
 Current validated worktree is still dirty; a source/test/build pass does not
 establish a clean-checkout or WoW runtime pass.
 
+# P0.1.1 hard-stall provenance and path diagnostics (2026-10-06)
+
+New live capture: `build/wow-internal.log` at 20:26 local, 288,738 bytes.
+Vendor intent 2 toward merchant 3882 issued ordinary CTM target
+(-564.639,-4235.094,42.504), then logged HARD STALL with failed refs 0/0.
+After lookahead/replan it issued (-566.400,-4233.333,41.914) twice, stalled,
+and allowed a new route on `transition_unknown` although the *new* candidate
+pair was 0x...2E6C -> 0x...2E6B. It failed boundedly at tick 200; the vendor
+owner released. This is P0.1 RUNTIME FAIL, not a traversal pass.
+
+SOURCE VERIFIED attribution cause: `ResolveIssuedLocalTransition` reprojected
+the issued steering target with generic nearest-poly selection. Exact offline
+inspection from the stalled live region projects the player to corridor poly
+suffix 2E6C, but the portal target to overlapping off-corridor poly 2E78.
+Detour's straight-path point and connected clipped portal identify the
+command's intended local edge 2E6C -> 2E6B; the target reprojection loses
+that evidence. Full poly salt bits differ by tile load, so do not compare
+offline full refs to live refs. This is command intent for hysteresis, NOT
+proof the physical portal is globally unsafe and NOT persistent hazard proof.
+
+`IssuedSteeringCommandPolicy` now retains a compact source, sequence, global
+CTM dispatch serial, intent, route generation, fingerprint, target, issue
+position and exact route edge when the edge is independently proven at
+command creation. An adjusted target that projects away from the directed
+edge remains unknown. All follower CTM sources replace this provenance;
+stop, route refresh, combat pause and terminal states invalidate it. HARD
+STALL attributes only if the *same* global dispatched command still matches.
+Unknown/replaced/stale commands stay unknown. The previous no-clearance ray
+attribution and episode semantics are unchanged.
+
+Separate live path failure: objective intent 3 failed before any CTM with
+`path_validation_failed`, 71 polygons, `validationMs=0`. The real rejection
+occurred inside the 14O.1 terrain query, before `ValidatePath`: unsafe
+transitions 0x...207C -> 0x...2081 (vertical 6.125, rise/run 1.209), then
+0x...2080 -> 0x...2085 (vertical 9.500, rise/run 2.096). The existing bounded
+alternate search found no safe alternative in route, expanded or full-map
+scope. Typed `PATH VALIDATION FAILED`/plan-profile subreason telemetry now
+exposes `unsafe_terrain_no_alternative`, directed refs, flags, geometry and
+attempt. This changes diagnostics only; it does not grant a rejected path.
+
+The new code is **RUNTIME PENDING**. Qualify with two natural successful
+traversals of the same problematic corridor, no manual movement and no
+anonymous retry when the issued command's pair is genuinely known. If it
+remains unknown, use new command-provenance reason and inspect that command;
+never copy the next route's candidate pair backward. Do not start P0.2.
+
+Final `python3 tools/validate.py --jobs 4`: TEST PASS 72/72 C++ tests under
+`-std=c++20 -Wall -Wextra -Werror`; QuestDB Python 13/13 plus SQL fixture;
+five Lua fixtures/89 checks; BUILD PASS; DIFF CHECK PASS. Strict focused
+tests failed to compile before the new policies existed and passed afterward.
+Detailed temporary artifact: `/tmp/wow-validation-tsfhxfdy/results.json`.
+
 # Source/test verified
 
 2026-10-06 dirty-worktree validation using `python3 tools/validate.py`:
@@ -174,8 +226,8 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
-- Surface-recovery episode semantics have live pre-fix evidence above; the
-  new local attribution/staging change is not yet runtime validated.
+- P0.1 no-clearance attribution and recovery semantics have new live proof,
+  but P0.1 overall failed on hard-stall retries. P0.1.1 code is runtime pending.
 - Cave/interior navigation: generic portal staging is SOURCE VERIFIED and TEST
   PASS but RUNTIME PENDING. Do not advance to P0.2 swimming until two natural
   P0.1 traversals pass or an external runtime blocker is documented.
@@ -190,9 +242,8 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Known blockers
 
-1. The newer live capture supplied actual player XYZ and recovery/route events;
-   this source fix still needs two post-fix natural traversals. Do not confuse
-   recovery target with player position or new-route pair with failed-ray pair.
+1. New vendor capture proves an anonymous hard-stall retry loop before bounded
+   release. P0.1.1 source/test fix needs two post-fix natural traversals.
 2. Detour's local `raycast` is explicitly 2D (local VMaNGOS
    `DetourNavMeshQuery.cpp`, raycast contract). Runtime
    `IsSurfaceSegmentReachable` interpolates requested Z and does not verify end
@@ -218,9 +269,10 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-V6 P0.1 local steering and directed-failure attribution source/test/build
-complete; gameplay reliability is RUNTIME PENDING. No later V6 subsystem
-behavior patched.
+V6 P0.1.1 hard-stall command provenance and typed path-validation diagnostics
+SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS; gameplay reliability
+is RUNTIME PENDING after a pre-fix
+P0.1 RUNTIME FAIL. No later V6 subsystem behavior patched.
 
 Proceed in requested order, with source/test/build/diff and checkpoint after
 each bounded subphase. Do not stack speculative fixes on the unproven cave
@@ -233,8 +285,9 @@ separate.
 2. Repeat the SAME natural corridor twice: intent -> exact steering attribution
    (known only if ray/portal proves it) -> safe stage/alternate route -> verified
    crossing and combat handoff or bounded failure/release. Zero manual movement.
-3. No repeated known directed edge, anonymous pair where ray/portal evidence
-   is sufficient, unearned attempt reset, same-target loop or safety weakening.
+3. Inspect `NAV COMMAND PROVENANCE` and `HARD STALL ATTRIBUTION` for the CTM
+   that actually stalled. No repeated known edge, anonymous pair where issue
+   evidence is sufficient, unearned reset, same-target loop or safety weakening.
 4. Compare actual player XYZ, route generation, projection and clipped portal
    geometry if post-fix behavior differs; offline reports are not live proof.
 5. P0 water source audit next; then hazards, combat, AFK, invariants, consolidation
@@ -255,7 +308,7 @@ git diff --check -- .
 
 set -gx WOW_INTERNAL_QUEST_FOCUS_ID 0
 # Start through the existing GUI workflow. No unsafe synthetic input.
-tail -F build/wow-internal.log | rg --line-buffered 'LOGGER SESSION|BOT SESSION|MOVEMENT INTENT|STEERING FAILURE ATTRIBUTION|NAV ENTRANCE STAGE|NAV RECOVERY|NAV 14N.1 STEERING|NAV 14N.2 HYSTERESIS|LOCAL RECOVERY|NAV 14O.1|COMBAT STALL|AFK'
+tail -F build/wow-internal.log | rg --line-buffered 'LOGGER SESSION|BOT SESSION|MOVEMENT INTENT|NAV COMMAND PROVENANCE|HARD STALL ATTRIBUTION|PATH VALIDATION FAILED|STEERING FAILURE ATTRIBUTION|NAV ENTRANCE STAGE|NAV RECOVERY|NAV 14N.1 STEERING|NAV 14N.2 HYSTERESIS|LOCAL RECOVERY|NAV 14O.1|COMBAT STALL|AFK'
 
 # At the end of the natural run, preserve its full log locally (not in Git).
 set capture (mktemp -d /tmp/wow-v6-runtime.XXXXXX)
@@ -273,6 +326,7 @@ override their location. It writes reports only, never controls WoW.
 # Git state
 
 - Inspected base HEAD for this P0.1 phase: `f5d04e5` (offline cave audit).
+- Inspected base HEAD for P0.1.1: `db87c05` (continuity follow-up).
 - P0.1 validated navigation checkpoint: `555cccdbaa99f9e9c5fd737cc0c7bc9b55f21a35`
   (`navigation: attribute local steering failures to verified portals`).
   Pushed to `origin/codex/wow-internal-continuation`; `git ls-remote`

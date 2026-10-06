@@ -1,6 +1,8 @@
 #pragma once
 
 #include "GameThreadDispatcher.h"
+#include "MovementCommandTrace.h"
+#include <source_location>
 
 #include "../Debug/Logger.h"
 #include "../Objects/PlayerSnapshot.h"
@@ -138,6 +140,10 @@ namespace Bot
         }
 
     public:
+        static const MovementCommandTrace& LastCommand() { return commandTrace_; }
+    private:
+        inline static MovementCommandTrace commandTrace_{};
+    public:
         static std::uintptr_t FunctionAddress()
         {
             return
@@ -216,7 +222,8 @@ namespace Bot
             float x,
             float y,
             float z,
-            float precision)
+            float precision,
+            const std::source_location origin = std::source_location::current())
         {
             if (!player.valid ||
                 player.address == 0)
@@ -395,6 +402,11 @@ namespace Bot
             Debug::Logger::Info(
                 "ClickToMove dispatched successfully."
             );
+
+            if (commandTrace_.writer != origin.function_name())
+                Debug::Logger::Info("MOVEMENT COMMAND WRITER previous=" + commandTrace_.writer +
+                    " next=" + origin.function_name() + " sourceLine=" + std::to_string(origin.line()));
+            commandTrace_.Observe(origin.function_name(), GetTickCount64(), x, y, z);
 
             return true;
         }

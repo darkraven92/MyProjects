@@ -12,6 +12,8 @@
 #include "SurfaceRecoveryEpisodePolicy.h"
 #include "SteeringSelectionPolicy.h"
 #include "LocalPortalSteeringPolicy.h"
+#include "IssuedSteeringCommandPolicy.h"
+#include "PathValidationDiagnosticPolicy.h"
 
 #include "../Bot/ClickToMoveController.h"
 #include "../Debug/Logger.h"
@@ -559,6 +561,8 @@ namespace Navigation
         CorridorFailureRecord failedCorridor_{};
         NavPoint issuedOrdinarySteeringTarget_{};
         bool issuedOrdinarySteeringTargetValid_ = false;
+        IssuedSteeringCommand issuedNavCommand_{};
+        std::uint64_t navCommandSequence_ = 0;
 
         // Phase 13D.6 bounded partial-corridor staging state.
         bool partialStageActive_ = false;
@@ -844,6 +848,8 @@ namespace Navigation
 
             state_ =
                 next;
+            if (next != GenericNavMeshFollowState::Moving)
+                IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);
         }
 
         static NavPoint PlayerPoint(
@@ -857,20 +863,53 @@ namespace Navigation
                 };
         }
 
+        bool IssueNavMovement(const Objects::PlayerState& player,
+            NavPoint target, float precision, NavCommandSource source,
+            DirectedPolyTransition transition = {},
+            const std::source_location origin = std::source_location::current())
+        {
+            IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);
+            if (!Bot::ClickToMoveController::MoveTo(player,target.x,target.y,
+                    target.z,precision,origin))
+                return false;
+            const auto& dispatched=Bot::ClickToMoveController::LastCommand();
+            if (dispatched.writer!=origin.function_name() ||
+                std::fabs(dispatched.x-target.x)>0.01f ||
+                std::fabs(dispatched.y-target.y)>0.01f ||
+                std::fabs(dispatched.z-target.z)>0.01f)
+                return true; // Issued, but no safe provenance for attribution.
+            IssuedSteeringCommandPolicy::Record(issuedNavCommand_,
+                lastPathFingerprint_,routeGeneration_,intentId_,
+                ++navCommandSequence_,dispatched.serial,source,
+                {target.x,target.y,target.z},
+                {player.x,player.y,player.z},transition);
+            if (source==NavCommandSource::OrdinarySteering ||
+                source==NavCommandSource::FallbackNearer)
+                Debug::Logger::Info("NAV COMMAND PROVENANCE intent="+
+                    std::to_string(intentId_)+
+                    " commandSequence="+
+                        std::to_string(issuedNavCommand_.commandSequence)+
+                    " corridorFingerprint="+
+                        std::to_string(lastPathFingerprint_)+
+                    " source="+IssuedSteeringCommandPolicy::SourceName(source)+
+                    " target=("+Float(target.x)+","+Float(target.y)+","+
+                        Float(target.z)+")"+
+                    " fromPoly="+HexPoly(issuedNavCommand_.transition.from)+
+                    " toPoly="+HexPoly(issuedNavCommand_.transition.to)+
+                    " transitionKnown="+
+                        (issuedNavCommand_.transition.Valid()?"yes":"no"));
+            return true;
+        }
+
         void StopAtCurrentPosition(
             const Objects::PlayerState& player)
         {
+            IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);
             if (!RouteCostProbePolicy::MayIssueMovement(
                     startOptions_.planningOnly))
                 return;
-            Bot::ClickToMoveController::
-                MoveTo(
-                    player,
-                    player.x,
-                    player.y,
-                    player.z,
-                    0.25f
-                );
+            Bot::ClickToMoveController::MoveTo(player,player.x,player.y,
+                player.z,0.25f);
         }
 
         static std::string HexPoly(std::uint64_t value)
@@ -1401,8 +1440,33 @@ namespace Navigation
 
             std::uint64_t fromPoly = 0;
             std::uint64_t toPoly = 0;
-            const bool issuedKnown = ordinarySteeringStalled &&
-                ResolveIssuedLocalTransition(player, fromPoly, toPoly);
+            bool issuedKnown = false;
+            if (ordinarySteeringStalled)
+            {
+                const auto& dispatched=Bot::ClickToMoveController::LastCommand();
+                const auto attribution=IssuedSteeringCommandPolicy::ForHardStall(
+                    issuedNavCommand_,dispatched.serial,lastPathFingerprint_,
+                    routeGeneration_,intentId_,
+                    {dispatched.x,dispatched.y,dispatched.z},
+                    state_==GenericNavMeshFollowState::Moving);
+                fromPoly=attribution.transition.from;
+                toPoly=attribution.transition.to;
+                issuedKnown=attribution.transition.Valid();
+                Debug::Logger::Info("HARD STALL ATTRIBUTION commandSequence="+
+                    std::to_string(issuedNavCommand_.commandSequence)+
+                    " source="+IssuedSteeringCommandPolicy::SourceName(
+                        issuedNavCommand_.source)+
+                    " corridorFingerprint="+
+                        std::to_string(issuedNavCommand_.corridorFingerprint)+
+                    " target=("+Float(issuedNavCommand_.target.x)+","+
+                        Float(issuedNavCommand_.target.y)+","+
+                        Float(issuedNavCommand_.target.z)+")"+
+                    " fromPoly="+HexPoly(fromPoly)+
+                    " toPoly="+HexPoly(toPoly)+
+                    " transitionKnown="+(issuedKnown?"yes":"no")+
+                    " reason="+IssuedSteeringCommandPolicy::ReasonName(
+                        attribution.reason));
+            }
             if (provenSteeringFailure.Valid())
             {
                 fromPoly = provenSteeringFailure.from;
@@ -1659,8 +1723,8 @@ namespace Navigation
                 return false;
             }
 
-            if (!Bot::ClickToMoveController::MoveTo(
-                    player, best.x, best.y, best.z, 0.50f))
+            if (!IssueNavMovement(player,best,0.50f,
+                    NavCommandSource::WallRecovery))
             {
                 return false;
             }
@@ -1825,12 +1889,8 @@ namespace Navigation
                 return false;
             }
 
-            if (!Bot::ClickToMoveController::MoveTo(
-                    player,
-                    best.x,
-                    best.y,
-                    best.z,
-                    0.50f))
+            if (!IssueNavMovement(player,best,0.50f,
+                    NavCommandSource::SurfaceRecovery))
             {
                 return false;
             }
@@ -1989,10 +2049,13 @@ namespace Navigation
             const NavPathResult& path,
             std::string& error,
             float& length,
-            NavigationPlanFailure* failure = nullptr) const
+            NavigationPlanFailure* failure = nullptr,
+            PathValidationDetail* detail = nullptr) const
         {
             if (failure)
                 *failure = NavigationPlanFailure::None;
+            if (detail)
+                *detail = {};
             length =
                 0.0f;
 
@@ -2011,6 +2074,8 @@ namespace Navigation
 
             if (path.points.size() < 2)
             {
+                if (detail) detail->reason =
+                    PathValidationSubreason::TooFewSteeringPoints;
                 if (failure)
                     *failure = NavigationPlanFailure::PathValidationFailed;
                 error =
@@ -2042,6 +2107,12 @@ namespace Navigation
                     segment >
                         MaximumSegment)
                 {
+                    if (detail)
+                    {
+                        detail->reason=PathValidationSubreason::ImplausibleSegment;
+                        detail->pointIndex=i;
+                        detail->segmentLength=segment;
+                    }
                     if (failure)
                         *failure = NavigationPlanFailure::PathValidationFailed;
                     error =
@@ -2060,6 +2131,13 @@ namespace Navigation
                     vertical >
                         MaximumVerticalSegment)
                 {
+                    if (detail)
+                    {
+                        detail->reason=
+                            PathValidationSubreason::ImplausibleVerticalSegment;
+                        detail->pointIndex=i;
+                        detail->verticalDelta=vertical;
+                    }
                     if (failure)
                         *failure = NavigationPlanFailure::PathValidationFailed;
                     error =
@@ -2077,6 +2155,13 @@ namespace Navigation
                 if (LongPathDiagnosticPolicy::ExceedsSafetyLength(
                         length, MaximumPathLength))
                 {
+                    if (detail)
+                    {
+                        detail->reason=
+                            PathValidationSubreason::SafetyLengthExceeded;
+                        detail->pointIndex=i;
+                        detail->segmentLength=length;
+                    }
                     if (failure)
                         *failure = NavigationPlanFailure::PathLengthExceeded;
                     error =
@@ -3039,12 +3124,8 @@ namespace Navigation
                     Float(point.y) + "," + Float(point.z) + ")"
                 );
 
-                if (!Bot::ClickToMoveController::MoveTo(
-                        player,
-                        point.x,
-                        point.y,
-                        point.z,
-                        0.50f))
+                if (!IssueNavMovement(player,point,0.50f,
+                        NavCommandSource::VerticalRecovery))
                 {
                     return false;
                 }
@@ -3563,12 +3644,8 @@ namespace Navigation
             verticalPortalBypassRoutePoints_.clear();
             verticalPortalBypassRouteIndex_ = 0;
 
-            if (!Bot::ClickToMoveController::MoveTo(
-                    player,
-                    best.x,
-                    best.y,
-                    best.z,
-                    0.50f))
+            if (!IssueNavMovement(player,best,0.50f,
+                    NavCommandSource::VerticalRecovery))
             {
                 badVerticalTransitions_.ObserveDispatch(portalEdge, false);
                 Debug::Logger::Info(
@@ -3921,12 +3998,9 @@ namespace Navigation
                 Float(targetY) + "," + Float(destination_.z) + ")"
             );
 
-            if (!Bot::ClickToMoveController::MoveTo(
-                    player,
-                    targetX,
-                    targetY,
-                    destination_.z,
-                    CtmPrecision))
+            if (!IssueNavMovement(player,
+                    {targetX,targetY,destination_.z},CtmPrecision,
+                    NavCommandSource::FinalDirect))
             {
                 finalApproachSuppressed_ = true;
                 return false;
@@ -4051,12 +4125,9 @@ namespace Navigation
                 Float(targetY) + "," + Float(player.z) + ")"
             );
 
-            if (!Bot::ClickToMoveController::MoveTo(
-                    player,
-                    targetX,
-                    targetY,
-                    player.z,
-                    0.50f))
+            if (!IssueNavMovement(player,
+                    {targetX,targetY,player.z},0.50f,
+                    NavCommandSource::EscapeProbe))
             {
                 return false;
             }
@@ -4212,6 +4283,36 @@ namespace Navigation
                 Float(target.y) + "," + Float(target.z) + ")");
         }
 
+        DirectedPolyTransition ProvenIssuedSteeringEdge(
+            const Objects::PlayerState& player, std::size_t candidateIndex,
+            const NavPoint& commandPoint, bool adjusted) const
+        {
+            if (candidateIndex >= pointPolyRefs_.size() ||
+                !pointPolyRefs_[candidateIndex]) return {};
+            NavPoint projectedPlayer{};
+            std::uint64_t playerPoly=0;
+            if (!provider_.ProjectToNavMesh(PlayerPoint(player),
+                    projectedPlayer,playerPoly)) return {};
+            const auto edge=LocalPortalSteeringPolicy::CandidateEdge(
+                corridorPolys_,playerPoly,pointPolyRefs_[candidateIndex]);
+            NavPoint a{}, b{};
+            const bool portalKnown=edge.Valid() &&
+                provider_.GetDirectedPortal(edge.from,edge.to,a,b);
+            std::uint64_t targetPoly=0;
+            if (adjusted)
+            {
+                NavPoint projectedTarget{};
+                if (!provider_.ProjectToNavMesh(commandPoint,
+                        projectedTarget,targetPoly)) return {};
+            }
+            // The unadjusted point's Detour straight-path ref is authoritative
+            // even at overlapping portal XY where nearest-poly picks another
+            // surface. This is command intent, not proof of a blocked wall.
+            return IssuedSteeringCommandPolicy::ProvenRouteEdge(
+                corridorPolys_,playerPoly,pointPolyRefs_[candidateIndex],
+                portalKnown,adjusted,targetPoly);
+        }
+
         DirectedPolyTransition AttributeFailedSteering(
             const Objects::PlayerState& player, std::size_t fromIndex,
             std::size_t candidateIndex) const
@@ -4325,8 +4426,8 @@ namespace Navigation
                             SurfaceRecoveryArrivalDistance);
                     }))
                 return false;
-            if (!Bot::ClickToMoveController::MoveTo(player,
-                    stage.x,stage.y,stage.z,CtmPrecision))
+            if (!IssueNavMovement(player,stage,CtmPrecision,
+                    NavCommandSource::PortalStage))
                 return false;
             RegisterFailedCorridor(player,
                 "no clearance-safe corridor steering target",false,edge);
@@ -4496,9 +4597,11 @@ namespace Navigation
                         std::to_string(points_.size()) +
                         " reason=" + reason +
                         " distance=" + Float(commandDistance));
-                    if (!Bot::ClickToMoveController::MoveTo(
-                            player, commandPoint.x, commandPoint.y,
-                            commandPoint.z, CtmPrecision))
+                    const auto issuedEdge=ProvenIssuedSteeringEdge(player,
+                        candidate,commandPoint,evidence.adjusted);
+                    if (!IssueNavMovement(player,commandPoint,CtmPrecision,
+                            rejectedFarther ? NavCommandSource::FallbackNearer :
+                                NavCommandSource::OrdinarySteering,issuedEdge))
                     {
                         return false;
                     }
@@ -4828,8 +4931,8 @@ namespace Navigation
                     Float(target.z) + ")");
             }
 
-            if (!Bot::ClickToMoveController::MoveTo(
-                    player, target.x, target.y, target.z, 0.50f))
+            if (!IssueNavMovement(player,target,0.50f,
+                    NavCommandSource::Backtrack))
             {
                 return false;
             }
@@ -4944,12 +5047,14 @@ namespace Navigation
             );
 
             NavPathResult path{};
+            PathValidationDetail validationDetail{};
 
             struct PlanProfileScope
             {
                 const NavPathResult& path;
                 const NavigationInitTier& tier;
                 const NavigationPlanFailure& reason;
+                const PathValidationDetail& detail;
                 std::chrono::steady_clock::time_point start =
                     std::chrono::steady_clock::now();
                 double queryMs = 0.0;
@@ -4977,10 +5082,13 @@ namespace Navigation
                         stream << pathLength;
                     else
                         stream << "unknown";
-                    stream << " polygonCount=" << path.polygonCount;
+                    stream << " polygonCount=" << path.polygonCount
+                        << " validationDetail=" <<
+                            PathValidationDiagnosticPolicy::Name(detail.reason);
                     Debug::Logger::Info(stream.str());
                 }
-            } planProfile{path, currentInitTier_, lastPlanFailure_};
+            } planProfile{path, currentInitTier_, lastPlanFailure_,
+                validationDetail};
 
             const auto queryStarted =
                 std::chrono::steady_clock::now();
@@ -5182,6 +5290,11 @@ namespace Navigation
                 if (!rejected.Valid() ||
                     terrainQuery >= MaximumTerrainAlternativeQueries)
                 {
+                    validationDetail={
+                        PathValidationSubreason::UnsafeTerrainAttemptLimit,0,
+                        terrain.fromPoly,terrain.toPoly,
+                        terrain.geometry.horizontal,terrain.geometry.vertical,
+                        terrain.fromFlags,terrain.toFlags,terrainQuery+1};
                     queryOk = false;
                     terrainRejected = true;
                     path.error = "Terrain route contains an unsafe vertical transition.";
@@ -5219,6 +5332,12 @@ namespace Navigation
                     "/" + std::to_string(MaximumTerrainAlternativeQueries));
                 if (!useAlternative)
                 {
+                    validationDetail=
+                        PathValidationDiagnosticPolicy::UnsafeTerrainNoAlternative(
+                            terrain.fromPoly,terrain.toPoly,
+                            terrain.geometry.horizontal,
+                            terrain.geometry.vertical,terrain.fromFlags,
+                            terrain.toFlags,terrainQuery+1);
                     queryOk = false;
                     terrainRejected = true;
                     path.error = "No alternate corridor around unsafe terrain transition.";
@@ -5242,6 +5361,18 @@ namespace Navigation
 
             if (!queryOk)
             {
+                if (terrainRejected)
+                    Debug::Logger::Info("PATH VALIDATION FAILED reason="+
+                        std::string(PathValidationDiagnosticPolicy::Name(
+                            validationDetail.reason))+
+                        " fromPoly="+HexPoly(validationDetail.fromPoly)+
+                        " toPoly="+HexPoly(validationDetail.toPoly)+
+                        " horizontal="+Float(validationDetail.segmentLength)+
+                        " verticalDelta="+Float(validationDetail.verticalDelta)+
+                        " fromFlags="+std::to_string(validationDetail.fromFlags)+
+                        " toFlags="+std::to_string(validationDetail.toFlags)+
+                        " alternativeAttempt="+
+                            std::to_string(validationDetail.alternativeAttempt));
                 lastPlanFailure_ = directedNoAlternative
                     ? NavigationPlanFailure::SurfaceRecoveryExhausted
                     : terrainRejected
@@ -5484,7 +5615,7 @@ namespace Navigation
 
             const auto validationStarted = std::chrono::steady_clock::now();
             bool pathValid = ValidatePath(
-                path, error, length, &lastPlanFailure_);
+                path, error, length, &lastPlanFailure_,&validationDetail);
             if (!pathValid &&
                 lastPlanFailure_ == NavigationPlanFailure::PathLengthExceeded &&
                 !reusingActiveStage)
@@ -5535,7 +5666,7 @@ namespace Navigation
                     path.points.resize(stage.pointIndex + 1);
                     path.pointPolys.resize(stage.pointIndex + 1);
                     pathValid = ValidatePath(path, error, length,
-                                             &lastPlanFailure_);
+                                             &lastPlanFailure_,&validationDetail);
                     selectedCompleteLongStage = pathValid;
                 }
                 if (!pathValid)
@@ -5555,6 +5686,12 @@ namespace Navigation
             }
             if (!pathValid)
             {
+                Debug::Logger::Info("PATH VALIDATION FAILED reason="+
+                    std::string(PathValidationDiagnosticPolicy::Name(
+                        validationDetail.reason))+
+                    " pointIndex="+std::to_string(validationDetail.pointIndex)+
+                    " length="+Float(validationDetail.segmentLength)+
+                    " verticalDelta="+Float(validationDetail.verticalDelta));
                 planProfile.validationMs = std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - validationStarted).count();
                 Debug::Logger::Info(
