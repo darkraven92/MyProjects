@@ -327,6 +327,10 @@ override their location. It writes reports only, never controls WoW.
 
 - Inspected base HEAD for this P0.1 phase: `f5d04e5` (offline cave audit).
 - Inspected base HEAD for P0.1.1: `db87c05` (continuity follow-up).
+- P0.1.1 validated code checkpoint: `23421df6a67fd9bab1ce5929dc7e8d7fbc05e1cf`
+  (`navigation: retain issued edge provenance for hard stalls`). It was pushed
+  to `origin/codex/wow-internal-continuation`, and independent `git ls-remote`
+  returned the same full hash before this documentation-only follow-up.
 - P0.1 validated navigation checkpoint: `555cccdbaa99f9e9c5fd737cc0c7bc9b55f21a35`
   (`navigation: attribute local steering failures to verified portals`).
   Pushed to `origin/codex/wow-internal-continuation`; `git ls-remote`
