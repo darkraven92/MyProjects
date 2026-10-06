@@ -481,6 +481,11 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.1 code checkpoint: `afc8cff640068e1f9ce10e787cfed4328d6d6487`
+  (`afk: retain qualification hold and decode synchronized AFK state`). Pushed
+  to origin; independent remote HEAD matched before this documentation follow-up.
+  The remaining dirty work is preserved and not published by this checkpoint.
+  F12 and both prevention windows remain RUNTIME PENDING.
 - Validated P0.0 AFK code checkpoint:
   `afde8e9a4157f2114ec8fa916b3fe21dc36a82c3`
   (`afk: add shared input verification and bounded qualification`). Pushed to
