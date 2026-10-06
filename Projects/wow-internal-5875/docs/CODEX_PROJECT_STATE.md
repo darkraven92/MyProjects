@@ -348,6 +348,11 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.1 initialization-ownership checkpoint: `a06374731903bfb025a855814762d5b4c26a0703`
+  (`navigation: retain intent across initialization fallback`). Full
+  source/test/build/diff validation passed in the dirty worktree; the commit
+  was pushed, and independent `git ls-remote` returned the same remote HEAD
+  before this documentation follow-up. Runtime remains pending.
 - Inspected base HEAD for this P0.1 phase: `f5d04e5` (offline cave audit).
 - Inspected base HEAD for P0.1.1: `db87c05` (continuity follow-up).
 - P0.1.1 validated code checkpoint: `23421df6a67fd9bab1ce5929dc7e8d7fbc05e1cf`
