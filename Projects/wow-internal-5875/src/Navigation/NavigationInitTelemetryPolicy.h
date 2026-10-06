@@ -22,6 +22,7 @@ namespace Navigation
         PartialOrUnusablePath,
         SurfaceRecoveryExhausted,
         ReplanBudgetExhausted,
+        HardStallExhausted,
         OtherUnknown
     };
 
@@ -55,6 +56,13 @@ namespace Navigation
             return NavigationInitTier::None;
         }
 
+        static constexpr bool RetainIntentForFallback(
+            NavigationInitTier current, bool allowFullMapFallback)
+        {
+            return NextTier(current, allowFullMapFallback) !=
+                NavigationInitTier::None;
+        }
+
         static constexpr const char* TierName(NavigationInitTier tier)
         {
             switch (tier)
@@ -78,6 +86,7 @@ namespace Navigation
                 case NavigationPlanFailure::PartialOrUnusablePath: return "partial_or_unusable_path";
                 case NavigationPlanFailure::SurfaceRecoveryExhausted: return "surface_recovery_exhausted";
                 case NavigationPlanFailure::ReplanBudgetExhausted: return "replan_budget_exhausted";
+                case NavigationPlanFailure::HardStallExhausted: return "hard_stall_exhausted";
                 default: return "other_unknown";
             }
         }

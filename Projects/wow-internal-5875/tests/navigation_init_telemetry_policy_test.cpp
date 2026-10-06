@@ -1,6 +1,9 @@
 #include "../src/Navigation/NavigationInitTelemetryPolicy.h"
 
 #include <cassert>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <string_view>
 
 int main()
@@ -21,6 +24,14 @@ int main()
         NavigationInitTier::Expanded, true) == NavigationInitTier::FullMap);
     static_assert(NavigationInitTelemetryPolicy::NextTier(
         NavigationInitTier::FullMap, true) == NavigationInitTier::None);
+    static_assert(NavigationInitTelemetryPolicy::RetainIntentForFallback(
+        NavigationInitTier::Route, false));
+    static_assert(NavigationInitTelemetryPolicy::RetainIntentForFallback(
+        NavigationInitTier::Expanded, true));
+    static_assert(!NavigationInitTelemetryPolicy::RetainIntentForFallback(
+        NavigationInitTier::Expanded, false));
+    static_assert(!NavigationInitTelemetryPolicy::RetainIntentForFallback(
+        NavigationInitTier::FullMap, true));
 
     // Only source-explicit missing corridor/ground is called no_path.
     static_assert(NavigationInitTelemetryPolicy::QueryFailure(
@@ -44,10 +55,32 @@ int main()
         NavigationPlanFailure::PartialOrUnusablePath)) == "partial_or_unusable_path");
     assert(std::string_view(NavigationInitTelemetryPolicy::ReasonName(
         NavigationPlanFailure::ReplanBudgetExhausted)) == "replan_budget_exhausted");
+    assert(std::string_view(NavigationInitTelemetryPolicy::ReasonName(
+        NavigationPlanFailure::HardStallExhausted)) == "hard_stall_exhausted");
     assert(NavigationInitTelemetryPolicy::TerminalFailure(
         NavigationPlanFailure::None) == NavigationPlanFailure::OtherUnknown);
     assert(NavigationInitTelemetryPolicy::TerminalFailure(
         NavigationPlanFailure::NoPath) == NavigationPlanFailure::NoPath);
     assert(std::string_view(NavigationInitTelemetryPolicy::TierName(
         NavigationInitTier::FullMap)) == "full_map");
+
+    // Initial planning failures must not publish a terminal movement release
+    // before the already-supported next loading tier has been tried.
+    std::ifstream followerFile("src/Navigation/GenericNavMeshPathFollower.h");
+    assert(followerFile.good());
+    const std::string follower{
+        std::istreambuf_iterator<char>(followerFile),
+        std::istreambuf_iterator<char>()};
+    assert(follower.find("if (next == GenericNavMeshFollowState::Failed &&\n"
+                         "                retainIntentForInitialFallback_)") !=
+           std::string::npos);
+    assert(follower.find("retainIntentForInitialFallback_ = ready &&") !=
+           std::string::npos);
+    assert(follower.find("const bool planReady = ready && PlanFrom(") !=
+           std::string::npos);
+    assert(follower.find("retainIntentForInitialFallback_ = false;") !=
+           std::string::npos);
+    assert(follower.find("lastPlanFailure_ = "
+                         "NavigationPlanFailure::HardStallExhausted;") !=
+           std::string::npos);
 }

@@ -412,6 +412,7 @@ namespace Navigation
         Objects::PlayerState planningOriginPlayer_{};
         std::string initializationDirectory_{};
         bool initializationPending_ = false;
+        bool retainIntentForInitialFallback_ = false;
         std::size_t initializationProgressLogBucket_ = 0;
 
         GenericNavMeshFollowState state_ =
@@ -811,6 +812,23 @@ namespace Navigation
         {
             if (state_ == next)
             {
+                return;
+            }
+
+            // A failed route-scope plan is not terminal while another
+            // initialization tier is still available. Keep the same intent
+            // owned until a usable plan or a genuinely terminal failure.
+            if (next == GenericNavMeshFollowState::Failed &&
+                retainIntentForInitialFallback_)
+            {
+                IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);
+                Debug::Logger::Info(
+                    "NAV INITIAL PLAN REJECT tier=" +
+                    std::string(NavigationInitTelemetryPolicy::TierName(
+                        currentInitTier_)) +
+                    " reason=" +
+                    NavigationInitTelemetryPolicy::ReasonName(lastPlanFailure_) +
+                    " intentRetained=yes");
                 return;
             }
 
@@ -6221,8 +6239,14 @@ namespace Navigation
                     ? "READY" : "FAILED",
                 result == DetourNavigationProvider::IncrementalStatus::Ready
                     ? "none" : error.c_str(), stepMs);
-            if (result == DetourNavigationProvider::IncrementalStatus::Ready &&
-                PlanFrom(player, tick, false))
+            const bool ready =
+                result == DetourNavigationProvider::IncrementalStatus::Ready;
+            retainIntentForInitialFallback_ = ready &&
+                NavigationInitTelemetryPolicy::RetainIntentForFallback(
+                    currentInitTier_, startOptions_.allowFullMapFallback);
+            const bool planReady = ready && PlanFrom(player, tick, false);
+            retainIntentForInitialFallback_ = false;
+            if (planReady)
                 return;
 
             if (result == DetourNavigationProvider::IncrementalStatus::Failed)
@@ -6858,6 +6882,7 @@ namespace Navigation
                             "NAVMESH 12B.2: REPEATED CORRIDOR STALL - "
                             "failing route instead of looping identical replans."
                         );
+                        lastPlanFailure_ = NavigationPlanFailure::HardStallExhausted;
                         SetState(GenericNavMeshFollowState::Failed);
                         StopAtCurrentPosition(player);
                         return;

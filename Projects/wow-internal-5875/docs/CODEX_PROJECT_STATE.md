@@ -226,6 +226,19 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
+- 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
+  edge 0x...2E6C -> 0x...2E6B and 14N.2 suppressed its immediate retry.
+  A distinct 0x...2E6C -> 0x...2E76 route then stalled and the bounded
+  vendor intent failed. This is not a traversal pass. Objective intent 2
+  rejected an unsafe 9.5-yard vertical transition; route/expanded tiers both
+  failed validation, and the captured full-map tier had not finished.
+- SOURCE VERIFIED ownership defect in that same log: initial route-scope
+  `PlanFrom` entered terminal `Failed` and logged `MOVEMENT INTENT RELEASE`
+  before `AdvanceInitialization` continued to expanded/full-map planning.
+  The scoped fix retains the intent across internal initialization fallbacks
+  and releases only on genuine terminal failure/arrival. Hard-stall budget
+  exhaustion now reports `hard_stall_exhausted` rather than `other_unknown`.
+  These changes are TEST PASS / BUILD PASS; WoW runtime is PENDING.
 - P0.1 no-clearance attribution and recovery semantics have new live proof,
   but P0.1 overall failed on hard-stall retries. P0.1.1 code is runtime pending.
 - Cave/interior navigation: generic portal staging is SOURCE VERIFIED and TEST
@@ -242,37 +255,47 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Known blockers
 
-1. New vendor capture proves an anonymous hard-stall retry loop before bounded
-   release. P0.1.1 source/test fix needs two post-fix natural traversals.
-2. Detour's local `raycast` is explicitly 2D (local VMaNGOS
+1. Post-P0.1.1 vendor capture proves exact hard-stall attribution and same-edge
+   suppression, but a different local route also stalls and the owner fails
+   boundedly. Offline inspection at the live hard-stall position projected
+   player Z=38.134 to mesh Z=39.362; the next straight portal was Z=41.914.
+   The local Detour ray was horizontally complete but does not verify height.
+   This is an investigation lead, not proof that lowering any safety threshold
+   or issuing a different CTM would traverse the portal. P0.1 needs two
+   unassisted successful traversals.
+2. The objective route correctly rejects unsafe terrain. Its executor uses
+   one primary destination despite multiple source-backed spawn anchors;
+   alternate-anchor selection remains a separate generic source/runtime task.
+3. Detour's local `raycast` is explicitly 2D (local VMaNGOS
    `DetourNavMeshQuery.cpp`, raycast contract). Runtime
    `IsSurfaceSegmentReachable` interpolates requested Z and does not verify end
    surface height. This is a source-backed contract risk, NOT proof that it
    caused the user's cave failure.
-3. Offline sample at the reported recovery target (-169.688,-4333.750,67.899)
+4. Offline sample at the reported recovery target (-169.688,-4333.750,67.899)
    to the reported objective (-58.1846,-4220.64,62.3418) gives 83 non-steep
    polygons, 304.325-yard straight-path length, matching start projection
    across route/local scopes and no 14O.1 rejection. First three ray endpoint
    heights match; later direct rays hit walls. This does NOT establish wrong
    layer selection. One portal midpoint clearance is below existing 0.70;
    that alone does not prove the full portal untraversable.
-4. Offline tool does not replay runtime persistent hazards, loaded-tile history,
+5. Offline tool does not replay runtime persistent hazards, loaded-tile history,
    wall-inset steering or collision. Its report cannot grant runtime PASS.
-5. Current Grinding run has repeated acquisition/watchdog resets; exact control
+6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-6. AFK candidate signal remains unverified in current log; no verified stationary
+7. AFK candidate signal remains unverified in current log; no verified stationary
    clearing action or measured two-window prevention result. Do not add a blind
    W/jump loop.
-7. Much prior working project code/data/tests is still dirty/untracked. This
+8. Much prior working project code/data/tests is still dirty/untracked. This
    checkpoint publishes only reviewed audit/tooling files, not the complete
    current runtime. A clean remote checkout is NOT this validated worktree.
 
 # Current phase
 
-V6 P0.1.1 hard-stall command provenance and typed path-validation diagnostics
-SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS; gameplay reliability
-is RUNTIME PENDING after a pre-fix
-P0.1 RUNTIME FAIL. No later V6 subsystem behavior patched.
+V6 P0.1 follow-up: internal initialization fallback now retains movement
+ownership; hard-stall terminal cause is typed. SOURCE VERIFIED / TEST PASS /
+BUILD PASS / DIFF CHECK PASS, RUNTIME PENDING. The physical vendor corridor
+still failed in the newest natural log, so P0.1 remains RUNTIME FAIL until
+two later unassisted traversals pass. No later V6 subsystem behavior patched.
 
 Proceed in requested order, with source/test/build/diff and checkpoint after
 each bounded subphase. Do not stack speculative fixes on the unproven cave
