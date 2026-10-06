@@ -273,6 +273,12 @@ override their location. It writes reports only, never controls WoW.
 # Git state
 
 - Inspected base HEAD for this P0.1 phase: `f5d04e5` (offline cave audit).
+- P0.1 validated navigation checkpoint: `555cccdbaa99f9e9c5fd737cc0c7bc9b55f21a35`
+  (`navigation: attribute local steering failures to verified portals`).
+  Pushed to `origin/codex/wow-internal-continuation`; `git ls-remote`
+  independently reported the same full hash before this continuity-only
+  follow-up. Resolve the *latest* local/remote HEAD with the commands below;
+  do not infer them from this historical checkpoint field.
 - Branch: `codex/wow-internal-continuation`.
 - Remote verified from configuration: `origin`,
   `git@github.com:darkraven92/MyProjects.git`.
