@@ -234,6 +234,42 @@ claim that the cave/vendor corridor itself is fixed.
 
 # Source/test verified
 
+## P0.0.3 pre-baseline input quiescence
+
+SOURCE VERIFIED: newest `build/wow-internal.log` lines 145-152 prove hold
+acquisition, inputClock 57169769 -> first Update 57169793 (24 ms), immediate
+Baseline and subsequent `unattributed_input_during_qualification` abort. That
+24-ms change precedes the first Update's baseline and was tolerated; the actual
+next changed clock triggering the guard was not logged. Startup/GUI residual
+input is plausible, not established. The defect is the absence of a stable
+input-clock boundary before strict attribution starts. Later normal Grinding
+observed AFK at age 300158 ms with continuousSafeIdle=no; not qualification PASS.
+
+Changes: typed AwaitingQuiescence in `AfkQualificationPolicy`, 1500-ms quiet
+interval and fixed 10000-ms startup deadline. Safe clock changes reset only the
+quiet interval; no input is issued/credited. Timeout => quiescence_not_reached.
+After quiet completion capture baseline input/AFK/scene, then retain clear or
+already-AFK entry, bounded asynchronous clearing, and both prevention windows.
+Input attribution is enforced in the policy after that boundary (including
+subsequent synchronization), replacing the premature controller-level abort.
+Candidate dispatch still uses independent before/after evidence. The adapter's
+fresh pre-command input cannot silently introduce unrelated clock progress.
+Unsafe/unknown state releases the existing shared hold; no workload/input-driver,
+production permission, navigation, recovery budget or later roadmap changes.
+
+Tests: new quiescence policy regression (failed compilation before new API),
+existing qualification tests rerun after quiescence. TEST PASS: full
+`python3 tools/validate.py --jobs 4`, 76 strict C++20/Wall/extra/Werror tests,
+13 Python tests plus QuestDB SQL fixture, six Lua fixtures / 113 checks.
+BUILD PASS; DIFF CHECK PASS. Artifact:
+`/tmp/wow-validation-xu73uobf/results.json`. Ninja emitted its existing
+`premature end of file; recovering` warning and successfully rebuilt the DLL.
+Files: `AfkQualificationPolicy.h`, `SharedAfkController.h`,
+`afk_quiescence_policy_test.cpp`, `afk_qualification_policy_test.cpp`, both AFK
+continuity documents. RUNTIME PENDING: fresh qualify-mode client on safe land,
+hold -> quiet start/reset/complete -> baseline -> F12 delivery -> authoritative
+clear -> two prevention windows. F12 and both windows remain runtime-unproven.
+
 ## P0.0.2 qualification from an already-AFK character
 
 SOURCE VERIFIED: newest `build/wow-internal.log` aborts at
@@ -376,7 +412,8 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 - **AFK first:** launch a logged-in safe client with
   `WOW_INTERNAL_AFK_MODE=qualify` in the WoW process environment. Detailed fish
   commands and evidence sequence are in `docs/AFK_5875_AUDIT.md`. Need natural
-  baseline or initial-AFK clear, individually verified input, then two clear prevention intervals
+  pre-baseline quiescence, baseline or initial-AFK clear, individually verified
+  input, then two clear prevention intervals
   and both workload integrations. No automatic RUNTIME PASS from log counters.
 
 - 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
@@ -435,9 +472,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    wall-inset steering or collision. Its report cannot grant runtime PASS.
 6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-7. AFK: both qualification attempts aborted before F12; the latest hit the
-   initial-active predicate. P0.0.2 permits that entry and bounded asynchronous
-   clear verification, but awaits a new client run. The input candidate must advance the
+7. AFK: qualification attempts still aborted before F12; the latest acquired
+   its hold but entered baseline before startup input settled. P0.0.3 adds
+   bounded input quiescence and awaits a new client run. The input candidate must advance the
    native input clock in Wine. If ignored, it faults once instead of pretending
    protection. Actual threshold and two windows require user login/start.
    GUI status transport and a broader water-state model remain unimplemented.
@@ -447,8 +484,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.2 AFK FIRST (user priority override):** already-AFK entry and asynchronous
-candidate clearing. SOURCE VERIFIED; validation results recorded above.
+**P0.0.3 AFK FIRST (user priority override):** pre-baseline input quiescence;
+already-AFK entry and asynchronous clearing preserved. SOURCE VERIFIED;
+validation results recorded above.
 RUNTIME PENDING until the user runs the rebuilt client qualification. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a
 blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
@@ -519,6 +557,10 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.3 base: `543447e8f0d2b60a4c2b786f5f57b15d093723b4`.
+  Validated scoped checkpoint: `afk: require bounded input quiescence before qualification`.
+  Resolve with `git log -1 --format='%H' -- src/Bot/AfkQualificationPolicy.h`;
+  remote verification follows push. Unrelated dirty work stays unstaged.
 - P0.0.2 base: `2eb8889199d6b2fefd2d9c02687e35d785e55120`.
   Validated scoped checkpoint: `a0a241503a9a25bdafe88dea1fe7b28ad86b8f2f`
   (`afk: qualify already-AFK entry with asynchronous clear verification`).
@@ -586,7 +628,8 @@ override their location. It writes reports only, never controls WoW.
 # Next steps
 
 1. **AFK runtime gate first:** user launches/logs in on safe land with qualify
-   mode; clear OR already-AFK entry, input-clock confirmation, asynchronous
+   mode; quiescence start/reset/complete, clear OR already-AFK baseline,
+   independent candidate input-clock confirmation, asynchronous
    two-flag clear and two prevention windows. Neither flag may be fabricated.
    If targeted messages fail, inspect exact evidence before considering a
    bounded targeted Wine/X11 alternative. Never substitute a blind W loop.

@@ -7,9 +7,31 @@
 #include <string>
 #include <limits>
 
+// Preserve all P0.0.2 scenarios after the new prerequisite. These timestamps
+// remain relative to baseline acquisition; quiescence itself has dedicated tests.
+class QuiescedQualification : public Bot::AfkQualificationPolicy
+{
+    bool started_=false;
+public:
+    Bot::AfkDecision Update(const Bot::AfkObservation& o, bool safe, bool unchanged, std::uint64_t now)
+    {
+        if (!started_)
+        {
+            started_=true;
+            const auto start=Bot::AfkQualificationPolicy::Update(o,safe,unchanged,now);
+            if (start.result==Bot::AfkResult::Failed) return start;
+            assert(Phase()==Bot::AfkQualificationPhase::AwaitingQuiescence);
+        }
+        return Bot::AfkQualificationPolicy::Update(o,safe,unchanged,now+QuietIntervalMs);
+    }
+    void Issued(const Bot::AfkObservation& o, std::uint64_t now)
+    { Bot::AfkQualificationPolicy::Issued(o,now+QuietIntervalMs); }
+};
+
 int main()
 {
     using namespace Bot;
+    using AfkQualificationPolicy=QuiescedQualification;
     using Phase=AfkQualificationPhase;
     const AfkObservation active{true,true,true,400000,0,300000};
     auto clear=active; clear.clientAfk=clear.serverAfk=false;

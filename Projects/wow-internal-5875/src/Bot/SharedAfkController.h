@@ -32,6 +32,7 @@ namespace Bot
         std::uint32_t candidateInputBefore_=0;
         bool candidateAfkBefore_=false;
         AfkCandidateScene candidateSceneBefore_{};
+        AfkCandidateScene baselineScene_{};
         bool havePrevious_=false, safeBaseline_=false;
         std::uint64_t qualificationStart_=0;
         std::string lastDecision_{}, lastDispatchBlock_{};
@@ -104,6 +105,7 @@ namespace Bot
             policy_.Reset(); status_={}; previous_={}; playerGuid_=0;
             havePrevious_=false; safeBaseline_=false; baselineComplete_=false;
             qualificationStart_=0; qualificationFlow_={};
+            baselineScene_={};
             nextDispatchProbe_=0; lastDecision_.clear(); lastDispatchBlock_.clear();
         }
         void Update(const Objects::PlayerState& player, std::uint64_t playerGuid,
@@ -120,11 +122,8 @@ namespace Bot
                 if (!valid) EndControlledIdle("afk_observation_unavailable");
                 else if (now-qualificationStart_ > std::uint64_t(o.thresholdMs)*4+30000)
                     EndControlledIdle("bounded_qualification_deadline");
-                else if (havePrevious_ && o.lastInput!=previous_.lastInput &&
-                    qualificationFlow_.Phase()!=AfkQualificationPhase::Initial &&
-                    qualificationFlow_.Phase()!=AfkQualificationPhase::Synchronizing &&
-                    qualificationFlow_.PendingAction()==AfkAction::None)
-                    EndControlledIdle("unattributed_input_during_qualification");
+                // Input attribution belongs to the qualification state machine:
+                // startup noise resets quiescence, post-baseline input fails.
             }
             if (!havePrevious_ || valid!=status_.known ||
                 o.serverAfk!=previous_.serverAfk || o.clientAfk!=previous_.clientAfk)
@@ -150,7 +149,8 @@ namespace Bot
                 Debug::Logger::Info("AFK THRESHOLD OBSERVATION elapsed="+std::to_string(age)+
                     " sourceThreshold="+std::to_string(o.thresholdMs)+
                     " continuousSafeIdle="+(safeBaseline_ ? std::string("yes") : "no"));
-                if (qualification_.InhibitsWorkloadAcquisition() && safeBaseline_)
+                if (qualification_.InhibitsWorkloadAcquisition() &&
+                    qualificationFlow_.BaselineCaptured() && safeBaseline_)
                 {
                     baselineComplete_=true;
                     Debug::Logger::Info("AFK BASELINE elapsed="+std::to_string(age)+
@@ -167,13 +167,22 @@ namespace Bot
             if (!AfkClient5875::StationaryAliveLand(player)) checkedSafety.healthyIdle=false;
             const bool qualifying=qualification_.InhibitsWorkloadAcquisition();
             const auto beforePhase=qualificationFlow_.Phase();
+            const bool hadBaseline=qualificationFlow_.BaselineCaptured();
+            const auto beforeClock=qualificationFlow_.ObservedInput();
+            const auto beforeQuietSince=qualificationFlow_.QuietSince();
             const auto beforeWindows=qualificationFlow_.Windows();
             const auto pendingAction=qualifying ? qualificationFlow_.PendingAction() : policy_.PendingAction();
             // Check the candidate scene throughout delivery AND asynchronous AFK
             // propagation, not merely on the first clock-advance snapshot.
             bool sceneSame=true;
+            AfkCandidateScene sceneNow{};
+            if (qualifying)
+            {
+                sceneNow=AfkClient5875::ReadScene(player);
+                if (!AfkCandidateScene::Unchanged(sceneNow,sceneNow)) checkedSafety.healthyIdle=false;
+            }
             if (qualifying && qualificationFlow_.Verifying())
-                sceneSame=AfkCandidateScene::Unchanged(candidateSceneBefore_,AfkClient5875::ReadScene(player)) &&
+                sceneSame=AfkCandidateScene::Unchanged(candidateSceneBefore_,sceneNow) &&
                     AfkClient5875::SafeInputReason()=="ready";
             auto decision=qualifying ? qualificationFlow_.Update(o,checkedSafety.Safe(),sceneSame,now) :
                 policy_.Update(o,checkedSafety,now,observeOnly_);
@@ -200,12 +209,32 @@ namespace Bot
                 status_.candidateClearVerified=qualificationFlow_.ClearVerified();
                 status_.preventionWindows=qualificationFlow_.Windows();
                 const auto phase=qualificationFlow_.Phase();
+                if (beforePhase==AfkQualificationPhase::Initial && phase==AfkQualificationPhase::AwaitingQuiescence)
+                    Debug::Logger::Info("AFK QUIESCENCE START inputClock="+std::to_string(o.lastInput));
+                if (beforePhase==AfkQualificationPhase::AwaitingQuiescence &&
+                    phase==AfkQualificationPhase::AwaitingQuiescence && beforeClock!=o.lastInput)
+                    Debug::Logger::Info("AFK QUIESCENCE RESET oldClock="+std::to_string(beforeClock)+
+                        " newClock="+std::to_string(o.lastInput)+
+                        " quietMsBeforeReset="+std::to_string(now-beforeQuietSince));
+                if (!hadBaseline && qualificationFlow_.BaselineCaptured())
+                {
+                    baselineScene_=sceneNow;
+                    const auto& baseline=qualificationFlow_.BaselineObservation();
+                    Debug::Logger::Info("AFK QUIESCENCE COMPLETE stableMs="+
+                        std::to_string(now-qualificationFlow_.QuietSince())+
+                        " baselineInputClock="+std::to_string(baseline.lastInput));
+                    Debug::Logger::Info("AFK QUALIFICATION BASELINE inputClock="+std::to_string(baseline.lastInput)+
+                        " afkState="+(baseline.clientAfk || baseline.serverAfk ? "active" : "clear")+
+                        " sceneKnown="+(baselineScene_.known ? "yes" : "no"));
+                }
                 if (beforePhase==AfkQualificationPhase::Initial ||
+                    (!hadBaseline && qualificationFlow_.BaselineCaptured()) ||
                     (beforePhase==AfkQualificationPhase::Synchronizing && phase!=beforePhase))
                     Debug::Logger::Info("AFK QUALIFICATION INITIAL state="+
                         std::string(!valid ? "unknown" : o.clientAfk || o.serverAfk ? "active" : "clear")+
                         " inputAge="+std::to_string(status_.inputAgeMs)+" decision="+
-                        (phase==AfkQualificationPhase::Synchronizing ? "synchronize" :
+                        (phase==AfkQualificationPhase::AwaitingQuiescence ? "await_quiescence" :
+                         phase==AfkQualificationPhase::Synchronizing ? "synchronize" :
                          phase==AfkQualificationPhase::Baseline ? "baseline" :
                          phase==AfkQualificationPhase::Failed ? "abort" : "candidate_clear")+
                         " reason="+decision.reason);

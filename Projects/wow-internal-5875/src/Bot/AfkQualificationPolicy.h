@@ -4,7 +4,7 @@
 namespace Bot
 {
     enum class AfkQualificationPhase
-    { Initial, Synchronizing, Baseline, CandidateReady, Delivery, Clear, Prevention, Complete, Failed };
+    { Initial, AwaitingQuiescence, Synchronizing, Baseline, CandidateReady, Delivery, Clear, Prevention, Complete, Failed };
 
     // Diagnostic flow only. Never use the production AFK-chat toggle here:
     // qualification must establish whether the paired candidate ALONE works.
@@ -14,6 +14,10 @@ namespace Bot
         AfkProtectionPolicy input_{};
         AfkPreventionWindow window_{};
         std::uint64_t syncStart_=0, issuedAt_=0;
+        std::uint64_t quiescenceStart_=0, quietSince_=0;
+        std::uint32_t observedInput_=0;
+        bool baselineCaptured_=false;
+        AfkObservation baseline_{};
         unsigned windows_=0;
         bool deliveryVerified_=false, clearVerified_=false;
         bool preventionCandidate_=false;
@@ -25,6 +29,13 @@ namespace Bot
             return {AfkStatus::Fault,AfkAction::None,AfkResult::Failed,reason};
         }
     public:
+        // Startup noise may reset only the quiet interval, never the deadline.
+        // Tick-driven diagnostic timing; neither constant changes WoW's clock.
+        static constexpr std::uint64_t QuietIntervalMs=1500, MaximumQuiescenceMs=10000;
+        bool BaselineCaptured() const { return baselineCaptured_; }
+        const AfkObservation& BaselineObservation() const { return baseline_; }
+        std::uint32_t ObservedInput() const { return observedInput_; }
+        std::uint64_t QuietSince() const { return quietSince_; }
         // A bounded startup observation grace, NOT a measured propagation delay.
         static constexpr std::uint64_t SynchronizationMs=1000;
         AfkQualificationPhase Phase() const { return phase_; }
@@ -42,9 +53,33 @@ namespace Bot
             if (phase_==AfkQualificationPhase::Failed) return Fail(failure_);
             if (!AfkProtectionPolicy::Valid(o)) return Fail("qualification_observation_unknown");
             if (!safe) return Fail("qualification_unsafe_state");
+            if (baselineCaptured_ && input_.PendingAction()==AfkAction::None && o.lastInput!=observedInput_)
+                return Fail("unattributed_input_during_qualification");
             const bool active=o.clientAfk || o.serverAfk;
             const auto age=std::uint32_t(o.clientNow-o.lastInput);
             if (phase_==AfkQualificationPhase::Initial)
+            {
+                quiescenceStart_=quietSince_=now;
+                observedInput_=o.lastInput;
+                phase_=AfkQualificationPhase::AwaitingQuiescence;
+            }
+            if (phase_==AfkQualificationPhase::AwaitingQuiescence)
+            {
+                if (now<quietSince_) return Fail("qualification_clock_reversed");
+                if (now-quiescenceStart_>=MaximumQuiescenceMs) return Fail("quiescence_not_reached");
+                if (o.lastInput!=observedInput_)
+                {
+                    observedInput_=o.lastInput;
+                    quietSince_=now;
+                }
+                if (now-quietSince_<QuietIntervalMs)
+                    return {active ? AfkStatus::AfkDetected : AfkStatus::Active,
+                        AfkAction::None,AfkResult::Pending,"awaiting_input_quiescence"};
+                baseline_=o;
+                baselineCaptured_=true;
+            }
+            observedInput_=o.lastInput;
+            if (phase_==AfkQualificationPhase::AwaitingQuiescence)
             {
                 syncStart_=now;
                 phase_=!active ? AfkQualificationPhase::Baseline :
@@ -106,6 +141,11 @@ namespace Bot
         {
             if (phase_!=AfkQualificationPhase::CandidateReady && phase_!=AfkQualificationPhase::Prevention)
                 return;
+            if (o.lastInput!=observedInput_)
+            {
+                Fail("unattributed_input_before_candidate_dispatch");
+                return;
+            }
             if (phase_==AfkQualificationPhase::CandidateReady && !o.clientAfk && !o.serverAfk)
             {
                 Fail("afk_cleared_before_candidate_dispatch");
