@@ -558,9 +558,10 @@ override their location. It writes reports only, never controls WoW.
 # Git state
 
 - P0.0.3 base: `543447e8f0d2b60a4c2b786f5f57b15d093723b4`.
-  Validated scoped checkpoint: `afk: require bounded input quiescence before qualification`.
-  Resolve with `git log -1 --format='%H' -- src/Bot/AfkQualificationPolicy.h`;
-  remote verification follows push. Unrelated dirty work stays unstaged.
+  Validated scoped checkpoint: `f04ac4c89d4189b23d0e43b4fa9f31b847a59bfa`
+  (`afk: require bounded input quiescence before qualification`). Pushed to
+  origin; independent `git ls-remote` matched local HEAD before this
+  documentation follow-up. Unrelated dirty work stays unstaged; runtime pending.
 - P0.0.2 base: `2eb8889199d6b2fefd2d9c02687e35d785e55120`.
   Validated scoped checkpoint: `a0a241503a9a25bdafe88dea1fe7b28ad86b8f2f`
   (`afk: qualify already-AFK entry with asynchronous clear verification`).
