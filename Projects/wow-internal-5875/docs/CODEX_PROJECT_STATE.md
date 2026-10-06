@@ -234,7 +234,57 @@ claim that the cave/vendor corridor itself is fixed.
 
 # Source/test verified
 
-Latest P0.0 AFK checkpoint, 2026-10-06:
+## P0.0.1 qualification ownership and native AFK flag correction
+
+Latest live evidence: `build/wow-internal.log`, session starting 19:41:43 UTC
+2026-10-06. Qualification observed clear flags/input clock, then logged the
+generic unsafe abort BEFORE Grinding initialized. Immediately afterward an
+attacker targeting the player was selected at 2.1 yards. The existing `continue`
+already suppressed workload dispatch; the log does NOT prove Grinding stole
+ownership. Exact old abort predicate is unknown. No F12 candidate was issued.
+
+SOURCE VERIFIED separate blocker: native AFK variable B6E5CC has values 0/1
+from mark/clear and 0/2 from server synchronization at 5EE9EF..5EE9F2. The
+adapter wrongly rejected >1. It now accepts only source-proven 0/1/2, with a
+signature check for the server writer. This explains a source path to the
+observed known=no after the legacy raw player flag became 2; the old log did
+not expose the native raw value. No unsupported encodings are accepted.
+
+Changes: typed AfkQualificationHold Requested/Held/Aborted/Complete, exact
+ownership/native/UI abort reasons, read-only UI guard before hold acquisition
+and every second during hold, no workload dispatch while held, no silent
+qualification restart after abort/world loss. Legacy telemetry is now
+AFK FLAG CANDIDATE SET/UNSET, still signalVerified=no. Candidate tests verify
+input-clock advancement AND unchanged position/facing/target/movement plus UI
+guards. Added explicit start/hold/baseline/candidate/window/complete events.
+
+Production safety classification distinguishes benign work, but does not yet
+permit F12 during navigation/acquisition. Requires live harmless-input proof
+and a subsequent active-workload dispatch implementation/qualification. Bot
+activity still never resets AFK scheduling. This unresolved requirement is
+not disguised by the controlled-idle harness.
+
+New regression `afk_qualification_hold_test.cpp` failed before its policy
+existed and now passes: both workload gates, abort/release, input verification,
+native flag encodings, scene integrity, monitor gate ordering and GUI launch
+inheritance. Existing AFK and navigation tests remain protected. No navigation,
+recovery budget, 14O.1 or death/pull policy changes in this phase.
+
+Validation: SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS.
+Final full run: 74 strict C++20/Wall/extra/Werror executables, 13 QuestDB Python
+tests plus SQL/catalogue fixture, six Lua fixtures / 113 checks. Artifact:
+`/tmp/wow-validation-g9s9c6b2/results.json`. Explicit `cmake --build build` and
+`git diff --check -- .` repeated after full validation. These validate the dirty
+worktree, not a clean remote checkout and not WoW behavior.
+
+RUNTIME PENDING: both prevention windows and harmless F12. No WoW process is
+currently running. Run `env WOW_INTERNAL_AFK_MODE=qualify wine ./build/wow_gui.exe`,
+then GUI Start WoW -> login on safe land -> Start Bot; no manual input during
+qualification. WoW inherits the GUI environment only when newly launched by
+it. See `docs/AFK_5875_AUDIT.md`. If an attacker arrives, abort is required:
+choose an actually safe location rather than weakening survival gates.
+
+Earlier P0.0 AFK checkpoint, 2026-10-06:
 
 - SOURCE VERIFIED: local 5875 idle-check instruction uses 300000 ms, input
   timestamp at 0xCF0BC8 and local AFK flag at 0xB6E5CC. Server PLAYER_FLAGS
@@ -347,7 +397,8 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    wall-inset steering or collision. Its report cannot grant runtime PASS.
 6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-7. AFK: WoW is closed. The new non-movement input candidate must advance the
+7. AFK: first qualification aborted before F12; P0.0.1 hold/native-flag changes
+   await a new run. WoW is currently closed. The input candidate must advance the
    native input clock in Wine. If ignored, it faults once instead of pretending
    protection. Actual threshold and two windows require user login/start.
    GUI status transport and a broader water-state model remain unimplemented.
@@ -357,7 +408,8 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0 AFK FIRST (user priority override):** shared source/test implementation
+**P0.0.1 AFK FIRST (user priority override):** qualification hold/native-flag correction.
+Shared source/test implementation
 is SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS.
 RUNTIME PENDING because no live WoW process is available. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a

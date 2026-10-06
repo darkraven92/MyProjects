@@ -18,6 +18,7 @@ namespace Bot
         // Read from the signature-validated client's actual idle check.
         // This is source evidence; it is not a measured server timeout.
         std::uint32_t thresholdMs = 0;
+        const char* evidenceReason = "not_read";
     };
     struct AfkSafety
     {
@@ -55,6 +56,13 @@ namespace Bot
         {
             return o.known && o.thresholdMs >= 10000 && o.thresholdMs <= 3600000 &&
                 std::uint32_t(o.clientNow-o.lastInput) < 0x80000000u;
+        }
+        static const char* ObservationReason(const AfkObservation& o)
+        {
+            if (!o.known) return o.evidenceReason;
+            if (o.thresholdMs<10000 || o.thresholdMs>3600000) return "threshold_invalid";
+            if (std::uint32_t(o.clientNow-o.lastInput)>=0x80000000u) return "input_clock_ahead_or_discontinuous";
+            return "verified_native_read";
         }
         AfkDecision Update(const AfkObservation& o, const AfkSafety& safety,
             std::uint64_t now, bool observeOnly = false)

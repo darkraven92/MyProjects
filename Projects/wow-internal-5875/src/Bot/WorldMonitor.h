@@ -797,17 +797,26 @@ namespace Bot
                         if (unit.valid && unit.health>0 && world.activePlayerGuid &&
                             unit.targetGuid==world.activePlayerGuid)
                             directThreat=true;
-                    const bool stationary=AfkClient5875::StationaryAliveLand(world.player);
-                    const bool safe=!deathRecovery.IsActive() && !deathRecovery.IsFailed() &&
-                        world.player.valid && world.player.health>1 && world.player.maxHealth>0 &&
-                        RecoveryController::HealthPercent(world.player)>=RecoveryController::ExitThresholdPercent() &&
-                        !directThreat && stationary && combat.LockedGuid()==0 &&
-                        (combat.State()==CombatState::Idle || combat.State()==CombatState::AcquiringTarget) &&
-                        !combat.Recovery().IsActive() && !combat.HasDeferredCorpseLootPending() &&
-                        !navMeshReturn.OwnsMovement() && !vileFamiliarsTurnIn.IsActive() &&
-                        !questPlannerRuntime.OwnsControl() && !grindMode.FirstAidActive() &&
-                        (grindMode.State()==GrindModeState::Idle || grindMode.State()==GrindModeState::Grinding);
-                    if (safe)
+                    const char* blocker=nullptr;
+                    if (deathRecovery.IsActive() || deathRecovery.IsFailed() || world.player.health<=1)
+                        blocker="death_recovery_or_dead";
+                    else if (directThreat) blocker="direct_aggressor_targets_player";
+                    else if (combat.LockedGuid()!=0 ||
+                        (combat.State()!=CombatState::Idle && combat.State()!=CombatState::AcquiringTarget))
+                        blocker="combat_owner";
+                    else if (combat.Recovery().IsActive()) blocker="health_recovery_owner";
+                    else if (combat.HasDeferredCorpseLootPending()) blocker="loot_transaction";
+                    else if (navMeshReturn.OwnsMovement()) blocker="navigation_owner";
+                    else if (vileFamiliarsTurnIn.IsActive()) blocker="quest_dialog_owner";
+                    else if (questPlannerRuntime.OwnsControl()) blocker="quest_workload_owner";
+                    else if (grindMode.FirstAidActive()) blocker="first_aid_transaction";
+                    else if (grindMode.State()!=GrindModeState::Idle && grindMode.State()!=GrindModeState::Grinding)
+                        blocker="grind_movement_or_transaction_owner";
+                    else if (!world.player.maxHealth ||
+                        RecoveryController::HealthPercent(world.player)<RecoveryController::ExitThresholdPercent())
+                        blocker="health_not_safe";
+                    else blocker=AfkClient5875::StationarySafetyReason(world.player);
+                    if (sharedAfk.AdvanceQualificationHold(world.player,blocker,nowMs))
                     {
                         AfkSafety gate; gate.healthyIdle=true;
                         sharedAfk.Update(world.player,world.activePlayerGuid,gate,nowMs,"ControlledIdle");
@@ -815,7 +824,6 @@ namespace Bot
                         Sleep(PollIntervalMs);
                         continue;
                     }
-                    sharedAfk.EndControlledIdle("unsafe_world_or_active_owner");
                 }
 
                 // =====================================
@@ -1136,8 +1144,8 @@ namespace Bot
                 if (afkTransition.event != AfkDiagnosticEvent::None)
                 {
                     Debug::Logger::Info(
-                        std::string("AFK DIAGNOSTIC 14K.1.8: ") +
-                        (afkTransition.event == AfkDiagnosticEvent::Entered ? "ENTERED" : "CLEARED") +
+                        std::string("AFK FLAG CANDIDATE 14K.1.8: ") +
+                        (afkTransition.event == AfkDiagnosticEvent::Entered ? "SET" : "UNSET") +
                         " utc=" + afkTransitionUtc +
                         " tick=" + std::to_string(tick) +
                         " source=player_flags_candidate signalVerified=no" +
@@ -2228,7 +2236,11 @@ namespace Bot
                 if (RecoveryController::HealthPercent(world.player)<RecoveryController::ExitThresholdPercent())
                     afkSafety.healthyIdle=false;
                 sharedAfk.Update(world.player,world.activePlayerGuid,afkSafety,nowMs,
-                    TemporaryGrindModeEnabled ? "Grinding" : "Questing");
+                    TemporaryGrindModeEnabled ? "Grinding" : "Questing",
+                    TemporaryGrindModeEnabled &&
+                        (grindMode.State()==GrindModeState::Grinding ||
+                         grindMode.State()==GrindModeState::ApproachingTarget ||
+                         grindMode.State()==GrindModeState::Roaming));
 
                 ++tick;
 

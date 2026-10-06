@@ -31,6 +31,7 @@ def main():
     expected = {
         0x482ec3: '8b3dc80bcf008bd82bc78d88206cfbff85c9',
         0x5eb836: 'a1cce5b600',
+        0x5ee9ef: '83e102890dcce5b600',
         0x765f34: '890dc80bcf00',
         0x42c010: 'e97bf7ffff',
     }
@@ -46,6 +47,7 @@ def main():
     print('SHA256', hashlib.sha256(data).hexdigest())
     print('SOURCE VERIFIED client idle threshold ms=', threshold)
     print('SOURCE VERIFIED input timestamp VA=0xcf0bc8 local AFK VA=0xb6e5cc')
+    print('SOURCE VERIFIED local AFK encodings: 0 clear, 1 explicit mark, 2 server flag synchronization')
     print('RUNTIME PENDING: keyboard message path, observed timeout, two prevention windows')
 
 
