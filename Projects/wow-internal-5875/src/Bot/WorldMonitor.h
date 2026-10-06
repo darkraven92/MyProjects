@@ -6,6 +6,7 @@
 #include "PlayerPostureController.h"
 #include "AutonomySupervisor.h"
 #include "ActiveBotAfkSafeguard.h"
+#include "SharedAfkController.h"
 #include "AfkDiagnosticTracker.h"
 #include "DisconnectDiagnosticPolicy.h"
 #include "RuntimeRobustnessSupervisor.h"
@@ -341,6 +342,7 @@ namespace Bot
             ExperienceTracker experienceTracker;
             AutonomySupervisor autonomySupervisor;
             ActiveBotAfkSafeguard antiAfkSafeguard;
+            SharedAfkController sharedAfk;
             RuntimeRobustnessSupervisor runtimeRobustness;
             DeathRecoveryController deathRecovery;
 
@@ -438,6 +440,7 @@ namespace Bot
 
                 if (guiUnloadRequested)
                 {
+                    sharedAfk.Reset();
                     runtimeControl.MarkRuntimeState(
                         Control::BotRunState::Unloading,
                         static_cast<LONG>(tick & 0x7FFFFFFFULL));
@@ -569,6 +572,7 @@ namespace Bot
                 if (!snapshotValid)
                 {
                     ++consecutiveWorldFailures;
+                    sharedAfk.Reset();
 
                     if (
                         consecutiveWorldFailures == 1 ||
@@ -781,6 +785,37 @@ namespace Bot
                             )
                         );
                     }
+                }
+
+                // Explicit AFK qualification starts only on stationary healthy
+                // land with no owner. Any threat/death/reconciliation aborts
+                // the test and immediately returns to ordinary survival work.
+                if (sharedAfk.ControlledIdleRequested())
+                {
+                    bool directThreat=false;
+                    for (const auto& unit : world.units)
+                        if (unit.valid && unit.health>0 && world.activePlayerGuid &&
+                            unit.targetGuid==world.activePlayerGuid)
+                            directThreat=true;
+                    const bool stationary=AfkClient5875::StationaryAliveLand(world.player);
+                    const bool safe=!deathRecovery.IsActive() && !deathRecovery.IsFailed() &&
+                        world.player.valid && world.player.health>1 && world.player.maxHealth>0 &&
+                        RecoveryController::HealthPercent(world.player)>=RecoveryController::ExitThresholdPercent() &&
+                        !directThreat && stationary && combat.LockedGuid()==0 &&
+                        (combat.State()==CombatState::Idle || combat.State()==CombatState::AcquiringTarget) &&
+                        !combat.Recovery().IsActive() && !combat.HasDeferredCorpseLootPending() &&
+                        !navMeshReturn.OwnsMovement() && !vileFamiliarsTurnIn.IsActive() &&
+                        !questPlannerRuntime.OwnsControl() && !grindMode.FirstAidActive() &&
+                        (grindMode.State()==GrindModeState::Idle || grindMode.State()==GrindModeState::Grinding);
+                    if (safe)
+                    {
+                        AfkSafety gate; gate.healthyIdle=true;
+                        sharedAfk.Update(world.player,world.activePlayerGuid,gate,nowMs,"ControlledIdle");
+                        ++tick;
+                        Sleep(PollIntervalMs);
+                        continue;
+                    }
+                    sharedAfk.EndControlledIdle("unsafe_world_or_active_owner");
                 }
 
                 // =====================================
@@ -2169,6 +2204,31 @@ namespace Bot
 
                     return;
                 }
+
+                // Lowest priority, after every gameplay owner and watchdog.
+                // Both workloads use the same observation/action controller.
+                AfkSafety afkSafety;
+                afkSafety.death=deathRecoveryOwnedTick || world.player.health<=1;
+                afkSafety.fault=combat.Failed() ||
+                    (TemporaryGrindModeEnabled &&
+                        (grindMode.Failed() || runtimeRobustness.RecoveriesWithoutProgress()>0));
+                afkSafety.combat=combat.LockedGuid()!=0 ||
+                    (combat.State()!=CombatState::Idle && combat.State()!=CombatState::AcquiringTarget);
+                for (const auto& unit : world.units)
+                    if (unit.valid && unit.health>0 && world.activePlayerGuid &&
+                        unit.targetGuid==world.activePlayerGuid)
+                        afkSafety.combat=true;
+                afkSafety.recovery=combat.Recovery().IsActive();
+                afkSafety.loot=combat.HasDeferredCorpseLootPending();
+                afkSafety.navigation=navMeshReturn.OwnsMovement();
+                afkSafety.dialog=vileFamiliarsTurnIn.IsActive();
+                afkSafety.healthyIdle=TemporaryGrindModeEnabled
+                    ? grindMode.State()==GrindModeState::Grinding && !grindMode.FirstAidActive()
+                    : questPlannerRuntime.SafeIdleForAfk();
+                if (RecoveryController::HealthPercent(world.player)<RecoveryController::ExitThresholdPercent())
+                    afkSafety.healthyIdle=false;
+                sharedAfk.Update(world.player,world.activePlayerGuid,afkSafety,nowMs,
+                    TemporaryGrindModeEnabled ? "Grinding" : "Questing");
 
                 ++tick;
 

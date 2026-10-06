@@ -1133,6 +1133,14 @@ namespace Bot
             }
         }
 
+        bool SafeIdleForAfk() const
+        {
+            return readerValid_ && haveSnapshot_ && snapshot_.valid &&
+                plan_.action==QuestPlannerAction::None &&
+                !OwnsControl() && !runtimeFaultBackoffUntilTick_ &&
+                !objectiveDirector_.Failed();
+        }
+
         bool OwnsControl() const
         {
             return

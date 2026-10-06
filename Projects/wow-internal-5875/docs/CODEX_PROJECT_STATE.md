@@ -9,10 +9,15 @@ Updated: 2026-10-06. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- This is a bounded P0.1.1 source/test checkpoint, NOT completion of the roadmap
-  or an unattended qualification.
+- Current priority override: V6 **P0.0 AFK FIRST**. The shared AFK source/test
+  checkpoint below is NOT runtime qualification or completion of the roadmap.
 
 # Current architecture
+
+- One `SharedAfkController` in WorldMonitor observes client/server AFK and the
+  native input clock for both workloads. Safe-idle-only candidate input is
+  paired, bounded and verified; the older Grinding AFK-named liveness mechanism
+  remains distinct. See `docs/AFK_5875_AUDIT.md` for source proof and live gates.
 
 - `WorldMonitor` dispatches existing Questing and Grinding controllers using
   live `WorldState`; shared `CombatController`, `GenericNavMeshPathFollower`,
@@ -195,9 +200,63 @@ five Lua fixtures/89 checks; BUILD PASS; DIFF CHECK PASS. Strict focused
 tests failed to compile before the new policies existed and passed afterward.
 Detailed temporary artifact: `/tmp/wow-validation-tsfhxfdy/results.json`.
 
+# P0.1 objective-anchor failover (2026-10-06)
+
+The later live objective intent began at (-560.332,-4217.55,41.5904) and
+selected the first source-backed objective seed at
+(-168.068,-4403.07,77.5404). Route, expanded and full-map initialization
+all rejected the same 9.5-yard vertical directed transition with
+`unsafe_terrain_no_alternative`; zero CTM commands were issued. This is a
+correct 14O.1 safety rejection, not evidence that the entire objective or
+region is unreachable. The intent was retained between initialization tiers
+and released once after terminal failure, so the prior ownership fix has
+live confirmation for this path.
+
+SOURCE VERIFIED generic gap: the regional catalogue supplies many distinct
+source-backed objective spawn anchors, but `CollectItemFromMobExecutor` used
+only the primary destination and failed the whole objective when its route
+failed. The executor now considers a distinct, same-map search anchor only
+after a terminal route-specific failure. It retains an authored destination
+override, excludes duplicate/invalid anchors, and caps the total number of
+distinct anchors at eight. Each alternate gets a fresh follower and the
+unchanged Detour/14O.1 validation; no individual route or recovery budget was
+raised. Unknown/initialization failures do not authorize a spawn switch.
+Terminal follower ownership is released before the alternate starts.
+
+Focused policy regression first failed compilation before the new selection
+API, then passed. Full validation: TEST PASS 72/72 C++ tests under strict
+C++20/Wall/extra/Werror, QuestDB 13/13, five Lua fixtures/89 checks;
+BUILD PASS; DIFF CHECK PASS. Temporary artifact:
+`/tmp/wow-validation-fp3_be0s/results.json`. RUNTIME PENDING: WoW must show
+a rejected first seed, a different source-backed anchor selected, a validated
+route, and an objective/combat handoff or bounded exhaustion. This is not a
+claim that the cave/vendor corridor itself is fixed.
+
 # Source/test verified
 
-2026-10-06 dirty-worktree validation using `python3 tools/validate.py`:
+Latest P0.0 AFK checkpoint, 2026-10-06:
+
+- SOURCE VERIFIED: local 5875 idle-check instruction uses 300000 ms, input
+  timestamp at 0xCF0BC8 and local AFK flag at 0xB6E5CC. Server PLAYER_FLAGS
+  bit 2 is independently observed. This is NOT a runtime-measured threshold.
+- SOURCE VERIFIED gap: prior Grinding liveness counted displacement without
+  input-clock proof; Questing only emitted blocked diagnostics. New shared
+  policy never equates CTM/combat/displacement with qualifying activity.
+- New files: AfkProtectionPolicy, AfkPreventionWindow, AfkInputPulse,
+  AfkSafeInputScript, AfkClient5875, SharedAfkController; strict policy test,
+  Lua guard fixture, read-only client audit tool, AFK audit/runbook.
+  Scoped WorldMonitor/QuestPlanner safe-idle integration; validation fixture map.
+- TEST PASS: 73 C++ executables, C++20 `-Wall -Wextra -Werror`;
+  13 QuestDB Python tests + SQL/catalogue fixture; 6 Lua fixtures / 113 checks.
+- BUILD PASS: full validation and explicit `cmake --build build`.
+- DIFF CHECK PASS: `git diff --check -- .`.
+- Validation artifacts: `/tmp/wow-validation-bf4fjpez/results.json`
+  (final repeated full validation; earlier `/tmp/wow-validation-0or8jre6`).
+- RUNTIME PENDING: targeted unbound-F12 message candidate, observed threshold,
+  local/server clear and two continuous prevention intervals. No running WoW
+  process available; newest log ends with process absent at 19:05:58 UTC.
+
+Earlier P0.1 dirty-worktree validation using `python3 tools/validate.py`:
 
 - TEST PASS: 69/69 C++ test executables, each compiled with
   `-std=c++20 -Wall -Wextra -Werror`.
@@ -225,6 +284,12 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
   controller file is changed by this checkpoint.
 
 # Runtime pending
+
+- **AFK first:** launch a logged-in safe client with
+  `WOW_INTERNAL_AFK_MODE=qualify` in the WoW process environment. Detailed fish
+  commands and evidence sequence are in `docs/AFK_5875_AUDIT.md`. Need natural
+  baseline, individually verified input, then two clear prevention intervals
+  and both workload integrations. No automatic RUNTIME PASS from log counters.
 
 - 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
   edge 0x...2E6C -> 0x...2E6B and 14N.2 suppressed its immediate retry.
@@ -263,9 +328,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    This is an investigation lead, not proof that lowering any safety threshold
    or issuing a different CTM would traverse the portal. P0.1 needs two
    unassisted successful traversals.
-2. The objective route correctly rejects unsafe terrain. Its executor uses
-   one primary destination despite multiple source-backed spawn anchors;
-   alternate-anchor selection remains a separate generic source/runtime task.
+2. The objective route correctly rejects unsafe terrain. Generic bounded
+   alternate-anchor selection is now SOURCE VERIFIED / TEST PASS but still
+   RUNTIME PENDING; it may find another valid spawn, or correctly exhaust.
 3. Detour's local `raycast` is explicitly 2D (local VMaNGOS
    `DetourNavMeshQuery.cpp`, raycast contract). Runtime
    `IsSurfaceSegmentReachable` interpolates requested Z and does not verify end
@@ -282,20 +347,31 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    wall-inset steering or collision. Its report cannot grant runtime PASS.
 6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-7. AFK candidate signal remains unverified in current log; no verified stationary
-   clearing action or measured two-window prevention result. Do not add a blind
-   W/jump loop.
+7. AFK: WoW is closed. The new non-movement input candidate must advance the
+   native input clock in Wine. If ignored, it faults once instead of pretending
+   protection. Actual threshold and two windows require user login/start.
+   GUI status transport and a broader water-state model remain unimplemented.
 8. Much prior working project code/data/tests is still dirty/untracked. This
    checkpoint publishes only reviewed audit/tooling files, not the complete
    current runtime. A clean remote checkout is NOT this validated worktree.
 
 # Current phase
 
-V6 P0.1 follow-up: internal initialization fallback now retains movement
-ownership; hard-stall terminal cause is typed. SOURCE VERIFIED / TEST PASS /
-BUILD PASS / DIFF CHECK PASS, RUNTIME PENDING. The physical vendor corridor
-still failed in the newest natural log, so P0.1 remains RUNTIME FAIL until
-two later unassisted traversals pass. No later V6 subsystem behavior patched.
+**P0.0 AFK FIRST (user priority override):** shared source/test implementation
+is SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS.
+RUNTIME PENDING because no live WoW process is available. Do not advance to
+swimming before this external gate is exercised or explicitly retained as a
+blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
+default protection cannot interfere with active gameplay owners. Candidate
+input is not yet proven sufficient under Wine. No GUI/profile/talent expansion.
+
+Preserved V6 P0.1 follow-up: internal initialization fallback retains movement
+ownership, hard-stall terminal cause is typed, and objective execution can
+try bounded alternate source-backed anchors after a terminal route rejection.
+SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS; RUNTIME PENDING
+for the new anchor path. The physical vendor corridor still failed in the
+newest natural log, so P0.1 remains RUNTIME FAIL until two later unassisted
+traversals pass. No later V6 subsystem behavior patched.
 
 Proceed in requested order, with source/test/build/diff and checkpoint after
 each bounded subphase. Do not stack speculative fixes on the unproven cave
@@ -313,9 +389,14 @@ separate.
    evidence is sufficient, unearned reset, same-target loop or safety weakening.
 4. Compare actual player XYZ, route generation, projection and clipped portal
    geometry if post-fix behavior differs; offline reports are not live proof.
-5. P0 water source audit next; then hazards, combat, AFK, invariants, consolidation
-   and cross-workload validation. Do not claim implemented water safety early.
-6. AFK requires two natural windows; drowning tests must not deliberately risk
+5. For the objective route, require `OBJECTIVE ANCHOR FAILOVER` to select a
+   distinct source-backed spawn only after terminal route-specific failure;
+   each alternate must pass the ordinary path validator before movement.
+   Exhaustion must release ownership and reach existing defer logic.
+6. Priority override: AFK baseline/input/two windows first; then P0.1 traversal
+   qualification, water, hazards, combat, invariants, consolidation and
+   cross-workload validation. Do not claim implemented water safety early.
+7. AFK requires two natural windows; drowning tests must not deliberately risk
    death; long runs only after shorter safety gates.
 
 # Important commands
@@ -348,6 +429,19 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0 AFK checkpoint is scoped to the new AFK files, validation registration,
+  documentation and isolated WorldMonitor/QuestPlanner integration hunks.
+  Existing dirty gameplay work remains unstaged; full-worktree validation does
+  not mean the complete runtime is published. Resolve this checkpoint with
+  `git log -1 --format='%H %s' -- src/Bot/SharedAfkController.h` and verify
+  remote HEAD using the commands below. Base HEAD was `20d450b`.
+
+- Current local HEAD during the objective-anchor fix:
+  `20d450b5ee8e8da1a698532fc02efd0cee3e34f0`. The anchor fix is only in
+  the dirty worktree; no commit/push was made for it because the touched
+  executor, policy and test contain pre-existing uncommitted work that cannot
+  be safely published as an isolated checkpoint without staging unrelated
+  changes. Reconcile that work before any scoped publication.
 - P0.1 initialization-ownership checkpoint: `a06374731903bfb025a855814762d5b4c26a0703`
   (`navigation: retain intent across initialization fallback`). Full
   source/test/build/diff validation passed in the dirty worktree; the commit
@@ -385,20 +479,24 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. Capture/reconstruct the failing live cave transition with current recovery
+1. **AFK runtime gate first:** user launches/logs in on safe land with qualify
+   mode; capture baseline, input-clock confirmation, flag clear and two windows.
+   If targeted messages fail, inspect exact evidence before considering a
+   bounded targeted Wine/X11 alternative. Never substitute a blind W loop.
+2. Capture/reconstruct the failing live cave transition with current recovery
    telemetry; use the expanded offline report. Apply only a proved shared-layer
    correction, then regression/build/diff and runtime qualification.
-2. Audit source-backed water flags/mirror timers/input before implementing
+3. Audit source-backed water flags/mirror timers/input before implementing
    shared water survival. Mesh water flags are insufficient by themselves.
-3. Audit shared hazard confidence/direction/persistence; then combat watchdog,
+4. Audit shared hazard confidence/direction/persistence; then combat watchdog,
    AFK input/actual state, general invariants and service consolidation.
-4. Review/publish remaining prior runtime work in scoped dependency-complete
+5. Review/publish remaining prior runtime work in scoped dependency-complete
    checkpoints. Do not blindly stage all dirty files to make status clean.
-5. P1 queue: ClassProfile -> live Spellbook -> Warrior -> Hunter -> racials ->
+6. P1 queue: ClassProfile -> live Spellbook -> Warrior -> Hunter -> racials ->
    two-level trainer cadence/refresh -> TalentBuild/URL validation/allocation ->
    private stable-ID library -> capability refresh -> LevelingProfile/Orc1-10 ->
    read-only GUI status. No personal talent build hardcoded into runtime.
-6. P2 qualification: Questing 5/15/30/60 minutes, Grinding, natural water,
+7. P2 qualification: Questing 5/15/30/60 minutes, Grinding, natural water,
    fresh Orc to10; count manual interventions and all survival failures.
 
 # Historical fixes that must not regress
