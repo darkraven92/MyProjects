@@ -520,10 +520,11 @@ override their location. It writes reports only, never controls WoW.
 # Git state
 
 - P0.0.2 base: `2eb8889199d6b2fefd2d9c02687e35d785e55120`.
-  Scoped checkpoint: `afk: qualify already-AFK entry with asynchronous clear verification`.
-  Resolve its hash using `git log -1 --format='%H' -- src/Bot/AfkQualificationPolicy.h`.
-  Remaining pre-existing dirty work is not included. Remote verification is
-  recorded after push; no runtime success is implied.
+  Validated scoped checkpoint: `a0a241503a9a25bdafe88dea1fe7b28ad86b8f2f`
+  (`afk: qualify already-AFK entry with asynchronous clear verification`).
+  Pushed to origin; independent `git ls-remote` returned the identical hash
+  before this documentation follow-up. Remaining pre-existing dirty work is
+  not included. No runtime success is implied; AFK remains first priority.
 - P0.0.1 code checkpoint: `afc8cff640068e1f9ce10e787cfed4328d6d6487`
   (`afk: retain qualification hold and decode synchronized AFK state`). Pushed
   to origin; independent remote HEAD matched before this documentation follow-up.
