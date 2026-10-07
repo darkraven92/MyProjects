@@ -683,6 +683,13 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.8 validated AFK code checkpoint:
+  `423af3b3a908e9be45b50ad11aef06def88ada22`
+  (`afk: separate recovery debt from input safety`). Pushed to
+  `origin/codex/wow-internal-continuation`; independent `git ls-remote`
+  matched local HEAD. Only six AFK/documentation/test files and the isolated
+  `WorldMonitor.h` AFK hunk were staged. Existing unrelated dirty work remains
+  local. New-code runtime gate is still pending.
 - P0.0.7 base: `66de9bb614561941829776d02b1d9636fbf0ea31`.
   TEST PASS: 79 strict C++ tests, 13 Python tests plus QuestDB SQL fixture,
   seven Lua fixtures / 138 checks. BUILD PASS; DIFF CHECK PASS.
