@@ -9,10 +9,82 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current priority override: V6 **P0.0 AFK FIRST**. The shared AFK source/test
-  checkpoint below is NOT runtime qualification or completion of the roadmap.
+- Current phase: V6 **P0.1 DeathRecovery reliability**. AFK normal autonomous
+  prevention is sufficiently closed; preserve its verified behavior and residual
+  mixed-state fail-closed design. No swimming or combat-watchdog changes here.
 
-## Current P0.0.11 checkpoint (2026-10-07)
+## Current P0.1 DeathRecovery checkpoint (2026-10-07)
+
+SOURCE VERIFIED: distinct missing-anchor and strategic-route defects.
+Full state/source/binary/runtime reconstruction: `docs/DEATH_RECOVERY_AUDIT.md`.
+Newest session1360.134358440699456960.106923713.436: Ghost start
+(-1081.400024,-3478.679932,63.606602), body destination
+(-646.515,-3524.180,91.7361), distance438.163. Route/expanded reject unsafe
+terrain; sole full-map loader cancelled at188/704 tiles after35061 ms by the
+160-tick precision watchdog, WITHOUT any route movement. Later strategic
+attempt repeats this cancellation; retry43 fails expanded validation and
+reports strategic_route_failed at27667. This does not prove projection failure
+or reclaim failure. Terrain rejection remains intact; safe full-map route is
+still unproven.
+
+Fixes: pending loader retains the SAME death movement intent across tier work;
+planning never resets physical liveness. Original180/300-second death bounds,
+18 route attempts, one full-map fallback, 2000/4/2 navigation limits unchanged.
+Failure evidence retains projection, exact query error/tier and validation
+detail so terminal diagnostics no longer hide the unsafe leg behind strategic
+failure. No terrain/global movement mask relaxation.
+
+Bootstrap missing-anchor previously failed immediately after checking only
+last healthy position/persisted record, never server corpse cache. New
+AwaitingCorpseAnchor holds shared death ownership/no movement for at most12s,
+then exact corpse_anchor_pending_timeout. This publication bound is derived
+from existing release opportunities, not a measured network timeout. Stale
+healthy positions are no longer treated as corpse authority. Observed body
+and recent GUID/map/age-validated record are ROUTING ONLY; fresh server location
+is required for reclaim. Cross-map dungeon entrance is explicitly rejected.
+
+Read-only 5875 audit: MSG_CORPSE_QUERY0x216 ->48F734 ->492010 stores display
+map B4E31C/XYZ B4E284/actual map B4E320. Ghost-change5EEAC1 and world-init490A28
+call491F50 to invalidate/query. Reader runs on game thread with signature,
+same-player/Ghost/map/finite guards. No packets, writer calls or synthetic GUID;
+cache GUID/age unknown. Reproduce `python3 tools/death_client_audit.py
+'/home/ludvig/Games/WoW Vanilla/WoW.exe'`. Hash matches AFK audit.
+
+Reclaim retains fresh Ghost/delay/8-yard gate, two fresh post-command alive
+probes. Unknown delay cannot grant reclaim or invalidate independent alive
+evidence. Release retries no longer reset unearned six-attempt budget; reclaim
+commands capped at existing eight per death, independent of local precision
+reroutes. World gap cancels follower without a command to an unavailable
+player; next valid snapshot records world_state_lost under death ownership.
+Failed death ownership intentionally remains while dead/Ghost; movement intent
+releases. Existing positive-alive/manual re-arm and both workload gates retained.
+
+Files: DeathRecoveryController/Policy, new EvidencePolicy/CorpseLocation5875,
+shared follower diagnostics, death regressions, read-only audit tool and docs.
+Reviewed pre-existing death-specific anchor store, strategic terminal policy,
+ownership policy and their regressions are included as required dependencies;
+unrelated dirty WorldMonitor/gameplay changes remain UNSTAGED. Full validation
+is of this dirty worktree, not proof of a clean remote runtime.
+
+Validation: intermediate84-test run found an old FailedMissingAnchor enum
+expectation in bot_death_ownership_policy_test; adapted to bounded waiting.
+Latest complete validation PASS:84 strict C++20/Wall/extra/Werror tests,
+13 Python tests plus SQL fixture, seven Lua fixtures/138 checks; artifact
+`/tmp/wow-validation-s6f297pe/results.json` (final rerun after diagnostics).
+BUILD PASS: full validation and separate `cmake --build build` after fresh
+manager/player-identity guards. DIFF CHECK PASS: `git diff --check -- .`.
+Read-only binary audit repeated PASS against the hash above.
+
+RUNTIME PENDING: no running WoW. Need at least one complete natural death ->
+Ghost -> server anchor -> validated route/physical progress -> reclaim -> two
+alive probes -> death ownership release -> Grind resume, no manual intervention.
+Prefer two cycles. AFK normal Grinding/Ghost qualification/prevention RUNTIME
+PASS from existing log; new long-route AFK regression gate still needs runtime.
+Do NOT intentionally kill, relax unsafe terrain, inflate budgets or start later
+V6 phases in this checkpoint. Older missing-anchor log not retained locally;
+its exact source path is verified, historical runtime claim remains labelled.
+
+## P0.0.11 checkpoint (historical AFK baseline, 2026-10-07)
 
 AFK edge-case audit: SOURCE VERIFIED. No safe deterministic active mixed-state
 reconciliation has been proven; retain KNOWN RESIDUAL EDGE CASE, fail-closed
@@ -592,6 +664,11 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
+- Current P0.1 DeathRecovery: new server-cache acquisition/bounded wait and
+  uninterrupted incremental fallback require natural death-to-alive runtime.
+  Latest pre-fix strategic failure is explained but terrain remains unsafe;
+  full-map route success is not proven. See DEATH_RECOVERY_AUDIT.md.
+
 - **AFK residual gates:** Ghost early qualification/harmlessness and two later
   prevention cycles passed; separately qualify Dead if naturally available.
   Never intentionally kill the player. New P0.0.11 mixed
@@ -678,14 +755,11 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.11 AFK FIRST:** source audit complete; mixed-state residual retained
-bounded/fail-closed, with typed agreement and read-only diagnostics. Normal
-Grinding, combat defer/resume, debt/planning and Ghost qualification/prevention RUNTIME
-PASS. New mixed telemetry/path remains RUNTIME PENDING, not actively fixed.
-AFK sufficiently closed for normal prevention; next phase DeathRecovery
-missing_corpse_anchor / strategic_route_failed (queued, NOT edited here).
-No swimming, GUI/profile/talent expansion in this checkpoint. Native input
-alone advances the clock but does NOT clear AFK.
+**P0.1 DeathRecovery reliability:** source-proven bootstrap/cache gap and
+pending-loader cancellation fixed; exact routing/reclaim evidence retained.
+Runtime death-to-alive remains PENDING. AFK normal Grinding and Ghost paths
+remain PASS; mixed-state residual stays fail-closed, untouched. No swimming,
+combat-watchdog, GUI/profile/talent expansion until this bounded gate/report.
 
 ## P0.0.7 bounded death/ghost checkpoint
 
@@ -779,6 +853,12 @@ separate.
 
 # Runtime validation gates
 
+Current first gate: normal Grind, natural death only; capture DEATH/Death/
+CORPSE/RECLAIM/NAV/NAVMESH/MOVEMENT INTENT/AFK. Require server corpse location,
+uninterrupted tier fallback, validated physical route progress, reclaim and two
+fresh alive probes, death exit and resumed workload. One full zero-intervention
+cycle for PASS; prefer two for stability. Preserve Ghost AFK during long route.
+
 1. Preserve one continuous post-fix session log before another GUI log clear.
 2. Repeat the SAME natural corridor twice: intent -> exact steering attribution
    (known only if ray/portal proves it) -> safe stage/alternate route -> verified
@@ -827,6 +907,11 @@ The inspector reads local VMaNGOS Detour sources; `VMANGOS_DETOUR_ROOT` can
 override their location. It writes reports only, never controls WoW.
 
 # Git state
+
+- P0.1 DeathRecovery base: `a9c8c7cac28a12cc549693cac56b79cea04ede13`;
+  origin configured and branch inspected. Final full validation/build/diff
+  passed; scoped checkpoint/push follows. No broad WorldMonitor or unrelated
+  dirty gameplay staging.
 
 - P0.0.11 validated code checkpoint:
   `5c84d0fe8214baff4b9157d0e6d7ebd011f4495a`
@@ -971,8 +1056,9 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. Next bounded P0 phase: DeathRecovery missing_corpse_anchor and
-   strategic_route_failed root-cause audit, NOT a broad rewrite. AFK normal
+1. Validate the current bounded DeathRecovery fixes in a natural death-to-alive
+   cycle (prefer two). If terrain still fails, inspect exact query/tier/geometry
+   evidence without weakening safety; do not guess a safe route. AFK normal
    Grinding/debt/planning/combat safe gaps and Ghost qualification have passed.
    Preserve the P0.0.11 mixed-state residual fail-closed design; capture its new
    diagnostics only if mixed state occurs naturally. No speculative toggles,

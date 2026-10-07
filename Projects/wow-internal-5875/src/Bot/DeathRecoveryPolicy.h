@@ -10,7 +10,7 @@ namespace Bot
         {
             ReleasingSpirit,
             WaitingForGhost,
-            FailedMissingAnchor
+            AwaitingCorpseAnchor
         };
 
         static constexpr std::uint64_t ProbeIntervalTicks = 4;          // ~1 s
@@ -41,6 +41,24 @@ namespace Bot
             std::uint32_t maxHealth)
         {
             return playerValid && maxHealth > 0 && health == 1;
+        }
+
+        // A prior one-HP alive probe is not evidence about a later one-HP
+        // snapshot after the player has clearly been healthy in between.
+        static void ClearIdleProbeEvidenceAfterAlive(
+            bool& aliveConfirmed, std::uint64_t& nextProbeTick,
+            std::uint64_t& deathConfirmedTick)
+        {
+            aliveConfirmed = false;
+            nextProbeTick = 0;
+            deathConfirmedTick = 0;
+        }
+
+        static bool FreshIdleAliveEvidence(
+            bool aliveConfirmed, std::uint64_t confirmedTick,
+            std::uint64_t currentTick)
+        {
+            return aliveConfirmed && confirmedTick == currentTick;
         }
 
         static bool CanStartFromDeath(
@@ -82,8 +100,8 @@ namespace Bot
         {
             if (!confirmedDead && !confirmedGhost)
                 return EntryState::ReleasingSpirit;
-            if (!haveClearlyAlivePosition)
-                return EntryState::FailedMissingAnchor;
+            if (confirmedGhost && !haveClearlyAlivePosition)
+                return EntryState::AwaitingCorpseAnchor;
             return confirmedGhost
                 ? EntryState::WaitingForGhost
                 : EntryState::ReleasingSpirit;
@@ -209,6 +227,40 @@ namespace Bot
                        playerValid, health, maxHealth) &&
                 probeValid && deadKnown && !isDead && !isGhost &&
                 freshAliveProbes >= DeathRecoveryPolicy::AliveConfirmationProbes;
+        }
+
+        // The world reader resolves the active GUID to a local-player object
+        // on every snapshot. The object's address may change after loading
+        // or resurrection; only same-snapshot address equality is required.
+        static bool SameEpisodePlayer(
+            bool worldValid, std::uint64_t episodeGuid,
+            std::uint64_t activeGuid, std::uint32_t localPlayerAddress,
+            std::uint32_t snapshotPlayerAddress)
+        {
+            return worldValid && episodeGuid != 0 &&
+                activeGuid == episodeGuid && localPlayerAddress != 0 &&
+                snapshotPlayerAddress == localPlayerAddress;
+        }
+
+        static void InvalidateManualAliveEvidence(int& freshAliveProbes)
+        {
+            freshAliveProbes = 0;
+        }
+
+        static bool ManualAliveConfirmedForEpisode(
+            bool worldValid, std::uint64_t episodeGuid,
+            std::uint64_t activeGuid, std::uint32_t localPlayerAddress,
+            std::uint32_t snapshotPlayerAddress, bool playerValid,
+            std::uint32_t health, std::uint32_t maxHealth,
+            bool probeValid, bool deadKnown, bool isDead, bool isGhost,
+            int freshAliveProbes)
+        {
+            return SameEpisodePlayer(
+                       worldValid, episodeGuid, activeGuid,
+                       localPlayerAddress, snapshotPlayerAddress) &&
+                ManualAliveConfirmed(
+                    playerValid, health, maxHealth, probeValid,
+                    deadKnown, isDead, isGhost, freshAliveProbes);
         }
     };
 }

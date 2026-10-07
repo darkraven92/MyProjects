@@ -57,6 +57,11 @@ namespace Navigation
     struct NavigationFailureEvidence
     {
         NavigationPlanFailure reason = NavigationPlanFailure::None;
+        NavigationInitTier tier = NavigationInitTier::None;
+        NavigationInitTier queryTier = NavigationInitTier::None;
+        std::string queryError{};
+        PathValidationDetail validation{};
+        bool destinationProjected = false;
         NavPoint failurePosition{};
         bool failurePositionKnown = false;
         NavPoint lastSafePosition{};
@@ -408,6 +413,10 @@ namespace Navigation
         bool fullMapFallbackAttempted_ = false;
         NavigationInitTier currentInitTier_ = NavigationInitTier::Route;
         NavigationPlanFailure lastPlanFailure_ = NavigationPlanFailure::None;
+        PathValidationDetail lastValidationDetail_{};
+        bool lastDestinationProjected_ = false;
+        NavigationInitTier lastQueryTier_ = NavigationInitTier::None;
+        std::string lastQueryError_{};
         GenericNavMeshStartOptions startOptions_{};
         Objects::PlayerState planningOriginPlayer_{};
         std::string initializationDirectory_{};
@@ -5034,6 +5043,8 @@ namespace Navigation
             bool countOrdinaryReplan = true)
         {
             lastPlanFailure_ = NavigationPlanFailure::None;
+            lastValidationDetail_ = {};
+            lastDestinationProjected_ = false;
             const bool reusingActiveStage =
                 CompleteLongStagePolicy::PlanTarget(
                     completeLongStageActive_, completeLongStageNeedsFinalPlan_) ==
@@ -5073,6 +5084,10 @@ namespace Navigation
                 const NavigationInitTier& tier;
                 const NavigationPlanFailure& reason;
                 const PathValidationDetail& detail;
+                PathValidationDetail& retainedDetail;
+                bool& retainedProjection;
+                NavigationInitTier& retainedQueryTier;
+                std::string& retainedError;
                 std::chrono::steady_clock::time_point start =
                     std::chrono::steady_clock::now();
                 double queryMs = 0.0;
@@ -5083,6 +5098,10 @@ namespace Navigation
 
                 ~PlanProfileScope()
                 {
+                    retainedDetail = detail;
+                    retainedProjection = path.endPoly != 0;
+                    retainedQueryTier = tier;
+                    retainedError = path.error;
                     const double totalMs = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - start).count();
                     std::ostringstream stream;
@@ -5106,7 +5125,8 @@ namespace Navigation
                     Debug::Logger::Info(stream.str());
                 }
             } planProfile{path, currentInitTier_, lastPlanFailure_,
-                validationDetail};
+                validationDetail, lastValidationDetail_, lastDestinationProjected_,
+                lastQueryTier_, lastQueryError_};
 
             const auto queryStarted =
                 std::chrono::steady_clock::now();
@@ -7373,6 +7393,11 @@ namespace Navigation
         {
             NavigationFailureEvidence evidence{};
             evidence.reason = lastPlanFailure_;
+            evidence.tier = currentInitTier_;
+            evidence.queryTier = lastQueryTier_;
+            evidence.queryError = lastQueryError_;
+            evidence.validation = lastValidationDetail_;
+            evidence.destinationProjected = lastDestinationProjected_;
             evidence.failurePosition = lastObservedPlayerPosition_;
             evidence.failurePositionKnown = lastObservedPlayerPositionValid_;
             evidence.lastSafePosition = lastSafeNav_.position;

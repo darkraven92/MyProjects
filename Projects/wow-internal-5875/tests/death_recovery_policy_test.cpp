@@ -18,6 +18,18 @@ int main()
     assert(!DeathRecoveryPolicy::ShouldRememberClearlyAlivePosition(true, 1, 308));
     assert(DeathRecoveryPolicy::ShouldProbeIdleGhost(true, 1, 308));
 
+    // A prior confirmed-alive one-HP probe cannot be reused after a
+    // clearly-alive interval. The next HP1 state gets an immediate probe.
+    bool idleAliveConfirmed = true;
+    std::uint64_t nextIdleProbeTick = 80;
+    std::uint64_t idleDeathConfirmedTick = 62;
+    DeathRecoveryPolicy::ClearIdleProbeEvidenceAfterAlive(
+        idleAliveConfirmed, nextIdleProbeTick, idleDeathConfirmedTick);
+    assert(!idleAliveConfirmed);
+    assert(nextIdleProbeTick == 0);
+    assert(idleDeathConfirmedTick == 0);
+    assert(DeathRecoveryPolicy::ShouldProbeIdleGhost(true, 1, 308));
+
     // Living at one HP retains ordinary ownership.
     assert(!DeathRecoveryPolicy::CanBootstrapFromGhost(true, 1, 308, true, false));
     assert(!DeathRecoveryPolicy::CanBootstrapFromGhost(true, 1, 308, false, true));
@@ -36,8 +48,8 @@ int main()
     assert(DeathRecoveryPolicy::EntryFor(true, false, true) == EntryState::ReleasingSpirit);
     assert(DeathRecoveryPolicy::EntryFor(false, true, true) == EntryState::WaitingForGhost);
     assert(DeathRecoveryPolicy::EntryFor(false, false, false) == EntryState::ReleasingSpirit);
-    assert(DeathRecoveryPolicy::EntryFor(true, false, false) == EntryState::FailedMissingAnchor);
-    assert(DeathRecoveryPolicy::EntryFor(false, true, false) == EntryState::FailedMissingAnchor);
+    assert(DeathRecoveryPolicy::EntryFor(true, false, false) == EntryState::ReleasingSpirit);
+    assert(DeathRecoveryPolicy::EntryFor(false, true, false) == EntryState::AwaitingCorpseAnchor);
     assert(!DeathRecoveryPolicy::CanAttemptSpiritRelease(true, 100, 100));
     assert(DeathRecoveryPolicy::CanAttemptSpiritRelease(false, 100, 100));
 }
