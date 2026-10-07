@@ -12,6 +12,38 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Current priority override: V6 **P0.0 AFK FIRST**. The shared AFK source/test
   checkpoint below is NOT runtime qualification or completion of the roadmap.
 
+## Current P0.0.8 checkpoint (2026-10-07)
+
+SOURCE VERIFIED: current `WorldMonitor` collapsed
+`runtimeRobustness.RecoveriesWithoutProgress()>0` into `afkSafety.fault`.
+The newest normal Grinding log shows due at 240595 ms, overdue at 270183 ms,
+threshold crossing at 300135 ms and client AFK, all blocked by that generic
+fault while Combat=`AcquiringTarget`, Grind=`Roaming`, DeathRecovery/Vendor=`Idle`.
+Periodic `runtimeRecoveries=22` is cumulative events, not the exact debt;
+the source predicate plus non-Failed controller states attributes the gate.
+
+Changed: `src/Bot/AfkRuntimeFaultPolicy.h`, `AfkProtectionPolicy.h`,
+`AfkProductionPolicy.h`, a small AFK-only hunk in dirty `WorldMonitor.h`,
+and `tests/afk_recovery_debt_safety_test.cpp`. Historical tactical recovery
+debt remains visible but no longer implies an input/terminal fault. Terminal
+Combat/Grind failures retain hard gates and typed reasons; all other input,
+scene, transaction, combat, death, water, and mixed-state guards remain.
+`AFK SAFETY BLOCK` / `ELIGIBLE` are emitted on due-decision changes, not each tick.
+
+New-code runtime status: **RUNTIME PENDING**. Qualification and the earlier
+single production cycle remain user-reported RUNTIME PASS; the most recent
+long-run threshold crossing is RUNTIME FAIL evidence for the old coupling.
+Checkpoint validation: TEST PASS (`python3 tools/validate.py --jobs 4`, 80
+strict C++ tests, all QuestDB/Python and Lua fixtures); BUILD PASS (validation
+build and separate `cmake --build build`); DIFF CHECK PASS. No WoW process was
+running, so these do not upgrade runtime status. Artifact:
+`/tmp/wow-validation-_mo8ryla/results.json`.
+Next gate: normal >=20-minute unassisted Grinding, two prevention cycles
+before 300000 ms; capture debt at prevention, clock advancement, unchanged
+scene/UI and both AFK flags clear. A verified pulse with debt >0 is especially
+important. Death/ghost qualification and mixed-state recovery remain separate
+pending/open gates. Do not begin swimming yet.
+
 # Current architecture
 
 - One `SharedAfkController` in WorldMonitor observes client/server AFK and the

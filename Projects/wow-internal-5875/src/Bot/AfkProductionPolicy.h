@@ -34,7 +34,7 @@ namespace Bot
         }
         static const char* Blocker(const AfkSafety& s,bool benign)
         {
-            if (s.fault) return "fault_or_unknown_subsystem";
+            if (s.fault) return AfkRuntimeFaultPolicy::ReasonName(s.faultReason);
             if (s.death) return "death_recovery";
             if (s.combat) return "combat_or_ability_owner";
             if (s.recovery) return "recovery_owner";

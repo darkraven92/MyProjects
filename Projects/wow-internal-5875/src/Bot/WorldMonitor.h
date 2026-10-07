@@ -343,6 +343,7 @@ namespace Bot
             AutonomySupervisor autonomySupervisor;
             ActiveBotAfkSafeguard antiAfkSafeguard;
             SharedAfkController sharedAfk;
+            std::string lastAfkSafetyDecision;
             RuntimeRobustnessSupervisor runtimeRobustness;
             DeathRecoveryController deathRecovery;
 
@@ -2217,9 +2218,12 @@ namespace Bot
                 // Both workloads use the same observation/action controller.
                 AfkSafety afkSafety;
                 afkSafety.death=deathRecoveryOwnedTick || world.player.health<=1;
-                afkSafety.fault=combat.Failed() ||
-                    (TemporaryGrindModeEnabled &&
-                        (grindMode.Failed() || runtimeRobustness.RecoveriesWithoutProgress()>0));
+                const auto afkFault=AfkRuntimeFaultPolicy::Assess({
+                    combat.Failed(),
+                    TemporaryGrindModeEnabled && grindMode.Failed(),
+                    runtimeRobustness.RecoveriesWithoutProgress()});
+                afkSafety.fault=afkFault.terminal;
+                afkSafety.faultReason=afkFault.reason;
                 afkSafety.combat=combat.LockedGuid()!=0 ||
                     (combat.State()!=CombatState::Idle && combat.State()!=CombatState::AcquiringTarget);
                 for (const auto& unit : world.units)
@@ -2268,6 +2272,29 @@ namespace Bot
                          grindMode.State()==GrindModeState::Roaming),
                     afkDeathGap,deathRecovery.StateName(),
                     [&deathRecovery,afkDeathState] { return deathRecovery.State()==afkDeathState; });
+                const auto afkStatus=sharedAfk.Snapshot();
+                if (afkStatus.known && afkStatus.sourceThresholdMs &&
+                    afkStatus.inputAgeMs>=afkStatus.sourceThresholdMs-
+                        afkStatus.sourceThresholdMs/5 &&
+                    (afkStatus.status==AfkStatus::Blocked ||
+                     afkStatus.status==AfkStatus::ApproachingThreshold))
+                {
+                    const std::string decisionKey=std::to_string(static_cast<int>(afkStatus.status))+":"+afkStatus.reason;
+                    if (lastAfkSafetyDecision!=decisionKey)
+                        Debug::Logger::Info(std::string("AFK SAFETY ")+
+                            (afkStatus.status==AfkStatus::Blocked ? "BLOCK" : "ELIGIBLE")+
+                            " reason="+afkStatus.reason+
+                            " combatFailed="+(combat.Failed() ? "yes" : "no")+
+                            " grindFailed="+(TemporaryGrindModeEnabled && grindMode.Failed() ? "yes" : "no")+
+                            " recoveriesWithoutProgress="+std::to_string(afkFault.recoveryDebt)+
+                            " navigationPlanning="+(TemporaryGrindModeEnabled && grindMode.NavigationInitializationPending() ? "yes" : "no")+
+                            " combatState="+combat.StateName()+
+                            " grindState="+grindMode.StateName()+
+                            " worldValid="+(world.valid && world.player.valid ? "yes" : "no"));
+                    lastAfkSafetyDecision=decisionKey;
+                }
+                else
+                    lastAfkSafetyDecision.clear();
 
                 ++tick;
 

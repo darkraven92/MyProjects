@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AfkRuntimeFaultPolicy.h"
 #include <cstdint>
 
 namespace Bot
@@ -27,6 +28,7 @@ namespace Bot
         bool combat = false, navigation = false, death = false, recovery = false;
         bool water = false, dialog = false, vendor = false, trainer = false;
         bool talents = false, equipment = false, loot = false, fault = false;
+        AfkRuntimeFaultReason faultReason = AfkRuntimeFaultReason::None;
         bool Safe() const
         {
             return healthyIdle && !combat && !navigation && !death && !recovery &&

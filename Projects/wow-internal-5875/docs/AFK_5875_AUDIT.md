@@ -1,5 +1,42 @@
 # P0.0 shared AFK protection audit
 
+## P0.0.8 recovery debt versus AFK input safety (2026-10-07)
+
+SOURCE VERIFIED: newest normal Grinding log reached `AFK PRODUCTION DUE`
+at input age 240595 ms, remained blocked by `fault_or_unknown_subsystem`
+at 270183 ms and 300135 ms, then the client AFK flag activated. Nearby
+world snapshots show Grind `Roaming`, Combat `AcquiringTarget` with no locked
+GUID, DeathRecovery `Idle`, Vendor `Idle`, valid/alive player, and navmesh
+expanded initialization/repeated movement recovery. `runtimeRecoveries=22`
+in the periodic log is the cumulative `RecoveryEvents()` counter, **not**
+the exact `RecoveriesWithoutProgress()` value. The source predicate is
+exhaustive: Combat/Grind `Failed()` were false in those states, leaving
+`RecoveriesWithoutProgress()>0` as the cause of `afkSafety.fault` in the
+observed window. The counter increments on tactical recovery and clears on
+earned progress; it does not report a keyboard or world-observation fault.
+
+The shared WorldMonitor AFK gate now assesses only terminal Combat/Grind
+failure as `fault`. It carries the recovery debt separately for sparse
+`AFK SAFETY BLOCK` / `AFK SAFETY ELIGIBLE` diagnostics, with the actual controller states and
+navigation-initialization flag. A terminal controller is labelled
+`terminal_combat_fault` or `terminal_grind_fault`; an otherwise unknown fault
+still fails closed. The production scheduler, qualified paired F12 transport,
+fresh native clock and scene/UI verification, death/ghost qualification,
+mixed-state no-toggle rule, 240/270/300-second bands and navigation recovery
+semantics are unchanged. This is not a navigation fix.
+
+TEST PASS: a strict deterministic regression first failed to compile before
+the typed assessment existed, then passed. It covers recovery debt 0/1/22
+with benign navigation, terminal failure classification, hard blockers,
+due/overdue/threshold bands and the live WorldMonitor wiring. The full suite
+and build results are recorded with this checkpoint in project state.
+RUNTIME PENDING for the new code: repeat normal Grinding for at least two
+unassisted prevention cycles. At each due point capture
+`recoveriesWithoutProgress`, F12 delivery, unchanged scene/UI, both AFK flags
+clear and no threshold crossing. A cycle with debt >0 and a verified pulse
+directly demonstrates the false coupling has been removed. The earlier
+threshold-crossing run remains RUNTIME FAIL; do not re-label it.
+
 ## P0.0.7 death/ghost prevention (current)
 
 Newest production capture (`build/wow-internal.log`, 2026-10-07) confirms
