@@ -301,6 +301,14 @@ namespace Navigation
         }
 
     public:
+        void CancelForLivingWater()
+        {
+            if (!OwnsMovement()) return;
+            points_.clear();
+            provider_.Shutdown(); // detaches query, preserves cached topology
+            SetState(NavMeshFollowState::Failed);
+        }
+
         bool StartReturnToZureetha(const Objects::PlayerState& player, std::uint64_t tick)
         {
             if (state_ != NavMeshFollowState::Idle)

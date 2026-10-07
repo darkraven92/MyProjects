@@ -42,7 +42,8 @@ int main()
     assert(follower.find("SameNavMeshGeneration(options.initialTransitionMeshGeneration") != std::string::npos);
     const auto death = Read("src/Bot/DeathRecoveryController.h");
     assert(death.find("SameNavMeshGeneration(priorGeneration, evidence.meshGeneration)") != std::string::npos);
-    assert(death.find("lastRouteEvidence_.meshGeneration});") != std::string::npos);
+    assert(death.find("lastRouteEvidence_.meshGeneration,") != std::string::npos);
+    assert(death.find("ghostConfirmedThisRecovery_\n") != std::string::npos);
     assert(follower.find("MaximumPathLength =\n            2000.0f") != std::string::npos);
     assert(follower.find("MaximumSurfaceRecoveryAttempts = 4") != std::string::npos);
     assert(follower.find("MaximumLastSafeBacktracks = 2") != std::string::npos);

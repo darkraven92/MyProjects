@@ -1,5 +1,50 @@
 # P0.4 water / swimming / drowning source gate
 
+## P0.4-TEMP production living-water avoidance (2026-10-07)
+
+Autonomous swimming remains PAUSED; P0.4.2 NOT STARTED. This is a temporary
+capability restriction, not water navigation or drowning prevention. The
+production-default provider uses Ground include `0x01` and Water exclude
+`0x08` for living/unknown routes. The exclude is required for mixed `0x09`
+polygons. Query-time filters cover route/expanded/full-map/replan, projection,
+wall/ray/surface and recovery. A read-only diagnostic query may prove a
+complete water-dependent corridor, but it never supplies movement; typed
+`water_traversal_disabled` is returned instead. The same cached topology and
+hazard memory are retained. Ghost-confirmed DeathRecovery explicitly opts into
+its existing Ground|Water filter; living DeathRecovery does not.
+
+A source-verified live SWIMMING bit `0x00200000` now blocks living autonomous
+work immediately. One verified existing CTM-to-current-position command
+neutralizes forward movement, ordinary movement owners release, and the loop
+observes read-only until three consecutive known non-swimming snapshots.
+Unknown readings cannot release the block. The event says
+`non_swimming_confirmed`, never DryGround. There is no ascent/Space command,
+surface inference, timer reset, or hazard mark. AFK observes but candidate
+dispatch defers while blocked; defensive combat GUID remains held but water
+combat is not attempted. Manual recovery is required. Failure of the stop
+command is an explicit session fault. No water runtime PASS is claimed.
+
+Optional Grind objectives cool down/blacklist after typed terminal routing;
+mandatory quest/death objectives cannot be silently completed by this policy.
+The query-time safety guard is SOURCE VERIFIED / TEST PASS. Full dirty tree:
+93 strict C++ tests plus 26 audit Python, 13 local QuestDB Python, SQL and
+eight Lua fixtures PASS (`/tmp/wow-validation-s6hlrrkm/results.json`). Isolated
+staged tree: 44 C++ tests, 26 audit Python, SQL, three published Lua fixtures
+and all MinGW build targets PASS (`/tmp/wow-validation-v6h1_lbq/results.json`).
+DIFF CHECK PASS. New production behavior is RUNTIME PENDING: no WoW process
+was running and no natural water encounter was manufactured. The P0.4.1
+observe-only loop below remains unchanged. Breath/submersion/surface/ground
+contact and safe ascent/release remain SOURCE NOT VERIFIED.
+The real offline Detour/cache probe additionally PASSed with cold30 +
+expanded60 + full614 tiles, total704; warm query-mode switching caused zero
+new disk reads or `addTile` calls and did not change the generation. It did
+not simulate a real water-required route or a live WoW shoreline encounter.
+Short direct combat/interaction CTM commands do not consume a Detour corridor;
+the verified swim-bit pause contains an accidental entry on the next monitor
+observation but cannot guarantee that the first water contact is prevented.
+This remains an explicit residual risk until a source-qualified surface-water
+policy exists; do not claim absolute water-entry prevention from filter tests.
+
 ## P0.4.1 observe-only live evidence checkpoint (2026-10-07)
 
 Starting HEAD `9107b2c93d661218c5b8902c42a9e16d63e9ab36` on

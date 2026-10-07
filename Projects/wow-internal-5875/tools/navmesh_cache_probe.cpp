@@ -67,6 +67,26 @@ int main(int argc, char** argv)
         Require(first.CacheStats().diskLoads == 0 &&
             first.CacheStats().cacheHits == full.loadedTotal, "warm full-map rebuild");
 
+        // Query-mode changes must never rebuild or destructively filter the
+        // session topology. Ghost retains the old water-capable query; the
+        // living query excludes water-tagged (including mixed 0x09) polys.
+        const auto topologyBeforeWaterModes = first.CacheStats();
+        NavPathResult ghostModeRoute{};
+        first.SetWaterTraversalMode(Navigation::WaterTraversalMode::GhostDeathRecovery);
+        first.FindPath(start, destination, ghostModeRoute);
+        NavPathResult livingModeRoute{};
+        first.SetWaterTraversalMode(Navigation::WaterTraversalMode::AvoidUntilQualified);
+        first.FindPath(start, destination, livingModeRoute);
+        const auto topologyAfterWaterModes = first.CacheStats();
+        Require(topologyAfterWaterModes.generation == topologyBeforeWaterModes.generation &&
+            topologyAfterWaterModes.loadedTotal == topologyBeforeWaterModes.loadedTotal &&
+            topologyAfterWaterModes.diskLoads == topologyBeforeWaterModes.diskLoads &&
+            topologyAfterWaterModes.addTileCalls == topologyBeforeWaterModes.addTileCalls,
+            "water query mode changed cached topology");
+        Require(!livingModeRoute.success ||
+            (livingModeRoute.excludeFlags & Navigation::TerrainTransitionPolicy::WaterFlag),
+            "living route lost water exclusion");
+
         // Find a real multi-poly local corridor, then exercise scoped hazard
         // masking concurrently with another provider's unrestricted queries.
         NavPathResult baseline{};

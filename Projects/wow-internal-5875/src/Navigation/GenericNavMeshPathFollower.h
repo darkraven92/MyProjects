@@ -53,6 +53,7 @@ namespace Navigation
         // the actual alternative query; this is not a global blacklist.
         DirectedPolyTransition initialAvoidedTransition{};
         std::uint64_t initialTransitionMeshGeneration = 0;
+        WaterTraversalMode waterTraversal = WaterTraversalMode::AvoidUntilQualified;
     };
 
     struct NavigationFailureEvidence
@@ -5446,6 +5447,12 @@ namespace Navigation
                     : terrainRejected
                         ? NavigationPlanFailure::PathValidationFailed
                         : NavigationInitTelemetryPolicy::QueryFailure(path.error);
+                if (lastPlanFailure_ == NavigationPlanFailure::WaterTraversalDisabled)
+                    Debug::Logger::Info(
+                        "NAV WATER REJECT intent=" + std::to_string(intentId_) +
+                        " owner=" + intentOwner_ +
+                        " reason=water_traversal_disabled destination=" +
+                        destinationLabel_);
                 Debug::Logger::Info(
                     "NAVMESH 11B: path query failed."
                 );
@@ -5603,7 +5610,11 @@ namespace Navigation
 
                 if (!partialRejectReason.empty())
                 {
-                    lastPlanFailure_ = NavigationPlanFailure::PartialOrUnusablePath;
+                    lastPlanFailure_ =
+                        NavigationInitTelemetryPolicy::QueryFailure(path.error) ==
+                            NavigationPlanFailure::WaterTraversalDisabled
+                        ? NavigationPlanFailure::WaterTraversalDisabled
+                        : NavigationPlanFailure::PartialOrUnusablePath;
                     Debug::Logger::Info(
                         "NAVMESH 13D.7.1: PARTIAL CORRIDOR REJECTED startDistance=" +
                         Float(startFinalDistance) +
@@ -6338,6 +6349,15 @@ namespace Navigation
         }
 
     public:
+        void CancelForLivingWater()
+        {
+            if (!OwnsMovement()) return;
+            retainIntentForInitialFallback_ = false;
+            lastPlanFailure_ = NavigationPlanFailure::WaterTraversalDisabled;
+            SetState(GenericNavMeshFollowState::Failed);
+            provider_.Shutdown(); // route-local query only; session topology remains cached
+        }
+
         ~GenericNavMeshPathFollower()
         {
             ReleaseIntent("owner_released");
@@ -6372,6 +6392,13 @@ namespace Navigation
                 mapId;
 
             startOptions_ = options;
+            provider_.SetWaterTraversalMode(startOptions_.waterTraversal);
+            if (startOptions_.waterTraversal ==
+                    WaterTraversalMode::AvoidUntilQualified)
+                Debug::Logger::Info(
+                    "WATER AVOIDANCE policy=avoid_until_qualified"
+                    " player=living waterAllowed=no owner=" +
+                    std::string(source.function_name()) + " intent=" + label);
             planningOriginPlayer_ = player;
             RememberPlayerPosition(player);
             if (!startOptions_.planningOnly)

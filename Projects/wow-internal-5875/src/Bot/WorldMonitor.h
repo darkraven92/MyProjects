@@ -8,6 +8,7 @@
 #include "ActiveBotAfkSafeguard.h"
 #include "SharedAfkController.h"
 #include "WaterEvidenceObserve5875.h"
+#include "LivingWaterBlockPolicy.h"
 #include "AfkDiagnosticTracker.h"
 #include "DisconnectDiagnosticPolicy.h"
 #include "RuntimeRobustnessSupervisor.h"
@@ -205,6 +206,9 @@ namespace Bot
             Debug::Logger::Info(
                 "Polling every 250 ms."
             );
+            Debug::Logger::Info(
+                "WATER AVOIDANCE policy=avoid_until_qualified player=living"
+                " waterAllowed=no ghostDeathRecovery=preserved");
 
             Debug::Logger::Info(
                 "Looting is enabled in this phase."
@@ -425,6 +429,7 @@ namespace Bot
 
             DisconnectDiagnosticPolicy disconnectDiagnostic;
             AfkDiagnosticTracker afkDiagnostic;
+            LivingWaterBlockPolicy livingWaterBlock;
             std::uint32_t lastAfkRawFlags = 0;
             std::uint64_t loopHeartbeat = 0;
             bool haveMovementAnchor = false;
@@ -815,6 +820,64 @@ namespace Bot
                             )
                         );
                     }
+                }
+
+                // P0.4-TEMP: the verified SWIMMING bit is sufficient to stop
+                // living autonomous navigation, but not to infer a breathable
+                // surface or dry ground. DeathRecovery retains Ghost ownership.
+                const auto waterLife = AfkClient5875::ReadLife(world.player);
+                const bool deathWaterOwner =
+                    AfkDeadGhostPolicy::DeadOrGhost(waterLife) ||
+                    (waterLife == AfkLifeState::Unknown &&
+                     (deathRecovery.IsActive() || deathRecovery.IsFailed()));
+                const auto waterEvidence = WaterEvidence5875::Read(world);
+                const bool swimming = waterEvidence.movementKnown &&
+                    (waterEvidence.movementFlags &
+                     WaterEvidenceTracker5875::SwimmingMask) != 0;
+                const auto waterEvent = livingWaterBlock.Observe(
+                    deathWaterOwner, waterEvidence.movementKnown, swimming);
+                if (waterEvent == LivingWaterBlockEvent::Entered)
+                {
+                    Debug::Logger::Info(
+                        "WATER BLOCK state=entered swimmingKnown=yes swimming=yes"
+                        " owner=living_workload decision=neutralize_navigation");
+                    if (!MovementController::HoldPosition(world.player))
+                    {
+                        Debug::Logger::Info(
+                            "WATER BLOCK state=fault reason=ctm_neutralization_failed"
+                            " decision=stop_session");
+                        return;
+                    }
+                    grindMode.ReleaseNavigationForLivingWater();
+                    navMeshReturn.CancelForLivingWater();
+                    questPlannerRuntime.ReleaseNavigationForLivingWater();
+                    combat.PauseMovementForLivingWater();
+                    AutonomySample inactiveWaterSample{};
+                    autonomySupervisor.Update(inactiveWaterSample, tick);
+                    runtimeRobustness.PauseForLivingWater();
+                    Debug::Logger::Info(
+                        "WATER BLOCK state=waiting_manual_recovery"
+                        " exit=three_non_swimming_observations");
+                }
+                else if (waterEvent == LivingWaterBlockEvent::ExitedNonSwimming)
+                    Debug::Logger::Info(
+                        "WATER BLOCK state=exited reason=non_swimming_confirmed"
+                        " groundContact=unknown");
+                else if (waterEvent == LivingWaterBlockEvent::ExitedDeathOwnership)
+                    Debug::Logger::Info(
+                        "WATER BLOCK state=exited reason=death_recovery_ownership");
+                if (livingWaterBlock.Blocked())
+                {
+                    // No ordinary owner or watchdog runs while manual water
+                    // recovery is required. AFK continues observing, but a
+                    // water-unsafe candidate is not dispatched speculatively.
+                    AfkSafety waterAfkSafety{};
+                    waterAfkSafety.recovery = true;
+                    sharedAfk.Update(world.player, world.activePlayerGuid,
+                        waterAfkSafety, nowMs, "LivingWaterBlocked");
+                    ++tick;
+                    Sleep(PollIntervalMs);
+                    continue;
                 }
 
                 // Explicit AFK qualification starts only on stationary healthy

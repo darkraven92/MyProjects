@@ -969,6 +969,11 @@ namespace Bot
                         std::to_string(next) +
                         (grayMigrationActive_ ? " gray-migration" : " empty-search")))
             {
+                if (nav->LastPlanFailure() ==
+                    Navigation::NavigationPlanFailure::WaterTraversalDisabled)
+                    Debug::Logger::Info(
+                        "NAV OBJECTIVE ABANDON owner=Grinding objective=roam"
+                        " reason=water_traversal_disabled optional=yes");
                 auto& failed = sectors_[next];
                 failed.cooldownUntil = tick + FailedSectorCooldownTicks;
                 ++failed.failures;
@@ -1655,6 +1660,20 @@ namespace Bot
                 firstAidIdleSinceTick_ = 0;
                 return;
             }
+        }
+
+        void ReleaseNavigationForLivingWater()
+        {
+            ResetApproach();
+            ResetRoam();
+            vendor_.Reset();
+            firstAid_.Abort("living water block");
+            firstAidIdleSinceTick_ = 0;
+            dangerEscapeActive_ = false;
+            if (state_ == GrindModeState::Roaming ||
+                state_ == GrindModeState::ApproachingTarget ||
+                state_ == GrindModeState::Vendoring)
+                SetState(GrindModeState::Grinding);
         }
 
         void SuspendForDeathRecovery(

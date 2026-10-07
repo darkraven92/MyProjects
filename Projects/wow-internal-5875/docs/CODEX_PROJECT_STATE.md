@@ -9,9 +9,55 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.4.1 observe-only water evidence / behavior not enabled**.
+- Current phase: V6 **P0.4-TEMP living-water avoidance**, after P0.4.1.
   Preserve verified navigation/cache, combat, AFK, DeathRecovery and mixed-state
   fail-closed behavior. No trainer/talent/GUI/Questing-architecture expansion.
+
+## P0.4-TEMP living-water avoidance checkpoint (2026-10-07)
+
+Starting HEAD `b076ed53c9bf7a81f7a891fbaa5c7578d9a30a20`. Autonomous
+swimming remains PAUSED; P0.4.2 is NOT STARTED. Production-default living
+navigation now uses a query-time Ground include `0x01` plus Water exclude
+`0x08` on route, projection, local ray/wall/surface and all fallback tiers.
+The exclude bit is necessary because shallow mixed Ground|Water polygons are
+`0x09`. A complete diagnostic water route is never returned to the follower;
+where it proves a water-tagged corridor, terminal reason is
+`water_traversal_disabled`. Optional Grind roam/approach uses existing bounded
+abandon/cooldown; mandatory owners retain failure rather than objective success.
+No water polygon is learned as a hazard. Session topology, cache generation,
+terrain validation and 2000/4/2 budgets are unchanged. DeathRecovery alone
+explicitly retains the old Ground|Water behavior after Ghost confirmation.
+
+The source-verified movement-word SWIMMING bit now enters a production
+`LivingWaterBlocked` pause for a living/unknown player: one CTM-to-current-
+position neutralization, release of ordinary route owners, no workload or
+seated recovery updates, and read-only observation until three consecutive
+known non-swimming samples. Exit is `non_swimming_confirmed`, NOT DryGround.
+DeathRecovery preempts on dead/Ghost evidence. No Space, Jump, ascent, liquid-Z,
+surface or submerged assumption was added. AFK remains observed but candidate
+input is conservatively deferred while water-blocked. A failed CTM stop ends
+the bot session explicitly. Active combat target identity is retained; no
+water combat optimization exists. This is manual-recovery containment, not
+drowning prevention. General and water-specific runtime gates are PENDING.
+
+P0.4.1 observe-only mode and audit remain intact. Swimming reader is SOURCE
+VERIFIED but a natural live water encounter has not been observed in this
+checkpoint. P0.4.2 may replace this guard only after independent source and
+runtime qualification of surface swimming, submersion and ascent/release.
+Validation: full dirty tree TEST PASS, 93 strict C++ tests plus 26 audit
+Python, 13 local QuestDB Python, SQL and eight Lua fixtures;
+`/tmp/wow-validation-s6hlrrkm/results.json`. Isolated intended staged tree
+TEST PASS, 44 strict C++ tests plus 26 audit Python, SQL and three published
+Lua fixtures, complete MinGW DLL/GUI/loader build;
+`/tmp/wow-validation-v6h1_lbq/results.json` from
+`/tmp/wow-water-isolated.qA8H48`. Explicit BUILD PASS and DIFF CHECK PASS.
+No WoW process was running, so the >=20-minute normal Grind regression and
+natural water-avoidance gates remain RUNTIME PENDING, never inferred from tests.
+Offline real-Detour cache probe PASS: query-mode changes reused all 704 loaded
+tiles with zero new reads/addTile calls. Direct short-range combat/interaction
+CTM bypasses Detour route filtering; the swim-bit guard stops continued
+automation after observed entry, not the first physical contact. Preserve this
+residual risk and do not claim absolute water-entry prevention or P0.4 PASS.
 
 ## P0.4.1 observe-only evidence checkpoint (2026-10-07)
 

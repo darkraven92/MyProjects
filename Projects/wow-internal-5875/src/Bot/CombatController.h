@@ -4457,6 +4457,15 @@ namespace Bot
             }
         }
 
+        void PauseMovementForLivingWater()
+        {
+            // Preserve the same locked target and Attack state. Only ground
+            // chase, loot movement and seated recovery are relinquished.
+            if (chase_.IsActive()) chase_.Stop();
+            loot_.Reset();
+            recovery_.Reset();
+        }
+
         void SuspendForDeathRecovery(
             const Objects::PlayerState& player,
             std::uint64_t tick)

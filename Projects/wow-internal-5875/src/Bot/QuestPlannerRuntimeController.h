@@ -414,6 +414,32 @@ namespace Bot
         }
 
     public:
+        void ReleaseNavigationForLivingWater()
+        {
+            objectiveDirector_.ReleaseActive();
+            // These additional optional owners may exist in a newer local
+            // QuestPlanner; the published baseline does not require them.
+            auto cancelOptionalOwners = []<class Controller>(Controller& owner)
+            {
+                if constexpr (requires(Controller& value) { value.relocation_.Cancel(); })
+                    owner.relocation_.Cancel();
+                if constexpr (requires(Controller& value) { value.maintenance_.Cancel(); })
+                    owner.maintenance_.Cancel();
+                if constexpr (requires(Controller& value) { value.trainer_.Cancel(); })
+                    owner.trainer_.Cancel();
+            };
+            cancelOptionalOwners(*this);
+            turnInExecutor_ = GenericQuestTurnInExecutor{};
+            turnInProfile_ = nullptr;
+            turnInStartAttempted_ = false;
+            discoveryController_ = GenericQuestDiscoveryController{};
+            discoveryStarted_ = false;
+            startAttempted_ = false;
+            readyForTurnInLogged_ = false;
+            objectiveRetryAfterTick_ = 0;
+            haveSnapshot_ = false;
+        }
+
         void Initialize()
         {
             if (initialized_)

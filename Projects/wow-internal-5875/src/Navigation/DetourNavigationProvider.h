@@ -9,6 +9,7 @@
 #include "DetourStatus.h"
 #include "IncrementalTileInitializationPolicy.h"
 #include "MapNavMeshSessionCache.h"
+#include "LivingWaterTraversalPolicy.h"
 #include "TerrainTransitionPolicy.h"
 
 #include <windows.h>
@@ -76,6 +77,7 @@ namespace Navigation
         unsigned short excludeFlags = 0;
         bool waterFallbackAttempted = false;
         bool waterAwareRoute = false;
+        int waterPolygonCount = 0;
         bool steepFallback = false;
         int steepPolygonCount = 0;
 
@@ -132,6 +134,15 @@ namespace Navigation
 
         static constexpr unsigned short PlayerNavFlags =
             static_cast<unsigned short>(NavGround | NavWater);
+
+        WaterTraversalMode waterTraversalMode_ =
+            WaterTraversalMode::AvoidUntilQualified;
+
+        unsigned short QueryIncludeFlags() const
+        { return LivingWaterTraversalPolicy::Include(waterTraversalMode_); }
+
+        unsigned short QueryExcludeFlags(unsigned short existing = 0) const
+        { return LivingWaterTraversalPolicy::Exclude(waterTraversalMode_, existing); }
 
         // Phase 13D.7.1 long-route capacity:
         // live Sen'jin -> Echo Isles routing exhausted the previous 32768-node
@@ -1435,6 +1446,9 @@ namespace Navigation
         DetourNavigationProvider() =
             default;
 
+        void SetWaterTraversalMode(WaterTraversalMode mode)
+        { waterTraversalMode_ = mode; }
+
         ~DetourNavigationProvider()
         {
             Shutdown();
@@ -1494,8 +1508,8 @@ namespace Navigation
                 horizontalExtent
             };
             dtQueryFilter filter;
-            filter.setIncludeFlags(PlayerNavFlags);
-            filter.setExcludeFlags(0);
+            filter.setIncludeFlags(QueryIncludeFlags());
+            filter.setExcludeFlags(QueryExcludeFlags());
             dtPolyRef reference = 0;
             float closest[3]{};
             const dtStatus status = query_->findNearestPoly(
@@ -1611,7 +1625,7 @@ namespace Navigation
 
             dtQueryFilter filter;
             filter.setIncludeFlags(NavGround);
-            filter.setExcludeFlags(0);
+            filter.setExcludeFlags(QueryExcludeFlags());
 
             dtPolyRef reference = 0;
             float closest[3]{};
@@ -1662,8 +1676,8 @@ namespace Navigation
 
             const float extents[3] = { 2.0f, 4.0f, 2.0f };
             dtQueryFilter filter;
-            filter.setIncludeFlags(PlayerNavFlags);
-            filter.setExcludeFlags(0);
+            filter.setIncludeFlags(QueryIncludeFlags());
+            filter.setExcludeFlags(QueryExcludeFlags());
 
             dtPolyRef reference = 0;
             float closest[3]{};
@@ -1767,8 +1781,8 @@ namespace Navigation
 
             const float extents[3] = { 2.0f, 4.0f, 2.0f };
             dtQueryFilter filter;
-            filter.setIncludeFlags(PlayerNavFlags);
-            filter.setExcludeFlags(0);
+            filter.setIncludeFlags(QueryIncludeFlags());
+            filter.setExcludeFlags(QueryExcludeFlags());
 
             dtPolyRef startReference = 0;
             float closestStart[3]{};
@@ -1848,8 +1862,8 @@ namespace Navigation
 
             const float extents[3] = { 2.0f, 4.0f, 2.0f };
             dtQueryFilter filter;
-            filter.setIncludeFlags(PlayerNavFlags);
-            filter.setExcludeFlags(0);
+            filter.setIncludeFlags(QueryIncludeFlags());
+            filter.setExcludeFlags(QueryExcludeFlags());
 
             dtPolyRef startReference = 0;
             float closestStart[3]{};
@@ -1924,8 +1938,8 @@ namespace Navigation
 
             const float extents[3] = { 5.0f, 10.0f, 5.0f };
             dtQueryFilter filter;
-            filter.setIncludeFlags(PlayerNavFlags);
-            filter.setExcludeFlags(0);
+            filter.setIncludeFlags(QueryIncludeFlags());
+            filter.setExcludeFlags(QueryExcludeFlags());
 
             dtPolyRef liveStartRef = 0;
             dtPolyRef liveEndRef = 0;
@@ -2026,9 +2040,12 @@ namespace Navigation
             const NavPoint& destination,
             NavPathResult& result,
             unsigned short includeFlags,
-            unsigned short excludeFlags)
+            unsigned short excludeFlags,
+            bool diagnosticWaterQuery = false)
         {
             std::lock_guard lock(Cache().Mutex());
+            if (!diagnosticWaterQuery)
+                excludeFlags = QueryExcludeFlags(excludeFlags);
             result =
                 NavPathResult{};
 
@@ -2039,7 +2056,8 @@ namespace Navigation
                 excludeFlags;
 
             result.waterAwareRoute =
-                (includeFlags & NavWater) != 0;
+                (includeFlags & NavWater) != 0 &&
+                (excludeFlags & NavWater) == 0;
 
             result.loadedTiles =
                 LoadedTiles();
@@ -2242,9 +2260,13 @@ namespace Navigation
                     static_cast<std::uint64_t>(polygons[index]));
                 unsigned short flags = 0;
                 if (dtStatusSucceed(mesh_->getPolyFlags(
-                        polygons[index], &flags)) &&
-                    TerrainTransitionPolicy::UsesSteep(flags))
-                    ++result.steepPolygonCount;
+                        polygons[index], &flags)))
+                {
+                    if (TerrainTransitionPolicy::UsesSteep(flags))
+                        ++result.steepPolygonCount;
+                    if ((flags & NavWater) != 0)
+                        ++result.waterPolygonCount;
+                }
             }
 
             // findPath() normally guarantees this, but keep the invariant
@@ -2622,7 +2644,7 @@ namespace Navigation
             ToDetour(destination, destinationPosition);
             dtQueryFilter filter;
             filter.setIncludeFlags(includeFlags);
-            filter.setExcludeFlags(0);
+            filter.setExcludeFlags(QueryExcludeFlags());
             dtPolyRef startRef = 0, endRef = 0;
             return dtStatusSucceed(query_->findNearestPoly(
                        startPosition, extents, &filter,
@@ -2684,6 +2706,36 @@ namespace Navigation
                 groundFallback.steepFallback = true;
                 result = std::move(groundFallback);
                 return true;
+            }
+
+            if (waterTraversalMode_ == WaterTraversalMode::AvoidUntilQualified)
+            {
+                // A read-only diagnostic query proves a complete alternative
+                // uses water; its corridor is never returned to the follower.
+                NavPathResult diagnostic{};
+                bool diagnosticOk = FindPathWithFlags(start, destination,
+                    diagnostic, PlayerNavFlags,
+                    TerrainTransitionPolicy::SteepFlag, true);
+                bool complete = TerrainTransitionPolicy::Complete(
+                    diagnosticOk, diagnostic.success, diagnostic.partial);
+                if (!complete)
+                {
+                    diagnosticOk = FindPathWithFlags(start, destination,
+                        diagnostic, PlayerNavFlags, 0, true);
+                    complete = TerrainTransitionPolicy::Complete(
+                        diagnosticOk, diagnostic.success, diagnostic.partial);
+                }
+                if (complete && diagnostic.waterPolygonCount > 0)
+                {
+                    groundFallback.error =
+                        "Living-player water traversal is disabled.";
+                    Debug::Logger::Info(
+                        "NAV WATER REJECT reason=water_traversal_disabled"
+                        " policy=avoid_until_qualified waterPolygons=" +
+                        std::to_string(diagnostic.waterPolygonCount));
+                }
+                result = std::move(groundFallback);
+                return groundOk;
             }
 
             // Preserve 13D.7.2's water fallback only after ground queries.

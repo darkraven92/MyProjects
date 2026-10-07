@@ -31,7 +31,8 @@ namespace Navigation
         AvoidanceProjectionUnresolved,
         PersistentHazardRejected,
         BoundedLocalRecoveryUnavailable,
-        MeshCacheInvalidated
+        MeshCacheInvalidated,
+        WaterTraversalDisabled
     };
 
     // Snapshot of actual incremental work, not a route generation or CTM
@@ -74,6 +75,8 @@ namespace Navigation
                 return NavigationPlanFailure::PersistentHazardRejected;
             if (error == "Navmesh cache generation invalidated.")
                 return NavigationPlanFailure::MeshCacheInvalidated;
+            if (error == "Living-player water traversal is disabled.")
+                return NavigationPlanFailure::WaterTraversalDisabled;
             return error == "Detour could not build a polygon path."
                 ? NavigationPlanFailure::NoPath : NavigationPlanFailure::OtherUnknown;
         }
@@ -125,6 +128,7 @@ namespace Navigation
                 case NavigationPlanFailure::PersistentHazardRejected: return "persistent_hazard_rejected";
                 case NavigationPlanFailure::BoundedLocalRecoveryUnavailable: return "bounded_local_recovery_unavailable";
                 case NavigationPlanFailure::MeshCacheInvalidated: return "mesh_cache_invalidated";
+                case NavigationPlanFailure::WaterTraversalDisabled: return "water_traversal_disabled";
                 default: return "other_unknown";
             }
         }

@@ -662,7 +662,10 @@ namespace Bot
                 player, tick, destination, mapId_, arrival, label, false,
                 Navigation::GenericNavMeshStartOptions{
                     allowFullMapFallback, false, avoidedTransition,
-                    lastRouteEvidence_.meshGeneration});
+                    lastRouteEvidence_.meshGeneration,
+                    ghostConfirmedThisRecovery_
+                        ? Navigation::WaterTraversalMode::GhostDeathRecovery
+                        : Navigation::WaterTraversalMode::AvoidUntilQualified});
             if (navigator.FullMapFallbackAttempted())
             {
                 ++fullMapFallbackAttempts_;

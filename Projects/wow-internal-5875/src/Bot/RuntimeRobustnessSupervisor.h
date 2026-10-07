@@ -579,6 +579,19 @@ namespace Bot
         }
 
     public:
+        void PauseForLivingWater()
+        {
+            // Manual water recovery is not acquisition or movement work.
+            // Rebase the next eligible owner epoch without changing any
+            // recovery counters, limits, or ordinary watchdog thresholds.
+            initialized_ = false;
+            acquisitionEpochActive_ = false;
+            acquisitionEpochSinceTick_ = 0;
+            navigationInitializationObserved_ = false;
+            navigationInitializationSince_ = SteadyClock::time_point{};
+            owner_ = RuntimeActivityOwner::None;
+        }
+
         RuntimeRobustnessEvent Update(
             const RuntimeRobustnessSample& sample,
             std::uint64_t tick)

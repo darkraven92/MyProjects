@@ -1,8 +1,12 @@
 # P0.3 navigation reliability audit
 
 Updated 2026-10-07. P0.3/P0.3.1/P0.3.2 baseline RUNTIME PASS.
-Current P0.4 water source gate is documented in WATER_SWIMMING_DROWNING_AUDIT.md;
-no navigation behavior changed. Water-tagged terrain is NOT a waterline.
+P0.4-TEMP adds a production-default living-only query-time Water exclusion
+`0x08` (including mixed Ground|Water polygons), retaining the session topology
+and Ghost DeathRecovery exception. Typed `water_traversal_disabled` is a
+capability restriction, not persistent hazard evidence. SOURCE/TEST validation
+is separate from a pending natural live water encounter. Details are in
+WATER_SWIMMING_DROWNING_AUDIT.md. Water-tagged terrain is NOT a waterline.
 Historical checkpoint sections below retain their original evidence.
 
 Latest full capture (P0.4 audit): `/tmp/wow-p04-baseline.yBnhXp/wow-internal.log`,
