@@ -722,6 +722,14 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.9 validated AFK code checkpoint:
+  `0e53bba5647521d84ea16b762737f98c9b5950e7`
+  (`afk: prequalify natural dead and ghost command gaps`). Push passed;
+  independent `git ls-remote` matched local HEAD before this continuity follow-up.
+  Nine AFK/documentation/test files only; no WorldMonitor or death/navigation
+  source changes staged. TEST/BUILD/DIFF CHECK PASS in the existing dirty
+  worktree. New early death/ghost qualification and exact movement-bit capture
+  are RUNTIME PENDING; alive Grinding/debt/planning gates are RUNTIME PASS.
 - P0.0.8 validated AFK code checkpoint:
   `423af3b3a908e9be45b50ad11aef06def88ada22`
   (`afk: separate recovery debt from input safety`). Pushed to
