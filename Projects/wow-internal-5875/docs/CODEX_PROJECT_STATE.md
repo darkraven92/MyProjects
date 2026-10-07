@@ -908,10 +908,19 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
-- P0.1 DeathRecovery base: `a9c8c7cac28a12cc549693cac56b79cea04ede13`;
-  origin configured and branch inspected. Final full validation/build/diff
-  passed; scoped checkpoint/push follows. No broad WorldMonitor or unrelated
-  dirty gameplay staging.
+- P0.1 validated DeathRecovery code checkpoint:
+  `de57521813256642ce02015f005bd1ba8836fa83`
+  (`death: preserve route fallback and acquire server corpse anchors`).
+  Base `a9c8c7cac28a12cc549693cac56b79cea04ede13`; branch
+  `codex/wow-internal-continuation`, verified origin
+  `git@github.com:darkraven92/MyProjects.git`. Push passed; independent
+  `git ls-remote origin refs/heads/codex/wow-internal-continuation` returned
+  the identical code HEAD. Sixteen reviewed death/shared-diagnostic/tool/test/
+  documentation files only. No broad WorldMonitor or unrelated dirty gameplay
+  staged; that work remains local and unchanged. Final full validation/build/
+  diff passed in the dirty worktree, not a clean remote runtime. This docs-only
+  follow-up records the verified code HEAD; its own HEAD is available in git log.
+  DeathRecovery RUNTIME PENDING; next action is the natural-death gate above.
 
 - P0.0.11 validated code checkpoint:
   `5c84d0fe8214baff4b9157d0e6d7ebd011f4495a`
