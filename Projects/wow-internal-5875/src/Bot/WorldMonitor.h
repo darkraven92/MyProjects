@@ -2227,6 +2227,12 @@ namespace Bot
                         unit.targetGuid==world.activePlayerGuid)
                         afkSafety.combat=true;
                 afkSafety.recovery=combat.Recovery().IsActive();
+                if (TemporaryGrindModeEnabled)
+                {
+                    afkSafety.recovery=afkSafety.recovery || grindMode.FirstAidActive();
+                    afkSafety.vendor=grindMode.State()==GrindModeState::Vendoring ||
+                        grindMode.State()==GrindModeState::WaitingForManualVendor;
+                }
                 afkSafety.loot=combat.HasDeferredCorpseLootPending();
                 afkSafety.navigation=navMeshReturn.OwnsMovement();
                 afkSafety.dialog=vileFamiliarsTurnIn.IsActive();
@@ -2234,7 +2240,7 @@ namespace Bot
                     ? grindMode.State()==GrindModeState::Grinding && !grindMode.FirstAidActive()
                     : questPlannerRuntime.SafeIdleForAfk();
                 if (RecoveryController::HealthPercent(world.player)<RecoveryController::ExitThresholdPercent())
-                    afkSafety.healthyIdle=false;
+                    afkSafety.recovery=true;
                 sharedAfk.Update(world.player,world.activePlayerGuid,afkSafety,nowMs,
                     TemporaryGrindModeEnabled ? "Grinding" : "Questing",
                     TemporaryGrindModeEnabled &&

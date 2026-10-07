@@ -56,8 +56,13 @@ namespace Bot
     enum class AfkWorkloadSafety { SafeIdle, BenignWork, Unsafe };
     struct AfkWorkloadSafetyPolicy
     {
-        // Classification is NOT permission to inject input. Until harmless F12
-        // is runtime-qualified, production still requires AfkSafety::Safe().
+        static bool LandMovementAllowed(std::uint32_t flags,bool ordinaryLandMovement)
+        {
+            // 1.12.1 forward/backward/strafe/turn and walk preference only.
+            return (flags & ~(ordinaryLandMovement ? 0x13fu : 0x100u))==0;
+        }
+        // Classification is separate from implementation qualification and each
+        // action's native/UI/input/scene guards. An owner name is not evidence.
         static AfkWorkloadSafety Classify(const AfkSafety& s, bool benignWorkEvidence)
         {
             if (s.combat || s.death || s.recovery || s.water || s.dialog || s.vendor ||

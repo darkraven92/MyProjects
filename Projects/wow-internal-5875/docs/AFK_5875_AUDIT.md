@@ -1,5 +1,99 @@
 # P0.0 shared AFK protection audit
 
+## P0.0.6 production status (current)
+
+Qualification: **RUNTIME PASS, user-reported** in the P0.0.6 request; its full
+two-window capture is not retained in the current log. Production Grinding
+cycle 1: **RUNTIME PASS** in the inspected log, input 90470165 -> 90713889
+(243724 ms), paired delivery, unchanged scene/UI, both flags clear. Production
+long-run: **RUNTIME FAIL**. Cycle 2 was deferred; client AFK appeared at
+300231 ms and the pulse was not issued until clock 91676232 versus 91169170
+(507062 ms). Input delivery succeeded but client stayed AFK, server stayed clear.
+`autoClearAFK=enabled` is now runtime-observed at log line 205.
+
+SOURCE VERIFIED: production still used stationary-only AfkProtectionPolicy
+and adapter guards, even though the workload classifier already recognized
+benign work. The `benign_work_awaiting_runtime_verified_noop` message was an
+unconditional relabel, not a persisted qualification lookup. Native auto-clear
+was wired only into qualification; the production fallback rejected mixed
+flags indefinitely. The configuration's `runtimeVerified=no` described neither
+implementation qualification nor command evidence accurately.
+
+Important limit on attribution: at cycle-2 due, log lines 27350–27385 show
+locked-target Chasing/Combat ownership; threshold crossing at 30281 occurs
+amid locked-target restoration. F12 resumes after Recovering -> AcquiringTarget
+at 34548. This does NOT prove every deferral was benign, or justify interrupting
+combat. A combat/recovery interval longer than the safety margin can still
+cross the threshold. New telemetry explains the exact blocker/urgency band.
+
+Changes (SOURCE VERIFIED, new runtime PENDING): shared AfkProductionPolicy
+keeps Due/Deferred until an authoritative native clock change, uses 80% due,
+90% overdue and the unchanged 100% source threshold. First known-safe work
+opportunity resumes the pending action. No CTM/displacement resets this state.
+Reviewed implementation qualification is distinct from session delivery and
+per-action proof. Classified Grinding/Roaming/ApproachingTarget with no hard
+combat/recovery/fault/transaction owner can use the qualified pulse. Native
+guards allow only ordinary 1.12.1 land forward/back/strafe/turn/walk flags;
+swim, fall, pitch, transport and unknown flags still block. First aid, manual
+vendor and low-health recovery remain hard gates. Questing uses the same
+policy but unclassified active Questing owners remain blocked, not guessed.
+
+Scene proof brackets the synchronous paired messages on the game thread; it
+does not compare a moving character with its position a tick later and call
+normal navigation an input side effect. The next update must still prove the
+native clock advanced. UI is rechecked inside the same paired-message bracket;
+all held physical keys/buttons block dispatch. Combat/dialog beginning on the
+next ordinary gameplay tick is not falsely attributed to the prior key pulse.
+Qualification retains its stationary, across-update scene guard.
+Production UI re-probe is bounded to one second (not an input interval);
+all command verification remains within the original 3000-ms deadline.
+
+Recovery now starts for **either** active authoritative flag, verifies F12,
+then uses the native non-forced clear once when both flags are active. Both
+must clear before recovery success. Mixed states enter bounded reconciliation,
+not an inert retry loop; convergence can proceed to clear or confirm already
+clear. Persistent disagreement ends in `mixed_afk_requires_safe_reconciliation`,
+latched for the session. This is **NOT a complete mixed-state recovery fix**.
+
+### Mixed-state native-clear blocker — do not remove the guard
+
+Re-audited 0x5EB836–0x5EB840: client clear => native function returns without
+sending. With client active/server clear, it sends an empty AFK message, and
+the local VMaNGOS ChatHandler.cpp:624 toggles server AFK **on**, not off.
+The server also ignores AFK messages during combat. Qualification of the
+both-active case does not validate either asymmetric case. Removing the guard
+would violate source evidence, not repair it. No flags are patched; no double
+toggle or fabricated synchronization was introduced. Need a source-/runtime-
+proven legitimate reconciliation operation (or evidence that the live server
+has different semantics) before implementing the requested unconditional
+OR-flags native dispatch. A comparison capture for the mixed state was
+requested. This remains the active AFK blocker; do not advance to swimming.
+
+The other local writer was also inspected: the player-flags update callback
+at 0x5EE990 XORs incoming old flags against current flags and gates the mirror
+write on changed bits 0xE (0x5EE9B8–0x5EE9C0). It is not an unconditional
+reconcile API; calling it with invented old flags would fabricate an update.
+VMaNGOS Player::ToggleAFK additionally leaves battlegrounds when toggled on, so
+a speculative mark-then-clear sequence is not a harmless general substitute.
+
+Next runtime gate: fresh normal process (`wine ./build/wow_gui.exe`, no qualify
+environment), natural Grinding >=20 minutes, no manual input. Capture `AFK `.
+Require two pulses before 300000, unchanged synchronous scene/UI, native clock
+advance, clear flags, continued Grinding, and DEFER -> RESUME if combat occurs.
+Both-active recovery is testable; persistent mixed flags must show bounded
+failure, NOT a falsely claimed recovery. New production code is RUNTIME PENDING.
+
+TEST PASS: 78 strict C++ tests, 13 Python tests plus QuestDB SQL fixture,
+six Lua fixtures / 113 checks. BUILD PASS; DIFF CHECK PASS. Final artifact:
+`/tmp/wow-validation-v9eov92z/results.json`. Regression coverage includes sticky
+due/defer/resume, benign land movement versus hard gates, native-clock-only
+progress, session versus implementation evidence, OR-flags recovery entry,
+once-only both-active clear, bounded mixed-state failure/convergence, unknown
+observations and shared workload wiring. Tests do not prove production runtime.
+
+The sections below preserve historical evidence; their earlier pending status
+and stationary-only descriptions are superseded by this section.
+
 P0.0.4 (2026-10-07): SOURCE VERIFIED; composite candidate RUNTIME PENDING.
 The newest live capture proves qualification hold/quiescence and the natural
 300241-ms idle threshold. Targeted F12 delivery and native input-clock advance

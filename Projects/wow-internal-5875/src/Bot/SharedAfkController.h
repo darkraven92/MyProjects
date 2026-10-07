@@ -3,6 +3,7 @@
 #include "AfkPreventionWindow.h"
 #include "AfkQualificationHold.h"
 #include "AfkQualificationPolicy.h"
+#include "AfkProductionPolicy.h"
 #include "../Debug/Logger.h"
 #include <cstdlib>
 #include <string>
@@ -21,7 +22,10 @@ namespace Bot
     };
     class SharedAfkController
     {
-        AfkProtectionPolicy policy_{};
+        AfkProductionPolicy policy_{};
+        AfkProductionBand productionBand_=AfkProductionBand::Recent;
+        bool productionDeferred_=false;
+        std::string productionBlock_{};
         AfkRuntimeStatus status_{};
         AfkObservation previous_{};
         std::uint64_t playerGuid_=0, nextDispatchProbe_=0;
@@ -59,8 +63,8 @@ namespace Bot
             Debug::Logger::Info(std::string("AFK CONFIG mode=")+
                 (qualification_.Requested() ? "qualify" : observeOnly_ ? "observe" : "protect")+
                 (qualification_.Requested() ?
-                    " candidate=paired_F12_then_native_auto_clear inputPath=targeted_win32_and_native_5875 runtimeVerified=no" :
-                    " candidate=unbound_F12 inputPath=targeted_win32_messages runtimeVerified=no"));
+                    " candidate=paired_F12_then_native_auto_clear inputPath=targeted_win32_and_native_5875 implementationQualification=runtime_pass_user_reported sessionDeliveryVerified=no actionVerified=no" :
+                    " candidate=paired_F12_then_native_auto_clear implementationQualification=runtime_pass_user_reported sessionDeliveryVerified=no actionVerified=no"));
         }
         bool ControlledIdleRequested() const { return qualification_.Requested(); }
         bool AdvanceQualificationHold(const Objects::PlayerState& player,
@@ -111,6 +115,7 @@ namespace Bot
             havePrevious_=false; safeBaseline_=false;
             qualificationStart_=0; qualificationFlow_=AfkQualificationPolicy(true);
             previousAutoClear_=AfkAutoClearSetting::Unknown;
+            productionBand_=AfkProductionBand::Recent; productionDeferred_=false; productionBlock_.clear();
             baselineScene_={};
             nextDispatchProbe_=0; lastDecision_.clear(); lastDispatchBlock_.clear();
         }
@@ -176,8 +181,10 @@ namespace Bot
             status_.inputAgeMs=valid ? std::uint32_t(o.clientNow-o.lastInput) : 0;
             status_.sourceThresholdMs=valid ? o.thresholdMs : 0;
             auto checkedSafety=safety;
-            if (!AfkClient5875::StationaryAliveLand(player)) checkedSafety.healthyIdle=false;
             const bool qualifying=qualification_.InhibitsWorkloadAcquisition();
+            const bool benign=!qualifying && AfkProductionPolicy::ImplementationQualified && benignWorkEvidence;
+            const auto nativeBlock=AfkClient5875::StationarySafetyReason(player,benign);
+            if (nativeBlock) checkedSafety.water=true;
             const auto beforePhase=qualificationFlow_.Phase();
             const bool hadBaseline=qualificationFlow_.BaselineCaptured();
             const auto beforeClock=qualificationFlow_.ObservedInput();
@@ -196,24 +203,39 @@ namespace Bot
             if (qualifying && qualificationFlow_.Verifying())
                 sceneSame=AfkCandidateScene::Unchanged(candidateSceneBefore_,sceneNow) &&
                     AfkClient5875::SafeInputReason()=="ready";
+            const auto priorProductionPhase=policy_.Phase();
             auto decision=qualifying ? qualificationFlow_.Update(o,checkedSafety.Safe(),sceneSame,now,autoClear) :
-                policy_.Update(o,checkedSafety,now,observeOnly_);
-            if (!qualifying && pendingAction==AfkAction::InputPulse && decision.result==AfkResult::Confirmed)
+                policy_.Update(o,checkedSafety,now,observeOnly_,benign,autoClear);
+            // Production scene/UI proof brackets the synchronous messages.
+            // Combat or a legitimate dialog beginning on the NEXT gameplay
+            // tick blocks further actions; it is not proof of a key side effect.
+            if (decision.status==AfkStatus::Blocked && nativeBlock) decision.reason=nativeBlock;
+            if (!qualifying && !observeOnly_ && valid)
             {
-                const bool sceneSame=AfkCandidateScene::Unchanged(candidateSceneBefore_,AfkClient5875::ReadScene(player));
-                const auto ui=AfkClient5875::SafeInputReason();
-                Debug::Logger::Info("AFK CANDIDATE SCENE positionFacingTargetMovementUnchanged="+
-                    std::string(sceneSame ? "yes" : "no")+" ui="+ui);
-                if (!sceneSame || ui!="ready")
+                const auto band=AfkProductionPolicy::Band(o);
+                if (band!=productionBand_ && band!=AfkProductionBand::Recent)
+                    Debug::Logger::Info(std::string("AFK PRODUCTION ")+
+                        (band==AfkProductionBand::Due ? "DUE" : band==AfkProductionBand::Overdue ? "OVERDUE" : "THRESHOLD CROSSED")+
+                        " inputAge="+std::to_string(status_.inputAgeMs)+" blockedReason="+decision.reason);
+                productionBand_=band;
+                const bool blocked=decision.status==AfkStatus::Blocked;
+                if (blocked && (!productionDeferred_ || productionBlock_!=decision.reason))
+                    Debug::Logger::Info("AFK PRODUCTION DEFER inputAge="+std::to_string(status_.inputAgeMs)+
+                        " owner="+owner+" reason="+decision.reason);
+                if (productionDeferred_ && decision.action==AfkAction::InputPulse)
                 {
-                    policy_.DispatchFailed();
-                    decision={AfkStatus::Fault,AfkAction::None,AfkResult::Failed,
-                        "candidate_scene_or_ui_changed"};
+                    Debug::Logger::Info("AFK PRODUCTION RESUME inputAge="+std::to_string(status_.inputAgeMs)+" owner="+owner);
+                    nextDispatchProbe_=0; // first eligible opportunity, no stale UI backoff
                 }
+                productionDeferred_=blocked;
+                productionBlock_=decision.reason;
+                if (priorProductionPhase!=policy_.Phase() &&
+                    (o.clientAfk || o.serverAfk || priorProductionPhase==AfkProductionPhase::VerifyingClear ||
+                     priorProductionPhase==AfkProductionPhase::RecoveringAfk))
+                    Debug::Logger::Info(std::string("AFK PRODUCTION RECOVERY phase=")+AfkProductionPolicy::PhaseName(policy_.Phase())+
+                        " clientActive="+(o.clientAfk ? "yes" : "no")+" serverActive="+(o.serverAfk ? "yes" : "no")+
+                        " reason="+decision.reason);
             }
-            if (decision.status==AfkStatus::Blocked &&
-                AfkWorkloadSafetyPolicy::Classify(safety,benignWorkEvidence)==AfkWorkloadSafety::BenignWork)
-                decision.reason="benign_work_awaiting_runtime_verified_noop";
             status_.status=decision.status; status_.reason=decision.reason;
             if (qualifying)
             {
@@ -275,7 +297,7 @@ namespace Bot
                     qualification_.Complete();
                     Debug::Logger::Info("AFK QUALIFICATION COMPLETE windows=2 result=pass");
                     Debug::Logger::Info("AFK QUALIFICATION HOLD state=released reason=two_prevention_windows");
-                    Debug::Logger::Info("AFK PRODUCTION GATE activeWork=blocked reason=harmless_input_runtime_review_required");
+                    Debug::Logger::Info("AFK PRODUCTION GATE activeWork=classified_benign_only reason=reviewed_qualified_implementation");
                 }
             }
             LogDecision(decision,owner);
@@ -306,15 +328,27 @@ namespace Bot
             }
             if (decision.status==AfkStatus::Fault)
                 EndControlledIdle(decision.reason);
-            const bool nativeContinuation=qualifying && decision.action==AfkAction::NativeAutoClear;
+            const bool nativeContinuation=decision.action==AfkAction::NativeAutoClear;
             if (decision.action!=AfkAction::None && (nativeContinuation || now>=nextDispatchProbe_))
             {
-                nextDispatchProbe_=now+10000; // UI guard backoff; not an input interval.
-                const auto dispatch=AfkClient5875::Dispatch(player,decision.action,o);
+                nextDispatchProbe_=now+(qualifying ? 10000 : 1000); // guard probe, not an input interval
+                const auto dispatch=AfkClient5875::Dispatch(player,decision.action,o,benign);
                 const std::string action=decision.action==AfkAction::InputPulse ? "unbound_F12" :
                     nativeContinuation ? "native_auto_clear" : "clear_existing_afk";
                 if (dispatch.issued)
                 {
+                    if (decision.action==AfkAction::InputPulse)
+                    {
+                        Debug::Logger::Info(std::string("AFK CANDIDATE SCENE positionFacingTargetMovementUnchanged=")+
+                            (dispatch.sceneVerified ? "yes" : "no")+" sceneWindow=paired_game_thread_messages ui="+
+                            (dispatch.sceneVerified ? "ready" : "failed"));
+                        if (!dispatch.sceneVerified)
+                        {
+                            policy_.DispatchFailed(); EndControlledIdle("candidate_scene_or_ui_changed");
+                            Debug::Logger::Info("AFK ACTION RESULT result=failed reason=candidate_scene_or_ui_changed");
+                            previous_=o; havePrevious_=true; return;
+                        }
+                    }
                     if (!nativeContinuation)
                     {
                         candidateInputBefore_=dispatch.before.lastInput;
@@ -329,7 +363,7 @@ namespace Bot
                         Debug::Logger::Info("AFK INPUT RELEASE action=unbound_F12 result="+
                             std::string(dispatch.releaseDelivered ? "paired_message_delivered" : "failed"));
                     Debug::Logger::Info("AFK ACTION RESULT action="+action+" result=pending reason="+dispatch.reason);
-                    if (nativeContinuation) qualificationFlow_.NativeClearIssued();
+                    if (nativeContinuation && qualifying) qualificationFlow_.NativeClearIssued();
                     else if (qualifying) qualificationFlow_.Issued(dispatch.before,now);
                     else policy_.Issued(decision.action,dispatch.before,now);
                 }

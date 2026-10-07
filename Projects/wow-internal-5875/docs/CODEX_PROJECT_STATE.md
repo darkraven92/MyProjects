@@ -15,8 +15,9 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 # Current architecture
 
 - One `SharedAfkController` in WorldMonitor observes client/server AFK and the
-  native input clock for both workloads. Safe-idle-only candidate input is
-  paired, bounded and verified; the older Grinding AFK-named liveness mechanism
+  native input clock for both workloads. P0.0.6 shared production scheduling
+  permits qualified paired input in known benign work as well as safe idle;
+  hard safety gates and per-command proof remain. The older Grinding liveness mechanism
   remains distinct. See `docs/AFK_5875_AUDIT.md` for source proof and live gates.
 
 - `WorldMonitor` dispatches existing Questing and Grinding controllers using
@@ -60,6 +61,12 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
   with proof of a safe swimming route or sufficient breath.
 
 # Runtime verified
+
+- AFK qualification: RUNTIME PASS per user's P0.0.6 report (full capture not
+  available in latest log). First production Grinding prevention: RUNTIME PASS,
+  age 243724 ms, unchanged scene/UI and clear flags. autoClearAFK=enabled live.
+  Production long-run remains RUNTIME FAIL: second cycle at age 507062 ms,
+  client active/server clear, no recovery. Do not generalize the first success.
 
 Provenance matters: the following milestones were explicitly reported verified
 by the user in the V6 request. The current log no longer contains those runs;
@@ -409,12 +416,11 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
-- **AFK first:** launch a logged-in safe client with
-  `WOW_INTERNAL_AFK_MODE=qualify` in the WoW process environment. Detailed fish
-  commands and evidence sequence are in `docs/AFK_5875_AUDIT.md`. Need natural
-  baseline or initial-AFK clear with the new explicit composite
-  `paired_F12_then_native_auto_clear`, then two clear prevention intervals
-  and both workload integrations. No automatic RUNTIME PASS from log counters.
+- **AFK first:** P0.0.6 normal-mode >=20-minute Grinding gate, two pre-threshold
+  qualified pulses during real benign work, DEFER/RESUME across legitimate
+  combat blocks, and recovery verification. Qualification already passed per
+  user report. New production changes are RUNTIME PENDING; persistent mixed
+  AFK flags remain blocked on safe reconciliation evidence. See AFK audit.
 
 - 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
   edge 0x...2E6C -> 0x...2E6B and 14N.2 suppressed its immediate retry.
@@ -472,12 +478,13 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    wall-inset steering or collision. Its report cannot grant runtime PASS.
 6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-7. AFK: newest capture proves hold/quiescence and 300241-ms baseline. Paired
-   F12 delivery and native input timestamp are RUNTIME PASS; F12-alone clear
-   is RUNTIME FAIL (both flags still active at 3245 ms). No prevention window
-   began. P0.0.4 adds a separate source-audited native auto-clear continuation;
-   live CVar, clear and two prevention windows await user login/start. No WoW
-   process was running during this audit. Do not merely retry F12 alone.
+7. AFK: qualification passed per user; normal Grinding cycle 1 passed in log,
+   long-run failed after unsafe deferral and client/server disagreement.
+   New scheduler/both-active recovery await runtime. Mixed-state native clear
+   is NOT safe: 5EB830 returns for client-clear; with client-active/server-clear
+   its empty message toggles server AFK on in local VMaNGOS. Need legitimate
+   reconciliation evidence, not removal of that guard. No WoW process running
+   during this audit. See P0.0.6 section in AFK_5875_AUDIT.md.
    GUI status transport and a broader water-state model remain unimplemented.
 8. Much prior working project code/data/tests is still dirty/untracked. This
    checkpoint publishes only reviewed audit/tooling files, not the complete
@@ -485,13 +492,36 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.4 AFK FIRST (user priority override):** real client/server clear path;
-quiescence, already-AFK entry and asynchronous clearing preserved. SOURCE VERIFIED;
-see current checkpoint below. RUNTIME PENDING until rebuilt-client qualification. Do not advance to
+**P0.0.6 AFK FIRST:** production due/defer and recovery. SOURCE VERIFIED;
+qualification RUNTIME PASS per user, production long-run RUNTIME FAIL.
+New implementation RUNTIME PENDING. Mixed-state clear needs new safe-path evidence. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a
 blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
 default protection cannot interfere with active gameplay owners. Candidate
 input alone advances the clock but does NOT clear AFK. No GUI/profile/talent expansion.
+
+## P0.0.6 bounded production checkpoint
+
+AfkProductionPolicy adds Recent/Due/Deferred/VerifyingInput/RecoveringAfk/
+VerifyingClear/Faulted, source-relative 80/90/100% urgency, sticky due cleared
+only by native input evidence, and one native clear per bounded recovery.
+Either active flag enters recovery, but mixed flags wait for authoritative
+convergence and fault within the existing 3000 ms if persistent; no unsafe
+toggle. This intentionally does NOT claim full P0.0.6 mixed-state recovery.
+Implementation qualification is an explicit reviewed release fact; session
+delivery and each action still start unverified. No volatile prior-process
+qualification flag is required for classified benign work.
+
+Adapter preserves native/UI/held-input guards; ordinary known land movement
+is permitted only with benign-work evidence. Paired-message synchronous scene
+proof prevents confusing normal between-tick navigation with key side effects.
+Monitor changes only AFK safety classification (first aid/vendor/low health).
+Questing shares scheduler but active unclassified Questing owners stay blocked.
+No combat, navigation, recovery limits, or later V6 behavior changed.
+Files: new AfkProductionPolicy/test; AfkClient5875, AfkQualificationHold,
+SharedAfkController, isolated WorldMonitor AFK hunk, both continuity documents.
+Runtime gate: normal Grinding >=20 minutes; exact details and mixed-state
+source contradiction are in AFK_5875_AUDIT.md. AFK remains highest priority.
 
 ## P0.0.4 source/test checkpoint
 
@@ -592,6 +622,14 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.6 base: `5f91e854cfbfa27923dd8ff88bbca77faccfaeae`.
+  TEST PASS: 78 strict C++20/Wall/extra/Werror tests; 13 Python tests plus
+  QuestDB SQL fixture; six Lua fixtures / 113 checks. BUILD PASS and
+  DIFF CHECK PASS. Final artifact: `/tmp/wow-validation-v9eov92z/results.json`.
+  New production behavior RUNTIME PENDING; mixed-state recovery remains an
+  explicit protocol blocker, not claimed fixed. Checkpoint/push follows review.
+  WorldMonitor contains unrelated prior dirty work: stage ONLY the AFK safety
+  hunk, never the whole file. Remaining user work must stay untouched.
 - P0.0.4 base: `d012a470d39575ea9e70bb0cee53c41954ef67d0`.
   Current validation: TEST PASS, 77 strict C++ tests, 13 Python tests plus
   QuestDB SQL self-test, six Lua fixtures / 113 checks. Artifact:
@@ -673,12 +711,10 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. **AFK runtime gate first:** user launches/logs in on safe land with qualify
-   mode; quiescence start/reset/complete, clear OR already-AFK baseline,
-   read-only `AFK AUTO CLEAR` value, fresh candidate input-clock confirmation,
-   native auto-clear action, asynchronous two-flag clear and two prevention
-   windows. Neither flag may be fabricated. Do not retry the rejected F12-only
-   clear path or change the CVar silently. Never substitute a blind W loop.
+1. **AFK first:** normal-mode >=20-minute Grinding prevention/defer/resume gate;
+   retain qualification pass separately. Resolve mixed-state client/server
+   protocol blocker before claiming production recovery complete. Neither
+   flag may be fabricated; no blind toggle, CVar change or W loop.
 2. Capture/reconstruct the failing live cave transition with current recovery
    telemetry; use the expanded offline report. Apply only a proved shared-layer
    correction, then regression/build/diff and runtime qualification.

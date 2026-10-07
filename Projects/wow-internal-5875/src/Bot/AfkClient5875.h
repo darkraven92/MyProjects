@@ -17,7 +17,7 @@ namespace Bot
 {
     struct AfkDispatchResult
     {
-        bool issued=false, releaseDelivered=false, blocked=true;
+        bool issued=false, releaseDelivered=false, blocked=true, sceneVerified=false;
         std::string reason="dispatch_unavailable";
         AfkObservation before{};
         AfkCandidateScene sceneBefore{};
@@ -148,7 +148,8 @@ namespace Bot
             });
             return invoked ? reason : "guard_dispatch_failed";
         }
-        static const char* StationarySafetyReason(const Objects::PlayerState& player)
+        static const char* StationarySafetyReason(const Objects::PlayerState& player,
+            bool ordinaryLandMovement=false)
         {
             std::uint32_t movement=0,unitFlags=0,playerFlags=0,health=0;
             if (!player.valid || !player.movement || !player.descriptors) return "player_unavailable";
@@ -159,7 +160,10 @@ namespace Bot
             if (health<=1 || (playerFlags&0x10u)) return "death_or_ghost";
             if (unitFlags&0x80000u) return "native_combat_flag";
             if (movement&0x00200000u) return "swimming";
-            if (movement&~0x100u) return "movement_or_transport_flags";
+            // VMaNGOS 1.12.1 MOVEFLAG_FORWARD/BACKWARD/STRAFE/TURN plus WALK.
+            // No pitch, jumping, falling, swim, transport or unknown flags.
+            if (!AfkWorkloadSafetyPolicy::LandMovementAllowed(movement,ordinaryLandMovement))
+                return "movement_or_transport_flags";
             return nullptr;
         }
         static bool StationaryAliveLand(const Objects::PlayerState& player)
@@ -188,7 +192,7 @@ namespace Bot
             return o;
         }
         static AfkDispatchResult Dispatch(const Objects::PlayerState& player,
-            AfkAction action, const AfkObservation& expected)
+            AfkAction action, const AfkObservation& expected, bool ordinaryLandMovement=false)
         {
             AfkDispatchResult result;
             if (!Supported()) { result.reason="client_signature_mismatch"; return result; }
@@ -199,11 +203,10 @@ namespace Bot
                 if (!AfkProtectionPolicy::Valid(result.before) ||
                     result.before.lastInput!=expected.lastInput)
                 { result.reason="input_or_world_changed"; return; }
-                // Reject all movement/transport/swim/fall/unknown flags; only
-                // the stationary walk-mode preference is permitted.
-                if (!StationaryAliveLand(player))
+                if (StationarySafetyReason(player,ordinaryLandMovement))
                 { result.reason="movement_water_or_unknown"; return; }
-                for (int key : {VK_F12,VK_SHIFT,VK_CONTROL,VK_MENU})
+                // Do not overlap ANY held user/explicit keyboard or mouse input.
+                for (int key=1; key<256; ++key)
                     if ((GetAsyncKeyState(key)&0x8000)!=0)
                     { result.reason="physical_key_held"; return; }
                 using DoString=bool (__fastcall*)(const char*,const char*);
@@ -217,7 +220,7 @@ namespace Bot
                 { result.reason=guard ? guard : "guard_unavailable"; return; }
                 if (action==AfkAction::NativeAutoClear)
                 {
-                    // Called ONLY by the opt-in composite qualification after
+                    // Called by qualification or production recovery after
                     // input delivery and unchanged-scene evidence. Recheck here
                     // because the server's empty AFK message is a toggle.
                     result.before=Read(player);
@@ -260,6 +263,13 @@ namespace Bot
                 result.issued=AfkInputPulse(driver);
                 result.releaseDelivered=driver.released;
                 result.reason=result.issued ? "paired_messages_delivered" : "input_dispatch_failed";
+                // Synchronous same-game-thread bracket, before gameplay's next
+                // update. Normal navigation between ticks is NOT a key effect.
+                const auto afterScene=ReadScene(player);
+                const bool uiRead=run(AfkSafeInputScript,"wow-internal/AfkPostInput.lua");
+                const char* afterUi=uiRead ? text(const_cast<char*>("WOW_INTERNAL_AFK_INPUT"),0xffffffffu,0) : nullptr;
+                result.sceneVerified=AfkCandidateScene::Unchanged(result.sceneBefore,afterScene) &&
+                    afterUi && std::strcmp(afterUi,"ready")==0;
             });
             if (!invoked) { result.blocked=false; result.reason="game_thread_dispatch_failed"; }
             return result;
