@@ -82,6 +82,13 @@ build; results `/tmp/wow-validation-vhvuu2a7/results.json`, tree
 `/tmp/wow-p041-isolated.eZwvle`. The 13 local QuestDB Python tests belong to
 unrelated unpublished work, so they are absent in that isolated tree; SQL
 remains present and passed. Neither build constitutes a live water observation.
+Follow-up log-audit correction: draining/refilling counts additionally require
+`breathActive=yes`, so an inactive timer's stale scale is not live direction
+evidence. Final post-correction TEST PASS: full 92 C++/26 audit Python/13
+QuestDB Python/SQL/eight Lua, `/tmp/wow-validation-oz2svn1s/results.json`;
+isolated 43 C++/26 audit Python/SQL/three Lua and complete MinGW build,
+`/tmp/wow-validation-2ixqiaz9/results.json` in
+`/tmp/wow-p041-final-isolated.ZmhzAw`. Explicit build and diff checks PASS.
 
 2026-10-07. **Incomplete implementation checkpoint: SOURCE GAP.** The user's
 sections31/48 stop gate applies. No production water movement, state reader,

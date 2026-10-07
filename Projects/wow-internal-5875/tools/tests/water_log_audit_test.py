@@ -110,9 +110,10 @@ class WaterLogAuditTest(unittest.TestCase):
             "WATER MIRROR TIMER event=start timer=BREATH",
             "WATER MIRROR TIMER event=stop timer=BREATH",
             "WATER MIRROR TIMER event=start timer=EXHAUSTION",
-            "WATER EVIDENCE breathKnown=no breathScale=-1 runtimeObserved=yes classification=Unknown",
-            "WATER EVIDENCE breathKnown=yes breathScale=-1 runtimeObserved=yes classification=SwimmingStateUnknown",
-            "WATER EVIDENCE breathKnown=yes breathScale=10 runtimeObserved=yes classification=SwimmingStateUnknown",
+            "WATER EVIDENCE breathKnown=no breathActive=unknown breathScale=-1 runtimeObserved=yes classification=Unknown",
+            "WATER EVIDENCE breathKnown=yes breathActive=no breathScale=-1 runtimeObserved=yes classification=SwimmingStateUnknown",
+            "WATER EVIDENCE breathKnown=yes breathActive=yes breathScale=-1 runtimeObserved=yes classification=SwimmingStateUnknown",
+            "WATER EVIDENCE breathKnown=yes breathActive=yes breathScale=10 runtimeObserved=yes classification=SwimmingStateUnknown",
         ])
         self.assertEqual(result["breathStartEvents"], 1)
         self.assertEqual(result["breathStopEvents"], 1)

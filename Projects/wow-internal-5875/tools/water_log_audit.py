@@ -75,7 +75,8 @@ def audit(lines):
             counts["groundExitEvidence"] += (f.get("groundContactKnown") == "yes" and
                                               f.get("groundContact") == "yes" and
                                               f.get("runtimeObserved") == "yes")
-            if f.get("breathKnown") == "yes" and f.get("runtimeObserved") == "yes":
+            if (f.get("breathKnown") == "yes" and f.get("breathActive") == "yes" and
+                    f.get("runtimeObserved") == "yes"):
                 try:
                     scale = int(f.get("breathScale", ""))
                 except ValueError:

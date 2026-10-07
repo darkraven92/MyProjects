@@ -54,6 +54,12 @@ Python tests, SQL, three published Lua fixtures and full DLL/GUI/loader build;
 results `/tmp/wow-validation-vhvuu2a7/results.json`. The 13 local QuestDB
 Python tests are unpublished unrelated work and absent from the isolated tree.
 No live WoW observation occurred; all new runtime water gates PENDING.
+Follow-up audit-only correction requires `breathActive=yes` before counting a
+drain/refill scale. Final rerun PASS: full
+`/tmp/wow-validation-oz2svn1s/results.json` (92 C++), isolated
+`/tmp/wow-validation-2ixqiaz9/results.json` (43 C++), plus explicit build
+and diff checks. The isolated export is
+`/tmp/wow-p041-final-isolated.ZmhzAw`; no new gameplay path changed.
 
 ## P0.4 source gate (2026-10-07; authoritative current status)
 
