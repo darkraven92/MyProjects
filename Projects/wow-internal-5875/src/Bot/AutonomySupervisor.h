@@ -1,5 +1,8 @@
 #pragma once
 
+#include "NavigationInitializationLivenessPolicy.h"
+#include "../Navigation/NavigationInitTelemetryPolicy.h"
+
 #include <cmath>
 #include <cstdint>
 
@@ -27,6 +30,8 @@ namespace Bot
         float y = 0.0f;
         float z = 0.0f;
         std::uint32_t targetHealth = 0;
+        Navigation::NavigationInitializationObservation navigationInitialization{};
+        std::uint64_t monotonicMs = 0;
     };
 
     struct AutonomyEvent
@@ -34,6 +39,7 @@ namespace Bot
         AutonomyEventKind kind = AutonomyEventKind::None;
         AutonomyActivity activity = AutonomyActivity::None;
         std::uint64_t stalledTicks = 0;
+        const char* classification = "no_physical_or_hp_progress";
     };
 
     class AutonomySupervisor
@@ -61,6 +67,10 @@ namespace Bot
         std::uint32_t lastTargetHealth_ = 0;
         int softEvents_ = 0;
         int hardEvents_ = 0;
+        Navigation::NavigationInitializationObservation planning_{};
+        std::uint64_t planningStartedMs_ = 0;
+        std::uint64_t planningProgressTick_ = 0;
+        bool planningFailureLatched_ = false;
 
         static float Distance3D(
             float ax, float ay, float az,
@@ -115,6 +125,59 @@ namespace Bot
                 softLatched_ = false;
                 activity_ = AutonomyActivity::None;
                 identity_ = 0;
+                planning_ = {};
+                planningFailureLatched_ = false;
+                return {};
+            }
+
+            if (sample.activity == AutonomyActivity::Movement &&
+                sample.navigationInitialization.Valid())
+            {
+                const auto& work = sample.navigationInitialization;
+                const bool regressed = planning_.pending && work.intent == planning_.intent &&
+                    (static_cast<int>(work.tier) < static_cast<int>(planning_.tier) ||
+                     (work.tier == planning_.tier &&
+                      (work.tilesProcessed < planning_.tilesProcessed ||
+                       work.tilesTotal != planning_.tilesTotal)));
+                if (!planning_.pending || work.intent != planning_.intent)
+                {
+                    planningStartedMs_ = sample.monotonicMs;
+                    planningProgressTick_ = tick;
+                    planningFailureLatched_ = false;
+                }
+                else if ((work.tier == planning_.tier &&
+                          work.tilesProcessed > planning_.tilesProcessed) ||
+                         static_cast<int>(work.tier) > static_cast<int>(planning_.tier))
+                {
+                    // Tile/tier work is planning liveness ONLY. Never refund
+                    // a follower recovery budget or report physical progress.
+                    planningProgressTick_ = tick;
+                }
+                planning_ = work;
+                const bool budgetExhausted = sample.monotonicMs < planningStartedMs_ ||
+                    sample.monotonicMs - planningStartedMs_ >=
+                        static_cast<std::uint64_t>(
+                            NavigationInitializationLivenessPolicy::MaximumPendingMs);
+                const bool frozen = tick < planningProgressTick_ ||
+                    tick - planningProgressTick_ >= MovementHardTicks;
+                if ((budgetExhausted || frozen || regressed) && !planningFailureLatched_)
+                {
+                    planningFailureLatched_ = true;
+                    ++hardEvents_;
+                    return {AutonomyEventKind::HardStall, AutonomyActivity::Movement,
+                        tick >= planningProgressTick_ ? tick - planningProgressTick_ : 0,
+                        regressed ? "initialization_evidence_regressed" :
+                        (budgetExhausted ? "initialization_budget_exhausted" : "initialization_frozen")};
+                }
+                return {};
+            }
+            if (planning_.pending)
+            {
+                planning_ = {};
+                planningFailureLatched_ = false;
+                // Start the unchanged execution watchdog when movement can
+                // actually begin, not when the owner requested tile loading.
+                Baseline(sample, tick);
                 return {};
             }
 
@@ -178,6 +241,8 @@ namespace Bot
 
         const char* ActivityName() const
         {
+            if (planning_.pending)
+                return "NavigationInitialization";
             switch (activity_)
             {
                 case AutonomyActivity::Combat: return "Combat";

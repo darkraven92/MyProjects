@@ -5077,6 +5077,7 @@ namespace Navigation
 
             NavPathResult path{};
             PathValidationDetail validationDetail{};
+            std::string underlyingHazardQueryError{};
 
             struct PlanProfileScope
             {
@@ -5088,6 +5089,8 @@ namespace Navigation
                 bool& retainedProjection;
                 NavigationInitTier& retainedQueryTier;
                 std::string& retainedError;
+                const std::uint64_t intent;
+                const std::string& underlyingHazardError;
                 std::chrono::steady_clock::time_point start =
                     std::chrono::steady_clock::now();
                 double queryMs = 0.0;
@@ -5123,10 +5126,32 @@ namespace Navigation
                         << " validationDetail=" <<
                             PathValidationDiagnosticPolicy::Name(detail.reason);
                     Debug::Logger::Info(stream.str());
+                    if (std::string_view(result) == "failed")
+                    {
+                        std::ostringstream failure;
+                        failure << "NAV PLAN FAILURE intent=" << intent
+                            << " tier=" << NavigationInitTelemetryPolicy::TierName(tier)
+                            << " reason=" << NavigationInitTelemetryPolicy::ReasonName(reason)
+                            << " startPoly=0x" << std::hex << path.startPoly
+                            << " destinationPoly=0x" << path.endPoly
+                            << " queryStatus=0x" << path.findPathStatus << std::dec
+                            << " loadedTiles=" << path.loadedTiles
+                            << " polygonCount=" << path.polygonCount
+                            << " outOfNodes=" << (path.findPathOutOfNodes ? "yes" : "no")
+                            << " bufferTooSmall=" << (path.findPathBufferTooSmall ? "yes" : "no")
+                            << " partial=" << (path.findPathPartialResult ? "yes" : "no")
+                            << " includeFlags=" << path.includeFlags
+                            << " excludeFlags=" << path.excludeFlags
+                            << " avoidanceRequested=" << path.avoidanceRequestedCount
+                            << " queryError={" << path.error << "}"
+                            << " underlyingHazardQueryError={" << underlyingHazardError << "}"
+                            << " validationDetail=" << PathValidationDiagnosticPolicy::Name(detail.reason);
+                        Debug::Logger::Info(failure.str());
+                    }
                 }
             } planProfile{path, currentInitTier_, lastPlanFailure_,
                 validationDetail, lastValidationDetail_, lastDestinationProjected_,
-                lastQueryTier_, lastQueryError_};
+                lastQueryTier_, lastQueryError_, intentId_, underlyingHazardQueryError};
 
             const auto queryStarted =
                 std::chrono::steady_clock::now();
@@ -5222,6 +5247,7 @@ namespace Navigation
                     }
                     else
                     {
+                        underlyingHazardQueryError = path.error;
                         path.error =
                             "Persistent navigation hazard memory rejected every safe corridor.";
                         Debug::Logger::Info(
@@ -6169,6 +6195,7 @@ namespace Navigation
                 << " lastStepMs=" << lastStepMs
                 << " threadId=" << GetCurrentThreadId()
                 << " destination=\"" << destinationLabel_ << "\""
+                << " intent=" << intentId_
                 << " reason=" << reason;
             Debug::Logger::Info(stream.str());
         }
@@ -7462,6 +7489,13 @@ namespace Navigation
         bool InitializationProgressing() const
         {
             return initializationPending_ && !pausedForCombat_;
+        }
+
+        NavigationInitializationObservation InitializationObservation() const
+        {
+            const auto progress = provider_.InitializationProgress();
+            return {InitializationProgressing(), intentId_, currentInitTier_,
+                progress.processed, progress.total};
         }
 
         bool HasUsablePath() const

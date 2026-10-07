@@ -33,15 +33,23 @@ int main()
     static_assert(!NavigationInitTelemetryPolicy::RetainIntentForFallback(
         NavigationInitTier::FullMap, true));
 
-    // Only source-explicit missing corridor/ground is called no_path.
+    // Projection, policy rejection and Detour no-path remain distinct.
     static_assert(NavigationInitTelemetryPolicy::QueryFailure(
         "Detour could not build a polygon path.") == NavigationPlanFailure::NoPath);
     static_assert(NavigationInitTelemetryPolicy::QueryFailure(
         "No ground polygon was found near the destination.") ==
-        NavigationPlanFailure::NoPath);
+        NavigationPlanFailure::DestinationProjectionFailed);
     static_assert(NavigationInitTelemetryPolicy::QueryFailure(
         "Persistent navigation hazard memory rejected every safe corridor.") ==
-        NavigationPlanFailure::OtherUnknown);
+        NavigationPlanFailure::PersistentHazardRejected);
+    static_assert(NavigationInitTelemetryPolicy::QueryFailure(
+        "No ground polygon was found near the start position.") ==
+        NavigationPlanFailure::StartProjectionFailed);
+    static_assert(NavigationInitTelemetryPolicy::QueryFailure(
+        "Could not resolve start/end polygon for blocked-route query.") ==
+        NavigationPlanFailure::AvoidanceProjectionUnresolved);
+    static_assert(NavigationInitTelemetryPolicy::QueryFailure(
+        "Unrecognized failure") == NavigationPlanFailure::OtherUnknown);
 
     assert(std::string_view(NavigationInitTelemetryPolicy::ReasonName(
         NavigationPlanFailure::InitializationFailed)) == "initialization_failed");
@@ -83,4 +91,7 @@ int main()
     assert(follower.find("lastPlanFailure_ = "
                          "NavigationPlanFailure::HardStallExhausted;") !=
            std::string::npos);
+    assert(follower.find("NAV PLAN FAILURE intent=") != std::string::npos);
+    assert(follower.find("underlyingHazardQueryError = path.error;") != std::string::npos);
+    assert(follower.find("queryStatus=0x") != std::string::npos);
 }

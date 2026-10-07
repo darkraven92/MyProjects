@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameThreadDispatcher.h"
+#include "PlayerPostureEvidencePolicy.h"
 
 #include "../Core/Memory.h"
 #include "../Debug/Logger.h"
@@ -24,7 +25,8 @@ namespace Bot
     {
     private:
         static constexpr std::uintptr_t LuaDoStringRva = 0x00304CD0;
-        static constexpr std::uintptr_t StandStateOffset = 0x210;
+        static constexpr std::uintptr_t StandStateOffset =
+            PlayerPostureEvidencePolicy::DescriptorOffset;
         static constexpr std::uint8_t Standing = 0;
         static constexpr std::uint8_t Dead = 7;
 
@@ -97,8 +99,9 @@ namespace Bot
                 return false;
             }
 
-            standState = static_cast<std::uint8_t>(bytes1 & 0xFFu);
-            return true;
+            const auto evidence = PlayerPostureEvidencePolicy::Decode(bytes1);
+            standState = evidence.state;
+            return evidence.known;
         }
 
         static bool EnsureStanding(

@@ -9,11 +9,79 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.2 Combat reliability**. Preserve verified AFK and
+- Current phase: V6 **P0.3 Navigation reliability**. Preserve verified Combat, AFK and
   DeathRecovery behavior and mixed-state fail-closed design. No swimming,
   trainer/talent/GUI/Questing-architecture work in this checkpoint.
 
-## Current P0.2 Combat checkpoint (2026-10-07)
+## Current P0.3 navigation checkpoint (2026-10-07)
+
+SOURCE VERIFIED: newest full session684.134358538029914000.116409170.1128
+ran20.0032 minutes, movementRecoveries16/runtimeRecoveries42/runtimeEscalations30
+(0.800/2.100/1.500 per minute). Read-only full-log audit shows ALL16 movement
+hard stalls cancelled a progressing expanded loader with commands0/replans0,
+not stalled CTM. The first AutonomySupervisor physical watchdog killed work
+before the later RuntimeRobustness planning deferral. Thirteen cancellations
+were around one captured position, but corridor/edge identity is UNKNOWN
+before a query; do not invent a repeated directed failure.
+
+Independent SOURCE VERIFIED posture bug: full OBJECT descriptor offset0x210
+read native display ID (runtime byte51), not UNIT stand state. Binary UNIT
+binders add0x18; correct full-base stand-state offset0x228 matches VMaNGOS.
+Twenty-four global recoveries used unexpected_seated_idle;18 acquisition
+idle_deadlock events are distinct and not claimed fixed. Eleven plan failures
+were persistent hazard policy rejection previously other_unknown; five were
+destination projection failures previously no_path. Offline exact-position
+inspection reproduced destination-poly0 for two roam targets, with a30.83-yard
+surface delta in one sample. No guessed height/terrain relaxation added.
+
+Small fixes: actual provider tile-progress snapshot through Grind/WorldMonitor
+to AutonomySupervisor; advancing planning is not physical progress. Frozen
+work still fails at48 ticks; same intent keeps existing240000-ms absolute
+planning ceiling across tiers; regressed work fails explicitly. Execution
+watchdog, follower episodes and RuntimeRobustness counters are unchanged.
+Correct posture offset and reject unsupported bytes. Typed projection/hazard
+failure attribution plus raw query/validation/underlying-hazard diagnostics;
+explicit optional-roam abandonment only after shared-nav terminal. Existing
+directed attribution, CTM provenance, recovery budgets2000/4/2,14O.1 and
+persistent hazard memory are untouched. Full evidence/state-pipeline/runtime
+runbook: `docs/NAVIGATION_RELIABILITY_AUDIT.md`.
+
+Latest baseline directly corroborates P0.2 RUNTIME PASS: natural same-target
+autoattack-latch desync repaired forGUID0xF130000D58003736, then targetHP100->92;
+seven confirmed recovery verification events in a normal20-minute combat regression session.
+AFK three confirmed prevention pulses including combat-defer/resume remain
+RUNTIME PASS. Deaths0 in this capture; earlier complete natural DeathRecovery
+cycles remain RUNTIME PASS, not newly exercised here. AFK/death/combat policies
+are unchanged by P0.3.
+
+TEST PASS:87 strict C++ tests, six new offline-audit Python tests, existing
+QuestDB/SQL and eight Lua fixture programs; full run
+`/tmp/wow-validation-24x50g5h/results.json`, BUILD/DIFF PASS. Focused regressions:
+planning progress/freeze/regression/bound, intent/tier continuity, physical
+execution/no-displacement, posture descriptor base, precise failure classes,
+offline correlation/no fabricated geometry. Isolated intended checkpoint also
+PASS:38 published strict C++ tests, six audit Python tests, QuestDB SQL fixture,
+three published Lua programs and DLL/loader/GUI/testhost build; results
+`/tmp/wow-validation-feq40npk/results.json`, snapshot
+`/tmp/wow-navigation-final.7qQhjW`. Missing published QuestDB Python fixtures
+are explicitly reported; discovery is registered only when files exist, still
+running all13 local fixtures in full-worktree validation. Unrelated tests/code
+are not staged to make the checkpoint appear dependency-complete.
+RUNTIME PENDING: fresh normal20–30-minute unattended Grind, full capture, loader
+completion without false cancellation, valid posture evidence, coherent intents,
+counter-rate comparison and preserved AFK/combat/natural-death regressions.
+No metric reduction is claimed from source/tests. No later V6 phase starts.
+
+Files: AutonomySupervisor, PlayerPostureController/new evidence policy, shared
+follower/initialization telemetry, isolated Grind/WorldMonitor navigation hunks,
+two new C++ regressions/extended telemetry test, read-only navigation_log_audit
+and Python fixture/validation registration, this document and navigation audit.
+Preserve ALL pre-existing broad WorldMonitor/Grind/combat/quest/GUI/service/data
+changes unstaged. Baseline HEAD6cbf0cdec1bf3342125cc91b205459dab6ce6945. Resolve
+published code identity with `git log -1 --format='%H %s' --
+src/Bot/PlayerPostureEvidencePolicy.h`; compare local HEAD with remote branch.
+
+## Historical P0.2 Combat checkpoint (2026-10-07)
 
 SOURCE VERIFIED: CombatController used descriptor UNIT_FIELD_TARGET (server
 attack victim) as UI selection. AttackStop clears that victim; native SetTarget
@@ -835,11 +903,13 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.2 Combat reliability:** native UI selection / server victim distinction
-and bounded same-target damage watchdog implemented; SOURCE/TEST/BUILD/DIFF PASS,
-RUNTIME PENDING. Baseline DeathRecovery has two newest confirmed cycles. AFK
-normal Grinding and Ghost remain PASS; mixed-state residual stays fail-closed,
-untouched. No swimming, GUI/profile/talent/trainer expansion in this checkpoint.
+**P0.3 Navigation reliability:** advancing initialization is separated from
+physical movement in the first owner watchdog; full-base posture read corrected;
+projection/hazard failures attributed. SOURCE/TEST/BUILD/DIFF PASS; new-fix
+RUNTIME PENDING. Latest20-minute baseline verifies Combat P0.2 natural latch
+repair/damage and AFK prevention. Prior DeathRecovery/Ghost gates remain PASS;
+mixed-state AFK residual stays bounded fail-closed. Preserve2000/4/2 and terrain
+safety; no swimming, GUI/profile/talent/trainer expansion in this checkpoint.
 
 ## P0.0.7 bounded death/ghost checkpoint
 
@@ -933,12 +1003,14 @@ separate.
 
 # Runtime validation gates
 
-Current first gate: normal Grinding, no deliberately unsafe stall. Capture
-COMBAT/Combat/TARGET/ATTACK/LIVENESS/DESYNC/HARD STALL/RECOVERY/DEATH/AFK. Normal
-fights unaffected; natural desync keeps SAME GUID, verifies selection/latch then
-damage or death, with bounded attempts. Preserve combat-defer AFK and natural
-death ownership/reclaim/resume. No new recovery RUNTIME PASS from ordinary
-fights alone. Baseline death-to-alive gate has passed twice before this patch.
+Current first gate: P0.3 normal unattended Grinding20–30 minutes; preserve FULL
+log and run `python3 tools/navigation_log_audit.py CAPTURE`. Compare movement,
+runtime recovery and escalation rates to0.800/2.100/1.500 per minute. No progressing
+loader falsely killed at48 ticks, impossible posture51, sustained stationary
+stall or same-geometry recovery loop; actual kills/XP/movement must continue.
+Do not manufacture bad terrain/death/stall. AFK/combat regressions remain live
+requirements; naturally occurring death must preserve corpse/reclaim/resume.
+P0.2 natural desync/damage baseline passed; prior death-to-alive gate passed twice.
 
 1. Preserve one continuous post-fix session log before another GUI log clear.
 2. Repeat the SAME natural corridor twice: intent -> exact steering attribution
@@ -988,6 +1060,15 @@ The inspector reads local VMaNGOS Detour sources; `VMANGOS_DETOUR_ROOT` can
 override their location. It writes reports only, never controls WoW.
 
 # Git state
+
+- P0.3 checkpoint base `6cbf0cdec1bf3342125cc91b205459dab6ce6945`; current
+  branch `codex/wow-internal-continuation`, verified origin
+  `git@github.com:darkraven92/MyProjects.git`. Full worktree and isolated
+  intended-tree validation/build PASS; only the intended files and five isolated
+  owner hunks listed above are staged. Own commit identity is obtained through
+  `git log -1 --format='%H %s' -- src/Bot/PlayerPostureEvidencePolicy.h`.
+  Current HEAD/remote synchronization is verified independently after push;
+  no complete dirty-worktree publication or new runtime PASS is implied.
 
 - P0.2 validated combat code checkpoint:
   `c88f673ee01102251f4a6860acf04ce4de5a6129`
@@ -1161,13 +1242,16 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. Validate P0.2 in normal natural Grinding: normal fights/AFK/death priority
-   unchanged; any natural desync recovers SAME GUID with post-command evidence
-   and then target HP progress/death. No unsafe manufactured stall. Baseline
-   DeathRecovery now has two natural confirmed exits in the newest capture;
-   its post-combat-patch regression gate remains pending. If terrain fails,
-   inspect exact query/tier/geometry without weakening safety. AFK normal
-   Grinding/debt/planning/combat safe gaps and Ghost qualification have passed.
+1. Validate P0.3 in normal natural Grinding20–30 minutes with full capture;
+   compare recovery rates and inspect progressing initialization/posture/query
+   evidence before declaring reduced churn. P0.2 natural same-target latch
+   repair and normal20-minute combat regression now PASS. Keep normal fights,
+   AFK/death priority unchanged. Earlier DeathRecovery has two confirmed natural
+   exits; latest20-minute session had no death, so new navigation regression
+   requires a natural cycle if one occurs. Remaining acquisition idle_deadlock
+   events and any actual CTM stalls need separate evidence, not broad changes.
+   If terrain fails, inspect exact query/tier/geometry without weakening safety.
+   AFK normal Grinding/debt/planning/combat gaps and Ghost qualification passed.
    Preserve the P0.0.11 mixed-state residual fail-closed design; capture its new
    diagnostics only if mixed state occurs naturally. No speculative toggles,
    CVar changes, fake flags or W loop. Later natural Dead gate is distinct;

@@ -65,10 +65,15 @@ def main():
             print(f"C++ {'PASS' if all(r['pass'] for r in records) else 'FAIL'} {name}", flush=True)
 
     commands = [
-        ("questdb_python", ["python3", "-m", "unittest", "discover", "-s",
-                            "tools/questdb/tests", "-p", "*_test.py", "-v"]),
+        ("navigation_audit_python", ["python3", "-m", "unittest", "discover", "-s",
+                                   "tools/tests", "-p", "*_test.py", "-v"]),
         ("questdb_fixture", ["fish", "tools/questdb/tests/run.fish"]),
     ]
+    if any((ROOT / "tools/questdb/tests").glob("*_test.py")):
+        commands.insert(1, ("questdb_python", ["python3", "-m", "unittest", "discover",
+            "-s", "tools/questdb/tests", "-p", "*_test.py", "-v"]))
+    else:
+        print("QuestDB Python: no registered test files; SQL fixture remains required", flush=True)
     for name, command in commands:
         result, log = run(name, command)
         results.append(result)

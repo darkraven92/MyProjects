@@ -341,6 +341,7 @@ namespace Bot
             GrindModeController grindMode;
             ExperienceTracker experienceTracker;
             AutonomySupervisor autonomySupervisor;
+            Navigation::NavigationInitializationObservation lastAutonomyInitialization{};
             ActiveBotAfkSafeguard antiAfkSafeguard;
             SharedAfkController sharedAfk;
             std::string lastAfkSafetyDecision;
@@ -1210,6 +1211,24 @@ namespace Bot
                     autonomySample.x = world.player.x;
                     autonomySample.y = world.player.y;
                     autonomySample.z = world.player.z;
+                    autonomySample.monotonicMs = GetTickCount64();
+                    autonomySample.navigationInitialization =
+                        grindMode.NavigationInitializationObservation();
+                    const auto& work = autonomySample.navigationInitialization;
+                    if (work.Valid() &&
+                        (!lastAutonomyInitialization.pending ||
+                         work.intent != lastAutonomyInitialization.intent ||
+                         work.tier != lastAutonomyInitialization.tier))
+                    {
+                        Debug::Logger::Info(
+                            "NAV STALL CLASSIFICATION intent=" + std::to_string(work.intent) +
+                            " owner=Grinding class=initialization_pending decision=preserve_intent"
+                            " physicalProgress=no tier=" +
+                            Navigation::NavigationInitTelemetryPolicy::TierName(work.tier) +
+                            " tilesProcessed=" + std::to_string(work.tilesProcessed) +
+                            " tilesTotal=" + std::to_string(work.tilesTotal));
+                    }
+                    lastAutonomyInitialization = work;
 
                     const AutonomyEvent autonomyEvent =
                         autonomySupervisor.Update(autonomySample, tick);
@@ -1227,6 +1246,20 @@ namespace Bot
                     }
                     else if (autonomyEvent.kind == AutonomyEventKind::HardStall)
                     {
+                        if (autonomyEvent.activity == AutonomyActivity::Movement)
+                        {
+                            const auto& init = autonomySample.navigationInitialization;
+                            Debug::Logger::Info(
+                                "NAV STALL CLASSIFICATION intent=" + std::to_string(init.intent) +
+                                " owner=Grinding class=" + autonomyEvent.classification +
+                                " state=" + grindMode.StateName() +
+                                " initializationPending=" + (init.pending ? "yes" : "no") +
+                                " tier=" + Navigation::NavigationInitTelemetryPolicy::TierName(init.tier) +
+                                " tilesProcessed=" + std::to_string(init.tilesProcessed) +
+                                " tilesTotal=" + std::to_string(init.tilesTotal) +
+                                " position=" + Float(world.player.x) + "," +
+                                    Float(world.player.y) + "," + Float(world.player.z));
+                        }
                         const std::string reason =
                             "no meaningful physical/HP progress for " +
                             std::to_string(autonomyEvent.stalledTicks) +

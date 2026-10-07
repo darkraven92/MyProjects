@@ -1070,6 +1070,14 @@ namespace Bot
 
             if (roamNavigator_->Failed())
             {
+                Debug::Logger::Info(
+                    "NAV OBJECTIVE ABANDON owner=Grinding objective=roam"
+                    " sharedNavigationTerminal=yes reason=" +
+                    std::string(Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                        roamNavigator_->LastPlanFailure())) +
+                    " sector=" + std::to_string(roamDestinationIndex_) +
+                    " commands=" + std::to_string(roamNavigator_->Commands()) +
+                    " replans=" + std::to_string(roamNavigator_->Replans()));
                 auto& sector = sectors_[roamDestinationIndex_];
                 sector.cooldownUntil = tick + FailedSectorCooldownTicks;
                 ++sector.failures;
@@ -2072,6 +2080,14 @@ namespace Bot
             return (approachNavigator_ && approachNavigator_->InitializationProgressing()) ||
                 (roamNavigator_ && roamNavigator_->InitializationProgressing()) ||
                 vendor_.NavigationInitializationPending();
+        }
+        Navigation::NavigationInitializationObservation NavigationInitializationObservation() const
+        {
+            if (approachNavigator_)
+                return approachNavigator_->InitializationObservation();
+            if (roamNavigator_)
+                return roamNavigator_->InitializationObservation();
+            return {};
         }
         bool FirstAidActive() const { return firstAid_.IsActive(); }
         int FirstAidCraftsIssued() const { return firstAid_.CraftsIssued(); }

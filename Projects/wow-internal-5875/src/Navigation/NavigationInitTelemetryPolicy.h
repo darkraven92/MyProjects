@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string_view>
+#include <cstddef>
+#include <cstdint>
 
 namespace Navigation
 {
@@ -23,7 +25,28 @@ namespace Navigation
         SurfaceRecoveryExhausted,
         ReplanBudgetExhausted,
         HardStallExhausted,
-        OtherUnknown
+        OtherUnknown,
+        StartProjectionFailed,
+        DestinationProjectionFailed,
+        AvoidanceProjectionUnresolved,
+        PersistentHazardRejected
+    };
+
+    // Snapshot of actual incremental work, not a route generation or CTM
+    // dispatch. The same intent survives internal tier changes.
+    struct NavigationInitializationObservation
+    {
+        bool pending = false;
+        std::uint64_t intent = 0;
+        NavigationInitTier tier = NavigationInitTier::None;
+        std::size_t tilesProcessed = 0;
+        std::size_t tilesTotal = 0;
+
+        bool Valid() const
+        {
+            return pending && intent != 0 && tier != NavigationInitTier::None &&
+                tilesTotal != 0 && tilesProcessed <= tilesTotal;
+        }
     };
 
     struct NavigationInitTelemetryPolicy
@@ -39,11 +62,16 @@ namespace Navigation
         static constexpr NavigationPlanFailure QueryFailure(
             std::string_view error)
         {
-            return error == "Detour could not build a polygon path." ||
-                error == "No ground polygon was found near the start position." ||
-                error == "No ground polygon was found near the destination."
-                ? NavigationPlanFailure::NoPath
-                : NavigationPlanFailure::OtherUnknown;
+            if (error == "No ground polygon was found near the start position.")
+                return NavigationPlanFailure::StartProjectionFailed;
+            if (error == "No ground polygon was found near the destination.")
+                return NavigationPlanFailure::DestinationProjectionFailed;
+            if (error == "Could not resolve start/end polygon for blocked-route query.")
+                return NavigationPlanFailure::AvoidanceProjectionUnresolved;
+            if (error == "Persistent navigation hazard memory rejected every safe corridor.")
+                return NavigationPlanFailure::PersistentHazardRejected;
+            return error == "Detour could not build a polygon path."
+                ? NavigationPlanFailure::NoPath : NavigationPlanFailure::OtherUnknown;
         }
 
         static constexpr NavigationInitTier NextTier(
@@ -87,6 +115,10 @@ namespace Navigation
                 case NavigationPlanFailure::SurfaceRecoveryExhausted: return "surface_recovery_exhausted";
                 case NavigationPlanFailure::ReplanBudgetExhausted: return "replan_budget_exhausted";
                 case NavigationPlanFailure::HardStallExhausted: return "hard_stall_exhausted";
+                case NavigationPlanFailure::StartProjectionFailed: return "start_projection_failed";
+                case NavigationPlanFailure::DestinationProjectionFailed: return "destination_projection_failed";
+                case NavigationPlanFailure::AvoidanceProjectionUnresolved: return "avoidance_projection_unresolved";
+                case NavigationPlanFailure::PersistentHazardRejected: return "persistent_hazard_rejected";
                 default: return "other_unknown";
             }
         }

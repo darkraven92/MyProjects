@@ -1,0 +1,237 @@
+# P0.3 navigation reliability audit
+
+Updated 2026-10-07. SOURCE VERIFIED; TEST/BUILD/DIFF PASS; new fixes RUNTIME
+PENDING. This is a bounded loader/posture/attribution checkpoint, not a rewrite
+of navigation or a claim that all prior navigation failures are solved.
+
+## Baseline and reproducible offline audit
+
+Authoritative full capture: logger session
+`684.134358538029914000.116409170.1128`, original `build/wow-internal.log`,
+3,184,196 bytes, preserved before modification in
+`/tmp/wow-p03-baseline.yklizL/wow-internal.log` (temporary, not committed).
+Bot start/stop monotonic times 116409685/117609877: 20.0032 minutes.
+Final cumulative movementRecoveries=16 (0.800/min), runtimeRecoveries=42
+(2.100/min), runtimeEscalations=30 (1.500/min). Escalations are a subset of
+runtime recoveries, not 30 additional failures. Session XP gain=1563;
+final periodic kill count=17; natural deaths=0. Productive does not mean
+navigation healthy.
+
+Read-only reproduction, using a preserved FULL log, not a filtered tail:
+
+```bash
+python3 tools/navigation_log_audit.py /tmp/wow-p03-baseline.yklizL/wow-internal.log
+python3 tools/navigation_log_audit.py /tmp/wow-p03-baseline.yklizL/wow-internal.log --json
+```
+
+JSON includes line, owner, owner state, intent, destination, approximate last
+world-snapshot position, loader work, cancellation and release evidence.
+Fingerprints are UNKNOWN for pre-query cancellations. Repeated position is
+diagnostic correlation, NOT proof of a repeated directed transition. No
+coordinate is added to production. Different event units must not be summed.
+
+| Event unit | Source-correlated class | Count | Result / owner |
+| --- | --- | ---: | --- |
+| Global watchdog recovery | unexpected_seated_idle | 24 | Combat + Grind reset; bad posture reader implicated |
+| Global watchdog recovery | idle_deadlock | 18 | Acquisition resets; distinct class, no speculative fix |
+| Owner movement hard stall | progressing initialization cancelled | 16 | Roaming, commands=0, intent released before movement |
+| Initialization cancellation | same 16 owner hard stalls | 16 | Same episodes, not additional recoveries |
+| Plan failure | persistent_hazard_rejected | 11 | Previously other_unknown; retain hazard exclusion |
+| Plan failure | destination_projection_failed | 5 | Previously no_path; distinct from Detour search failure |
+| Initialization cancellation | other owner release | 3 | Do not attribute to hard stall without evidence |
+| Validation failure | unsafe_terrain_attempt_limit | 1 | Retain rejection |
+| Validation failure | unsafe_terrain_no_alternative | 1 | Retain rejection |
+
+### All 16 hard stalls
+
+State=Roaming throughout; release commands=0/replans=0; expanded work advanced
+before cancellation. Approximate player positions A=(-658.8647,-3644.9119,95.1144),
+B=(-623.6596,-3736.1262,92.4810), C=(-579.7523,-3724.7053,85.9776).
+These are diagnostic capture coordinates only. No corridor exists yet, so
+same-geometry directed-edge identity remains UNKNOWN.
+
+| Full-log line | Intent | Objective | Position | Expanded tiles at cancellation |
+| ---: | ---: | --- | --- | --- |
+| 986 | 1 | post-death danger escape | A | 70/79 |
+| 5063 | 6 | roam sector15 | B | 70/73 |
+| 5372 | 7 | roam sector5 | B | 66/82 |
+| 5595 | 8 | roam sector14 | B | 70/73 |
+| 5816 | 9 | roam sector16 | B | 66/82 |
+| 6037 | 10 | roam sector13 | B | 70/73 |
+| 6253 | 11 | roam sector23 | B | 70/73 |
+| 6495 | 12 | roam sector24 | B | 66/82 |
+| 6717 | 13 | roam sector12 | B | 66/82 |
+| 6939 | 14 | roam sector22 | B | 70/73 |
+| 7162 | 15 | roam sector17 | B | 60/92 |
+| 7389 | 16 | roam sector6 | B | 66/82 |
+| 7604 | 17 | roam sector31 | B | 66/82 |
+| 7827 | 18 | roam sector15 | B | 70/73 |
+| 13536 | 26 | roam sector32 | C | 60/92 |
+| 13760 | 27 | roam sector16 | C | 60/92 |
+
+## Proven root causes and smallest fixes
+
+### Planning incorrectly classified as physical movement
+
+WorldMonitor mapped Roaming/ApproachingTarget to AutonomyActivity::Movement
+without checking incremental initialization. AutonomySupervisor's unchanged
+0.90-yard physical threshold / 48-tick hard deadline killed progressing
+expanded loads after about 10–12 seconds. ForceAutonomyMovementRecovery then
+destroyed the follower, cooled down the sector and selected another objective.
+The later RuntimeRobustness planning deferral could not prevent this earlier
+watchdog. Shared route->expanded fallback itself retained intent; the outer
+owner terminated it prematurely. No CTM was issued in these 16 episodes.
+
+New read-only NavigationInitializationObservation carries actual provider
+processed/total tiles, current tier and intent. The owner feeds this to the
+first watchdog. Increasing processed count or a forward internal tier is
+PLANNING liveness only. It is not displacement, offensive progress, follower
+episode progress or a recovery-budget refund. Same intent keeps one absolute
+planning window across tiers. Frozen work still fails at the existing 48-tick
+window; regressed work fails explicitly; continuously advancing work remains
+bounded by the EXISTING shared 240000-ms initialization ceiling. Unknown
+pending evidence earns no exemption. Combat/death preemption remains intact.
+After planning ends, execution starts its unchanged physical watchdog.
+
+Sparse NAV STALL CLASSIFICATION records intent/tier/work and distinguishes
+initialization_pending, initialization_frozen, initialization_budget_exhausted,
+initialization_evidence_regressed from no_physical_or_hp_progress. No watchdog
+is disabled and no threshold is increased. No RuntimeRobustness code/counter
+reset was changed.
+
+### Posture read used the wrong descriptor base
+
+PlayerSnapshot.descriptors is the full OBJECT update-field base, from object+8.
+The old posture read used byte offset0x210, copied from a client UNIT-relative
+view. This actually reads UNIT_FIELD_NATIVEDISPLAYID, not stand state. Repeated
+runtime standState=51 was not evidence of sitting, but was treated as nonzero
+seated posture and caused SitOrStand recovery. A toggle could itself sit an
+already-standing player. Twenty-four runtime recovery events use this class;
+18 acquisition idle_deadlock events are recorded separately, not all claimed
+fixed by posture correction.
+
+Primary local evidence:
+
+- VMaNGOS `src/game/Objects/UpdateFields_1_12_1.h`: full UNIT_FIELD_BYTES_1
+  index0x08A, byte offset0x228; NATIVEDISPLAYID index0x084, byte offset0x210.
+  Stand state is byte0; valid Vanilla stand states0..9.
+- Build5875 binary SHA256
+  `b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`:
+  descriptor binder0x613980 writes the supplied full base at object+8 (0x613989).
+  UNIT binders0x5F6EF0/0x5FAD10 add0x18 at0x5F6F05/0x5FAD25 and store the
+  UNIT base at object+0x110 at0x5F6F08/0x5FAD28.
+  SitOrStand handler0x48B941 reads object+0x110 then byte+0x210 at0x48B947,
+  and dispatches state1 for zero/state0 for nonzero through0x5ED430.
+  Thus full-base stand offset=0x18+0x210=0x228, independently matching server
+  update fields. This is control-flow evidence, not inference from names.
+
+PlayerPostureEvidencePolicy now reads0x228 and rejects unsupported bytes as
+UNKNOWN. Existing posture action, game-thread ownership, watchdog cadence and
+bounded stand recovery remain unchanged. No descriptor writes are introduced.
+
+## Shared pipeline and failure taxonomy
+
+| Stage / owner | Evidence and success | Bounded failure / continuation |
+| --- | --- | --- |
+| Grind selects optional sector / target | current world + selected objective | existing cooldown/target policy; no synthetic destination change inside follower |
+| Follower acquires intent, provider loads scope | increasing actual tile cursor; loaded query | route->expanded->eligible full-map, same intent; frozen/absolute init limits above |
+| Detour projects start/end | nonzero polygon refs + source query result | typed start/destination/avoidance projection failures, not search no_path |
+| Detour path search | status/corridor, node/buffer/partial evidence | no_path only for actual query no-path; query errors retained |
+| Follower validates | path length, terrain, steep-transition and portal rules | typed PathValidationDetail;14O.1 fail-closed unchanged |
+| Steering / CTM | ray/clearance/portal proof, issued command provenance | existing exact/UNKNOWN transition attribution; bounded alternate staging/recovery |
+| Physical execution | actual displacement; distance/corridor advancement | dispatch/replan is not physical progress; original stall windows |
+| Local recovery / backtrack | verified forward portal + destination gain | lateral recovery target arrival alone cannot refund episode;4/2 limits |
+| Hysteresis / hazard exclusion | exact directed pair only when proven; retained spatial hazard risk | same known edge suppression; unknown remains unknown; no broad blacklist |
+| Optional roam terminal / Grind | terminal shared-nav result | explicit NAV OBJECTIVE ABANDON; existing cooldown and new owner objective |
+| Mandatory death/quest intent | original destination remains owned | existing terminal attribution, never silently convert to new roam |
+
+New NavigationPlanFailure values are appended to preserve existing enum
+ordinals: start_projection_failed, destination_projection_failed,
+avoidance_projection_unresolved, persistent_hazard_rejected. Genuine unknown
+query strings remain other_unknown. NAV PLAN FAILURE supplies intent, tier,
+start/end polys, raw Detour status, tile/polygon counts, buffer/node/partial
+flags, terrain filters, requested avoidance, query error and validation detail.
+The hazard rejection wrapper previously overwrote its underlying query error;
+that original error is now logged separately. Policy rejection alone does not
+prove a physically disconnected mesh or that every alternative crossed a hazard.
+
+Existing command-time directed-pair attribution, local hysteresis, portal
+staging and episode accounting are unchanged. No new oscillation detector:
+baseline pre-query cancellations provide no corridor/polygon alternation proof.
+New offline tooling correlates repeated positions without inventing geometry.
+Actual CTM-no-displacement and displacement-without-destination-gain remain
+distinct from this proven zero-command loader failure, and need exact live
+episodes if still frequent after the fix.
+
+## Geometry inspection and hazards
+
+Existing navmesh_debug inspected exact start B and recorded sector15 destination
+(-567.021,-3866.64,92.481), sector5 (-778.865,-3644.91,92.481), map1.
+Sixteen tiles loaded; start projected to Z92.902, destination polygon was0 in
+both reports. Sector5's local horizontal ray was complete but sampled surface
+Z61.651, about30.83 yards below requested Z. This reproduces projection failure,
+not a safe walkable path at requested height. Runtime sector targets inherit
+current-player Z; a replacement elevation policy is not yet source/runtime
+proven. Do not widen projection height, guess new Z, or weaken terrain safety.
+Reports are local `/tmp/wow-p03-baseline.yklizL/sector15*` / `sector5*`, not
+production coordinates or runtime proof. The existing optional owner terminal
+abandonment is retained and now explicitly logged.
+
+Persistent hazards were not cleared or reweighted. Existing spatial cells,
+confidence/exclusion, success credit and critical-corpse fallback are unchanged.
+False global escalations can accumulate hazard debt, but this checkpoint does
+not claim any current hazard entry is invalid or remove evidence to improve
+metrics. Remaining hazard-vs-query ambiguity is exposed in telemetry.
+
+## Validation and protected behavior
+
+TEST PASS:87 strict C++20/Wall/extra/Werror tests, six new offline-audit Python
+tests, existing QuestDB/SQL suites and eight Lua fixture programs. Full run
+`/tmp/wow-validation-24x50g5h/results.json`; full build/diff passed. New focused
+tests cover progressing/frozen/regressing/bounded initialization, same-intent
+tier continuity, actual post-planning stall, real displacement, unknown evidence,
+combat preemption, descriptor-base posture and supported-byte decoding. Existing
+recovery episode, command provenance, hysteresis, terrain, hazard, death, combat,
+AFK tests remain green. No coordinates or quest/NPC-specific branch added.
+
+MaximumPathLength2000, surface recovery4, last-safe backtracks2,14O.1, persistent
+hazard storage and RuntimeRobustness recovery semantics remain unchanged.
+New source checkpoint has no AFK/death/combat policy changes. Latest baseline
+directly shows natural P0.2 same-target latch repair:GUID0xF130000D58003736,
+range2.9297, target100->92 after re-engage, player472->453 before recovery.
+Seven confirmed combat recovery verification events in the normal20-minute session; combat
+baseline RUNTIME PASS. AFK three confirmed prevention pulses including deferred
+combat resume at input age249165; baseline RUNTIME PASS. No natural death in
+this session; prior complete natural DeathRecovery cycles remain PASS, new
+navigation-checkpoint regression is PENDING if death occurs naturally.
+
+Isolated intended staged tree also PASS:38 published strict C++ tests, six
+offline-audit Python tests, QuestDB SQL fixture, three published Lua fixture
+programs and full DLL/loader/GUI/testhost build, results
+`/tmp/wow-validation-feq40npk/results.json`, tree exported under
+`/tmp/wow-navigation-final.7qQhjW`. The first isolated run exposed zero published
+QuestDB Python test files (the13 tests exist only in unrelated local work).
+Validation now registers that discovery only when files actually exist and
+explicitly reports absence; SQL remains mandatory. It still ran all13 Python
+tests in the full worktree. No failing test is skipped or unrelated file added.
+
+## New runtime gate
+
+RUNTIME PENDING for loader/posture fixes and reduced churn. Fresh normal process,
+Start Bot through existing GUI;20–30 minutes natural unattended Grinding.
+Preserve full capture before another launch clears it. Do not manufacture bad
+terrain, combat stall or death. Compare counter rates to0.800/2.100/1.500 per
+minute, but do not require zero genuine recoveries. Expect progressing loaders
+to finish or fail with their exact query reason, no owner cancellation at48
+ticks while tiles advance, no impossible posture51, coherent intents and actual
+movement/XP/kills. Verify AFK/combat and any natural death independently.
+
+```bash
+wine ./build/wow_gui.exe
+tail -n 0 -F build/wow-internal.log | rg --line-buffered 'NAV |NAVMESH|MOVEMENT INTENT|HARD-STALL|STALL|CHURN|ROUTE|Grind14G2|Autonomy14G4|DEATH|COMBAT|AFK '
+```
+
+Run the audit against the preserved NEW full log. Remaining18 acquisition
+idle-deadlock resets and any actual issued-command stalls are next evidence
+targets, not silently marked resolved. No swimming or later V6 phase begins
+inside this checkpoint.
