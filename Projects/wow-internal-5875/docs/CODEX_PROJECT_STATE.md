@@ -989,6 +989,21 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.2 validated combat code checkpoint:
+  `c88f673ee01102251f4a6860acf04ce4de5a6129`
+  (`combat: distinguish UI selection and bound melee stall recovery`).
+  Branch `codex/wow-internal-continuation`; verified origin
+  `git@github.com:darkraven92/MyProjects.git`. Push PASS; independent remote
+  HEAD verification returned that identical full code hash. Eleven intended
+  files/hunks only, including the two mechanical Grind enum/name dependency
+  hunks; unrelated Combat/Grind/WorldMonitor/GUI/quest changes remain unstaged.
+  Full85-test strict validation/build/diff PASS plus isolated intended-checkpoint
+  build PASS. New combat recovery RUNTIME PENDING. This documentation-only
+  follow-up records actual published code identity; resolve its own HEAD via
+  `git log -1 --format='%H %s' -- docs/CODEX_PROJECT_STATE.md` and independently
+  compare current local/remote HEAD. Last validated code is the hash above,
+  not a claim that the complete dirty runtime is published.
+
 - P0.1 validated DeathRecovery code checkpoint:
   `de57521813256642ce02015f005bd1ba8836fa83`
   (`death: preserve route fallback and acquire server corpse anchors`).
