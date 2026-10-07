@@ -173,18 +173,20 @@ namespace Bot
                 !Core::Memory::Read(player.descriptors+0xb8,unitFlags) ||
                 !Core::Memory::Read(player.descriptors+0x2f8,playerFlags) ||
                 !Core::Memory::Read(player.descriptors+0x58,health)) return "native_safety_unknown";
+            const auto life=ReadLife(player);
             if (movementEvidence)
-                *movementEvidence=AfkWorkloadSafetyPolicy::MovementEvidence(movement,ordinaryLandMovement);
+                *movementEvidence=AfkWorkloadSafetyPolicy::MovementEvidence(movement,ordinaryLandMovement,life,deadGhostPulse);
             if (deadGhostPulse)
             {
-                if (!AfkDeadGhostPolicy::DeadOrGhost(ReadLife(player))) return "death_state_changed";
+                if (!AfkDeadGhostPolicy::DeadOrGhost(life)) return "death_state_changed";
             }
             else if (health<=1 || (playerFlags&0x10u)) return "death_or_ghost";
             if (unitFlags&0x80000u) return "native_combat_flag";
             if (movement&0x00200000u) return "swimming";
             // VMaNGOS 1.12.1 MOVEFLAG_FORWARD/BACKWARD/STRAFE/TURN plus WALK.
-            // No pitch, jumping, falling, swim, transport or unknown flags.
-            if (!AfkWorkloadSafetyPolicy::LandMovementAllowed(movement,ordinaryLandMovement))
+            // Only the input-only Ghost pulse also admits source-verified
+            // water-walk. No pitch, jump/fall, swim, transport or unknown flags.
+            if (!AfkWorkloadSafetyPolicy::LandMovementAllowed(movement,ordinaryLandMovement,life,deadGhostPulse))
                 return "movement_or_transport_flags";
             return nullptr;
         }

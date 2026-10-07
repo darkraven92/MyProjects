@@ -12,7 +12,46 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Current priority override: V6 **P0.0 AFK FIRST**. The shared AFK source/test
   checkpoint below is NOT runtime qualification or completion of the roadmap.
 
-## Current P0.0.9 checkpoint (2026-10-07)
+## Current P0.0.10 checkpoint (2026-10-07)
+
+AFK remains highest priority. SOURCE + RUNTIME VERIFIED: newest session
+`1892.134358429566633600.105563093.1520` shows early Dead qualification armed
+at input age 75103 and Ghost at 76138, correctly blocked in WaitingForGhost.
+RoutingToCorpse at age 77179 rejected exactly movementFlags=0x10000000,
+allowedMask=0x0000013f, unsupportedBits=0x10000000 (log line 6975). Read-only
+local VMaNGOS re-audit confirms this is WATERWALKING, enabled by ApplyGhostForm.
+The prior raw-bit evidence gap is closed. This log also confirms another
+normal alive Grinding pulse at age 240008 with clock/scene/UI/clear-flag proof.
+
+SOURCE VERIFIED: shared life-aware movement policy admits that one bit only
+for Ghost + guarded input-only dead/ghost pulse, making the ordinary pulse
+mask 0x1000013f. Alive/Dead/default masks and stationary qualify mode are
+unchanged. All other unsupported modes still block. Fresh native life at the
+monitor/command guard selects the mask. MOVEMENT ELIGIBLE is logged only for
+issued Ghost water-walk pulses; exact rejection telemetry remains. Same-life,
+paired-release, unbound-key, scene/UI, recovery-state and native-clock checks
+remain mandatory. Early one-shot qualification and failure latching persist.
+
+Normal Grinding/debt/planning coexistence RUNTIME PASS remains established.
+New Ghost water-walk pulse and Dead/Ghost production: RUNTIME PENDING until
+a natural safe gap produces a verified pulse and qualified=yes before AFK.
+Mixed-state reconciliation remains OPEN. No native-clear, navigation-budget,
+death-routing/anchor/reclaim or AFK 240/270/300-second policy change. No later
+roadmap work. No running WoW process available for the new runtime gate.
+Files: AfkQualificationHold.h, AfkClient5875.h, SharedAfkController.h,
+afk_ghost_water_walk_test.cpp and both AFK continuity docs. Validation below
+applies to the existing dirty worktree, not a clean remote checkout.
+
+TEST PASS: `python3 tools/validate.py --jobs 4`, 82 C++ tests under
+`-std=c++20 -Wall -Wextra -Werror`, 13 QuestDB/Python tests plus SQL self-test,
+all seven Lua fixtures / 138 checks. BUILD PASS (full validator and separate
+`cmake --build build`); DIFF CHECK
+PASS. Artifact: `/tmp/wow-validation-h7wgv7he/results.json`. New focused test
+first failed compilation before the life-aware API existed, then passed.
+Existing early qualification, recovery-debt, mixed-state, native-clear, death
+and navigation regressions pass. These do not qualify the new Ghost pulse.
+
+## P0.0.9 checkpoint (historical; raw-bit gap now closed)
 
 AFK remains first. Newest inspected log: session
 `1676.134358382414341480.100842662.1712`. Normal Grinding AFK prevention,
@@ -486,12 +525,13 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
-- **P0.0.9 AFK death/ghost:** normal mode early qualification at the first
-  safe command gap independently of timer due; new code RUNTIME PENDING. Need one natural death/
+- **P0.0.10 AFK death/ghost:** normal mode early qualification at the first
+  safe command gap independently of timer due, with Ghost-only water-walk
+  permission; new pulse RUNTIME PENDING. Need one natural death/
   ghost pulse with clock advance, unchanged scene/UI/recovery state and no AFK
-  threshold crossing. Never intentionally kill the player. Capture actual
-  MOVEMENT BLOCK flags/mask/unsupported bits if blocked; the earlier capture
-  omitted them. Alive normal Grinding/debt/planning gates have now passed.
+  threshold crossing. Never intentionally kill the player. Require MOVEMENT
+  ELIGIBLE then qualified=yes; capture exact unsupported bits if still blocked.
+  Alive normal Grinding/debt/planning gates have now passed.
 - **AFK first:** qualification and four alive production cycles passed.
   Persistent mixed AFK flags remain blocked pending safe reconciliation
   evidence; no dead-state native-clear qualification exists. See AFK audit.
@@ -525,10 +565,12 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Known blockers
 
-0. Newest production log: four alive cycles passed, fifth deferred in combat;
-   natural death at 280643 ms, ghost routing at 282718 blocked by unknown-to-log
-   movement bits, AFK at 300229. Need early qualification and exact movement
-   evidence. Latest DeathRecovery Failed is `strategic_route_failed` with
+0. P0.0.9's later production log proves early qualification arms at ages
+   75103/76138, but Ghost routing rejects only water-walk (0x10000000).
+   The Ghost-only mask correction is source/test work pending a natural verified
+   pulse. Previous four alive cycles and debt/planning coexistence passed.
+   Earlier death at 280643 ms and AFK at 300229 remains historical failure.
+   Previously inspected DeathRecovery Failed is `strategic_route_failed` with
    path_validation_failed (line22000); older missing_corpse_anchor is separate.
    Both death-autonomy defects remain queued; no recovery rewrite here.
 1. Post-P0.1.1 vendor capture proves exact hard-stall attribution and same-edge
@@ -572,9 +614,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.9 AFK FIRST:** early natural dead/ghost qualification and exact movement
-flag evidence. Qualification and alive Grinding production RUNTIME PASS;
-latest dead/ghost gate RUNTIME FAIL, new implementation RUNTIME PENDING.
+**P0.0.10 AFK FIRST:** Ghost-only source/runtime-correlated water-walk allowance.
+Qualification and alive Grinding production RUNTIME PASS; early life-state
+arming has live evidence. New Ghost pulse remains RUNTIME PENDING.
 Mixed-state clear needs new safe-path evidence. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a
 blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
@@ -843,8 +885,9 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. **AFK first:** qualify Dead/Ghost early during a natural safe command gap,
-   capture exact rejected movement bits if blocked. Normal Grinding prevention,
+1. **AFK first:** qualify Ghost early during a natural safe command gap with
+   source-approved water-walk; require exact eligibility and post-pulse proof.
+   Capture any remaining rejected bits. Normal Grinding prevention,
    recovery debt and planning coexistence already passed four cycles.
    Resolve mixed-state client/server
    protocol blocker before claiming production recovery complete. Neither

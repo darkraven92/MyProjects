@@ -1,5 +1,6 @@
 #pragma once
 #include "AfkProtectionPolicy.h"
+#include "AfkDeadGhostPolicy.h"
 #include <string>
 #include <cmath>
 #include <iomanip>
@@ -72,15 +73,28 @@ namespace Bot
     };
     struct AfkWorkloadSafetyPolicy
     {
-        static AfkMovementEvidence MovementEvidence(std::uint32_t flags,bool ordinaryLandMovement)
+        static constexpr std::uint32_t GhostWaterWalk=0x10000000u;
+        static std::uint32_t AllowedMovementMask(AfkLifeState life,bool ordinaryLandMovement,
+            bool deadGhostPulse)
         {
             const auto mask=ordinaryLandMovement ? 0x13fu : 0x100u;
+            // VMaNGOS 1.12.1 ApplyGhostForm -> SetWaterWalking(true), confirmed
+            // by the live Ghost/RoutingToCorpse flag word. Input-only exception:
+            // not alive land permission, dead permission or qualify-mode input.
+            return mask | (deadGhostPulse && life==AfkLifeState::Ghost ? GhostWaterWalk : 0u);
+        }
+        static AfkMovementEvidence MovementEvidence(std::uint32_t flags,bool ordinaryLandMovement,
+            AfkLifeState life=AfkLifeState::Alive,bool deadGhostPulse=false)
+        {
+            const auto mask=AllowedMovementMask(life,ordinaryLandMovement,deadGhostPulse);
             return {true,flags,mask,flags & ~mask};
         }
-        static bool LandMovementAllowed(std::uint32_t flags,bool ordinaryLandMovement)
+        static bool LandMovementAllowed(std::uint32_t flags,bool ordinaryLandMovement,
+            AfkLifeState life=AfkLifeState::Alive,bool deadGhostPulse=false)
         {
             // 1.12.1 forward/backward/strafe/turn and walk preference only.
-            return MovementEvidence(flags,ordinaryLandMovement).unsupportedBits==0;
+            // Ghost water-walk is scoped by the explicit input-only context.
+            return MovementEvidence(flags,ordinaryLandMovement,life,deadGhostPulse).unsupportedBits==0;
         }
         // Classification is separate from implementation qualification and each
         // action's native/UI/input/scene guards. An owner name is not evidence.

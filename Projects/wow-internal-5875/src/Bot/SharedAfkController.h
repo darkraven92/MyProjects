@@ -417,6 +417,12 @@ namespace Bot
                     if (deadPermit)
                     {
                         const auto pulseLife=dispatch.lifeBefore; // fresh command-time state, not the earlier monitor snapshot
+                        const auto& movement=dispatch.movementEvidence;
+                        if (pulseLife==AfkLifeState::Ghost && movement.known &&
+                            movement.unsupportedBits==0 &&
+                            (movement.flags&AfkWorkloadSafetyPolicy::GhostWaterWalk)!=0)
+                            Debug::Logger::Info("AFK DEAD/GHOST MOVEMENT ELIGIBLE life=ghost "+
+                                movement.Fields()+" reason=source_verified_ghost_water_walk");
                         Debug::Logger::Info("AFK DEAD/GHOST "+std::string(deadGhost_.Qualified(pulseLife) ? "ACTION" : "QUALIFICATION")+
                             " phase=dispatch action=F12 inputAge="+std::to_string(status_.inputAgeMs)+
                             " deathRecoveryState="+deathState+" state="+AfkDeadGhostPolicy::LifeName(pulseLife)+

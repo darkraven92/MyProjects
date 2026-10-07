@@ -1,6 +1,66 @@
 # P0.0 shared AFK protection audit
 
-## P0.0.9 early life-state qualification and movement evidence (current)
+## P0.0.10 Ghost-only water-walk allowance (current)
+
+SOURCE + RUNTIME VERIFIED correlation: newest `build/wow-internal.log`, session
+`1892.134358429566633600.105563093.1520`, confirms normal alive prevention at
+240008 ms (clock 105567275 -> 105807308, paired release, scene/UI unchanged,
+clear flags). Natural Dead/WaitingForGhost armed early qualification at age
+75103; Ghost/WaitingForGhost armed its separate request at 76138. Both correctly
+waited for the release/transition command window. At Ghost/RoutingToCorpse,
+line 6975 records flags=0x10000000, mask=0x0000013f, unsupported=0x10000000;
+the defer age was 77179. Later ordinary turn/forward/back combinations also
+had only that same unsupported bit. No Ghost pulse was dispatched by that code.
+
+Read-only re-audit of local VMaNGOS source confirms MovementInfo.h defines
+MOVEFLAG_WATERWALKING=0x10000000, Player::ApplyGhostForm calls
+SetWaterWalking(true), and Unit::SetWaterWalkingReal adds/removes that bit.
+This closes P0.0.9's raw-bit evidence gap; it is no longer a guessed flag.
+
+SOURCE VERIFIED change: AllowedMovementMask(life,ordinaryLandMovement,
+deadGhostPulse) adds only water-walk for Ghost + guarded dead/ghost F12 pulse.
+The ordinary Ghost pulse mask becomes 0x1000013f. Alive and Dead retain
+0x0000013f; stationary qualification retains 0x00000100. Generic/default land
+checks cannot acquire this exception. Swimming, pitch, jump/fall, transport,
+flying, levitation, root and unknown bits remain blocked. The adapter applies
+the typed policy to a fresh native life read at both monitoring and dispatch.
+
+Exact MOVEMENT BLOCK telemetry remains. Accepted command-time Ghost water-walk
+evidence emits MOVEMENT ELIGIBLE once per issued pulse, not every tick, with
+flags/mask/unsupported bits and reason=source_verified_ghost_water_walk. This
+means movement was eligible, not that delivery or qualification succeeded.
+The following release, same-life, clock, unchanged scene/UI and recovery-state
+proofs are still required. Dead/Ghost qualifications remain independent and
+early; only actual input-clock advancement governs scheduling. WaitingForGhost,
+WaitingForAlive, release/reclaim windows, transactions, loading, held input,
+bound F12 and all existing faults remain blocked. No corpse-route, anchor,
+reclaim, budget, 240/270/300-second band or native-clear permission changed.
+Mixed-state reconciliation stays OPEN; no dead-state native clear is enabled.
+
+Normal Grinding, recovery-debt separation and navigation-planning coexistence
+remain RUNTIME PASS from the four-cycle capture documented below. P0.0.9 early
+scheduling is SOURCE VERIFIED / TEST PASS and now runtime-observed arming before
+Due. New Ghost pulse and Dead/Ghost production are RUNTIME PENDING, not passed
+by mask tests. No running WoW process was available during this checkpoint.
+
+Next live gate: normal mode (`wine ./build/wow_gui.exe`), natural death only,
+capture `AFK ` before Start Bot. Require MOVEMENT ELIGIBLE life=ghost
+flags=0x10000000 unsupportedBits=0 -> QUALIFICATION phase=dispatch -> VERIFY
+advanced=yes sceneUnchanged=yes recoveryStateUnchangedOrValid=yes result=pass
+-> STATUS qualified=yes state=ghost, before AFK threshold crossing. Do not
+intentionally kill the character. DeathRecovery failures remain separate work.
+
+TEST PASS: full `python3 tools/validate.py --jobs 4`, 82 strict C++ tests,
+13 Python tests plus QuestDB SQL self-test, seven Lua fixtures / 138 checks;
+BUILD PASS; DIFF CHECK PASS. Artifact:
+`/tmp/wow-validation-h7wgv7he/results.json`. The new regression covers Ghost
+only/context scoping, Alive/Dead rejection, exact mask fields, every other
+unsupported mode, early RoutingToCorpse eligibility, command windows,
+same-life/clock/release/scene/recovery requirements, and adapter wiring.
+Existing binding/UI, alive/debt, native-clear/mixed-state and navigation/death
+tests remain passing. Scoped Git checkpoint is recorded in project state.
+
+## P0.0.9 early life-state qualification and movement evidence (historical)
 
 Newest inspected production log is `build/wow-internal.log`, session
 `1676.134358382414341480.100842662.1712`, ending at GUI unload on 2026-10-07.
