@@ -12,7 +12,64 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Current priority override: V6 **P0.0 AFK FIRST**. The shared AFK source/test
   checkpoint below is NOT runtime qualification or completion of the roadmap.
 
-## Current P0.0.10 checkpoint (2026-10-07)
+## Current P0.0.11 checkpoint (2026-10-07)
+
+AFK edge-case audit: SOURCE VERIFIED. No safe deterministic active mixed-state
+reconciliation has been proven; retain KNOWN RESIDUAL EDGE CASE, fail-closed
+by design, NOT fixed. Normal Grinding and Ghost qualification are RUNTIME PASS.
+Latest directly inspected session `1360.134358440699456960.106923713.436`:
+Ghost/RoutingToCorpse pulse at about 193743-ms input age, flags=0x10000000,
+mask=0x1000013f, unsupported=0, clock 107704936 -> 107898701, unchanged
+life/scene/recovery state, pass then qualified=yes (lines25393-25406).
+Later TWO Ghost prevention cycles passed at ages240207/240016 ms,
+RoutingToCorpse then Failed recovery, clocks107898701 ->108138936 ->108378979,
+paired release and unchanged life/scene/recovery with clear AFK flags
+(lines27525-27555,28000-28024). Ghost production prevention RUNTIME PASS;
+DeathRecovery strategic_route_failed / path_validation_failed at line27667
+is a separate defect. Later world/process loss has unknown cause, not AFK proof.
+Alive combat defer/resume prevention confirmed at 293685 and 253868 ms
+(lines5731-5783,12261-12313), both before threshold. Earlier four normal
+cycles/debt25/51/75/101/planning passes remain valid. No natural mixed state
+in the newest capture; no running WoW process available for a new runtime test.
+
+Binary hash and full evidence are in `docs/AFK_5875_AUDIT.md` P0.0.11.
+Five direct local-AFK writes in four functions: startup/reset0x4989C0,
+mark0x5EB740, clear0x5EB830, server mirror0x5EE990. Native clear's ONE
+argument only bypasses the CVar when nonzero; local-clear early-return precedes
+the argument check. Active branch always sends the normal EMPTY AFK message,
+which local server source proves is a toggle. Client-only could toggle server
+ON; server-only returns. Incoming object update0xA9 ->0x4651A0 -> values
+0x465330 -> changed-field callback0x465570 ->0x5E2850 ->0x5EE990 copies flags
+&2 only on relevant changes ((old XOR current)&0xE), not every server update.
+Startup mirror also processes queued chat/animation and is not an approved
+standalone utility. No measured natural convergence latency, no active new
+call, synthetic old flags, CVar/flag writes or fabricated packets.
+
+Files: new AfkAgreementPolicy.h and afk_agreement_policy_test.cpp;
+AfkProductionPolicy.h (typed, side-specific existing bounded failure),
+SharedAfkController.h (read-only agreement snapshot and transition/clock-change
+reconciliation diagnostic), tools/afk_client_audit.py (repeatable writer/caller/
+incoming-update signatures), both continuity docs. BothClear prevention,
+BothActive qualified composite, Ghost, debt, safe gaps and all budgets unchanged.
+Persistent mixed states fault within the existing total3000-ms verification
+budget with client_only_afk_no_safe_reconciliation or
+server_only_afk_no_safe_reconciliation. That budget is NOT propagation evidence.
+Conditional authoritative convergence still works; no native toggle while mixed.
+
+TEST PASS: full `python3 tools/validate.py --jobs 4`, 83 strict C++ tests,
+13 Python tests, QuestDB SQL self-test, seven Lua fixtures /138 checks.
+Artifact `/tmp/wow-validation-je4i58rl/results.json`; repeatable binary audit PASS.
+BUILD PASS (validator and explicit `cmake --build build`); DIFF CHECK PASS.
+Intermediate lexical quiescence-sentinel collision in read-only probe fixed by
+equivalent condition ordering; the existing test/qualification behavior is
+unchanged. Final complete rerun has zero failures.
+New mixed diagnostics RUNTIME PENDING. Dead qualification and native clear
+while dead/ghost remain unqualified; no blanket dead-state runtime claim.
+This closes the requested implementation checkpoint with a documented residual
+edge case. Next bounded phase is DeathRecovery missing_corpse_anchor /
+strategic_route_failed; do NOT start it inside this AFK checkpoint.
+
+## P0.0.10 checkpoint (historical; Ghost runtime now passed)
 
 AFK remains highest priority. SOURCE + RUNTIME VERIFIED: newest session
 `1892.134358429566633600.105563093.1520` shows early Dead qualification armed
@@ -175,7 +232,17 @@ movement bits, plus the separate mixed-state blocker. Do not begin swimming.
   newest cycles, input ages 240131/240217/240142/240245 ms, unchanged scene/UI,
   paired release, advanced clock, clear flags. Debt 25/51/75/101 did not block;
   Roaming/AcquiringTarget planning coexisted in cycles 3/4. This does not qualify
-  death/ghost or mixed-state recovery. Earlier long-run failures remain history.
+  Dead or mixed-state recovery. Earlier long-run failures remain history.
+- P0.0.10 Ghost harmlessness/early qualification: RUNTIME PASS, directly
+  inspected session `1360.134358440699456960.106923713.436`, lines25393-25406,
+  flags10000000/mask1000013f, paired input, fresh native-clock advancement,
+  same-life/scene/recovery proof and qualified=yes in RoutingToCorpse before
+  threshold. Two later Ghost prevention pulses pass at ages240207/240016 in
+  RoutingToCorpse and Failed recovery, same-life/scene/recovery proof and clear
+  AFK flags (lines27525-27555,28000-28024). Ghost production RUNTIME PASS;
+  corpse recovery is NOT passed.
+- Combat defer -> first-safe-gap resume: RUNTIME PASS in that session, alive
+  confirmed pulses at input ages293685/253868, before threshold300000.
 
 Provenance matters: the following milestones were explicitly reported verified
 by the user in the V6 request. The current log no longer contains those runs;
@@ -525,16 +592,13 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
-- **P0.0.10 AFK death/ghost:** normal mode early qualification at the first
-  safe command gap independently of timer due, with Ghost-only water-walk
-  permission; new pulse RUNTIME PENDING. Need one natural death/
-  ghost pulse with clock advance, unchanged scene/UI/recovery state and no AFK
-  threshold crossing. Never intentionally kill the player. Require MOVEMENT
-  ELIGIBLE then qualified=yes; capture exact unsupported bits if still blocked.
-  Alive normal Grinding/debt/planning gates have now passed.
-- **AFK first:** qualification and four alive production cycles passed.
-  Persistent mixed AFK flags remain blocked pending safe reconciliation
-  evidence; no dead-state native-clear qualification exists. See AFK audit.
+- **AFK residual gates:** Ghost early qualification/harmlessness and two later
+  prevention cycles passed; separately qualify Dead if naturally available.
+  Never intentionally kill the player. New P0.0.11 mixed
+  observation/diagnostics are RUNTIME PENDING (no mixed state in newest log).
+  Persistent mixed state is KNOWN RESIDUAL EDGE CASE, bounded fail-closed by
+  design; no safe active reconciliation proven. Dead/ghost native clear is
+  NOT enabled. Normal alive qualification/Grinding/debt/planning gates passed.
 
 - 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
   edge 0x...2E6C -> 0x...2E6B and 14N.2 suppressed its immediate retry.
@@ -554,8 +618,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 - Cave/interior navigation: generic portal staging is SOURCE VERIFIED and TEST
   PASS but RUNTIME PENDING. Do not advance to P0.2 swimming until two natural
   P0.1 traversals pass or an external runtime blocker is documented.
-- Combat attack continuity, acquisition liveness and AFK prevention need live
-  diagnosis. Do not infer combat success from arrival events.
+- Combat attack continuity and acquisition liveness need live diagnosis.
+  AFK normal Grinding and Ghost qualification have separate live proof above.
+  Do not infer combat success from arrival events.
 - Vendor/repair, equipment and trainer end-to-end qualification remains distinct
   from existing frame/spellbook/equip verification mechanisms and unit tests.
 - Water-state/breath/surfacing/shore systems are not implemented by this work.
@@ -565,11 +630,10 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Known blockers
 
-0. P0.0.9's later production log proves early qualification arms at ages
-   75103/76138, but Ghost routing rejects only water-walk (0x10000000).
-   The Ghost-only mask correction is source/test work pending a natural verified
-   pulse. Previous four alive cycles and debt/planning coexistence passed.
-   Earlier death at 280643 ms and AFK at 300229 remains historical failure.
+0. AFK prevention/Ghost early qualification now passed. Mixed-state recovery
+   remains an explicit bounded fail-closed residual edge case; no safe active
+   command proven. Separate Dead qualification remains pending; Ghost passed.
+   Earlier death at 280643 ms and AFK at 300229 remain historical failures.
    Previously inspected DeathRecovery Failed is `strategic_route_failed` with
    path_validation_failed (line22000); older missing_corpse_anchor is separate.
    Both death-autonomy defects remain queued; no recovery rewrite here.
@@ -614,14 +678,14 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.10 AFK FIRST:** Ghost-only source/runtime-correlated water-walk allowance.
-Qualification and alive Grinding production RUNTIME PASS; early life-state
-arming has live evidence. New Ghost pulse remains RUNTIME PENDING.
-Mixed-state clear needs new safe-path evidence. Do not advance to
-swimming before this external gate is exercised or explicitly retained as a
-blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
-default protection cannot interfere with active gameplay owners. Candidate
-input alone advances the clock but does NOT clear AFK. No GUI/profile/talent expansion.
+**P0.0.11 AFK FIRST:** source audit complete; mixed-state residual retained
+bounded/fail-closed, with typed agreement and read-only diagnostics. Normal
+Grinding, combat defer/resume, debt/planning and Ghost qualification/prevention RUNTIME
+PASS. New mixed telemetry/path remains RUNTIME PENDING, not actively fixed.
+AFK sufficiently closed for normal prevention; next phase DeathRecovery
+missing_corpse_anchor / strategic_route_failed (queued, NOT edited here).
+No swimming, GUI/profile/talent expansion in this checkpoint. Native input
+alone advances the clock but does NOT clear AFK.
 
 ## P0.0.7 bounded death/ghost checkpoint
 
@@ -764,6 +828,13 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.11 source/test checkpoint is based on validated continuity HEAD
+  `dae6246a489545ac5033c5d6dbcf615fad8f1bdc` / code `edb5fe7a...`.
+  Branch `codex/wow-internal-continuation`, remote
+  `origin=git@github.com:darkraven92/MyProjects.git` verified before edits.
+  Intended scope: seven AFK policy/controller/test/tool/documentation files;
+  no unrelated WorldMonitor, DeathRecovery, navigation or data changes staged.
+  Checkpoint hash and verified remote HEAD are recorded after commit below.
 - P0.0.10 validated AFK code checkpoint:
   `edb5fe7a5fd9f783fc11106c992a87c3c89732f4`
   (`afk: allow source-verified ghost water-walk pulses`). Push passed;
@@ -894,15 +965,13 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. **AFK first:** qualify Ghost early during a natural safe command gap with
-   source-approved water-walk; require exact eligibility and post-pulse proof.
-   Capture any remaining rejected bits. Normal Grinding prevention,
-   recovery debt and planning coexistence already passed four cycles.
-   Resolve mixed-state client/server
-   protocol blocker before claiming production recovery complete. Neither
-   flag may be fabricated; no blind toggle, CVar change or W loop.
-   Follow with a bounded P0 DeathRecovery Failed / missing_corpse_anchor audit,
-   not a broad rewrite. AFK prevention does not imply corpse recovery succeeded.
+1. Next bounded P0 phase: DeathRecovery missing_corpse_anchor and
+   strategic_route_failed root-cause audit, NOT a broad rewrite. AFK normal
+   Grinding/debt/planning/combat safe gaps and Ghost qualification have passed.
+   Preserve the P0.0.11 mixed-state residual fail-closed design; capture its new
+   diagnostics only if mixed state occurs naturally. No speculative toggles,
+   CVar changes, fake flags or W loop. Later natural Dead gate is distinct;
+   Ghost prevention passed even while Failed, not proof of corpse recovery.
 2. Capture/reconstruct the failing live cave transition with current recovery
    telemetry; use the expanded offline report. Apply only a proved shared-layer
    correction, then regression/build/diff and runtime qualification.

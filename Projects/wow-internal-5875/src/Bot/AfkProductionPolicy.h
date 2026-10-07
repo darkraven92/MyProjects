@@ -1,5 +1,6 @@
 #pragma once
 #include "AfkQualificationHold.h"
+#include "AfkAgreementPolicy.h"
 
 namespace Bot
 {
@@ -79,6 +80,7 @@ namespace Bot
                 phase_==AfkProductionPhase::RecoveringAfk || phase_==AfkProductionPhase::VerifyingClear;
             if (!AfkProtectionPolicy::Valid(o))
                 return pending ? Fail("production_observation_lost") : AfkDecision{};
+            const auto agreement=AfkAgreementPolicy::Classify(o);
             const bool active=o.clientAfk || o.serverAfk;
             if (observeOnly) return {active ? AfkStatus::AfkDetected : AfkStatus::Active,
                 AfkAction::None,AfkResult::None,"observe_only"};
@@ -86,7 +88,8 @@ namespace Bot
             {
                 if (now<issuedAt_ || now-issuedAt_>=VerificationMs)
                     return Fail(phase_==AfkProductionPhase::VerifyingInput ? "production_delivery_timeout" :
-                        o.clientAfk!=o.serverAfk ? "mixed_afk_requires_safe_reconciliation" : "production_clear_timeout");
+                        AfkAgreementPolicy::Mixed(agreement) ? AfkAgreementPolicy::UnsupportedReason(agreement) :
+                        "production_clear_timeout");
                 if (phase_==AfkProductionPhase::VerifyingInput)
                 {
                     if (o.lastInput==issuedClock_ || std::uint32_t(o.clientNow-o.lastInput)>VerificationMs)
@@ -107,10 +110,13 @@ namespace Bot
                     return {AfkStatus::Blocked,AfkAction::None,AfkResult::Pending,block};
                 // Native 5EB830 returns when client=false, and sends a SERVER
                 // TOGGLE when client=true. Qualification of both-active does
-                // not make either mixed state safe to dispatch. Allow bounded
-                // authoritative convergence; otherwise terminal fault, no loop.
-                if (o.clientAfk!=o.serverAfk)
-                    return {AfkStatus::ClearingAfk,AfkAction::None,AfkResult::Pending,"reconciling_mixed_afk_no_safe_toggle"};
+                // not make either mixed state safe to dispatch. Observe within
+                // the existing command verification budget, not an assumed
+                // server propagation delay. No next-update convergence promise:
+                // 5EE990 refreshes the mirror only on relevant flag changes.
+                if (AfkAgreementPolicy::Mixed(agreement))
+                    return {AfkStatus::ClearingAfk,AfkAction::None,AfkResult::Pending,
+                        AfkAgreementPolicy::ObservationReason(agreement)};
                 if (setting!=AfkAutoClearSetting::Enabled)
                     return Fail(setting==AfkAutoClearSetting::Disabled ? "auto_clear_afk_disabled" : "auto_clear_afk_unknown");
                 return {AfkStatus::ClearingAfk,AfkAction::NativeAutoClear,AfkResult::Pending,"verified_input_requires_native_auto_clear"};

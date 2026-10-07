@@ -8,12 +8,14 @@
 #include <cstdlib>
 #include <string>
 #include <functional>
+#include <sstream>
 
 namespace Bot
 {
     struct AfkRuntimeStatus
     {
         AfkStatus status=AfkStatus::Unknown;
+        AfkAgreementState agreement=AfkAgreementState::Unknown;
         bool known=false, active=false, thresholdMeasured=false;
         std::uint32_t inputAgeMs=0, sourceThresholdMs=0, observedThresholdMs=0;
         unsigned verifiedInputs=0;
@@ -46,6 +48,9 @@ namespace Bot
         bool havePrevious_=false, safeBaseline_=false;
         std::uint64_t qualificationStart_=0;
         std::string lastDecision_{}, lastDispatchBlock_{};
+        bool mixedObserved_=false, mixedResultLogged_=false;
+        std::uint64_t mixedObservedAt_=0, nextMixedClockProbe_=0;
+        AfkAgreementState previousAgreement_=AfkAgreementState::Unknown;
 
         void LogDecision(const AfkDecision& d, const char* owner)
         {
@@ -63,6 +68,66 @@ namespace Bot
             if (key!=lastDeathMovementBlock_)
                 Debug::Logger::Info("AFK DEAD/GHOST MOVEMENT BLOCK "+key);
             lastDeathMovementBlock_=key;
+        }
+        void LogReconciliation(const AfkObservation& o,const AfkDecision& decision,
+            const Objects::PlayerState& player,AfkLifeState life,const char* owner,
+            const char* deathState,std::uint64_t now)
+        {
+            const auto state=AfkAgreementPolicy::Classify(o);
+            if (AfkAgreementPolicy::Mixed(state))
+            {
+                const bool starting=!mixedObserved_;
+                if (starting)
+                {
+                    mixedObserved_=true; mixedResultLogged_=false; mixedObservedAt_=now;
+                    Debug::Logger::Info(std::string("AFK RECONCILIATION START state=")+
+                        AfkAgreementPolicy::Name(state)+" policy=observe_only_no_safe_toggle");
+                }
+                // Read-only comparison probe: flag changes and native-clock
+                // advances (including human input) are logged, never credited
+                // as reconciliation without both authoritative flags agreeing.
+                if (starting || state!=previousAgreement_ ||
+                    (now>=nextMixedClockProbe_ && o.lastInput!=previous_.lastInput))
+                {
+                    nextMixedClockProbe_=now+1000; // bound read-only probes during continuous human input
+                    std::uint32_t flags=0;
+                    const bool flagsKnown=player.valid && player.descriptors &&
+                        Core::Memory::Read(player.descriptors+0x2f8,flags);
+                    const auto scene=AfkClient5875::ReadScene(player);
+                    std::ostringstream fields;
+                    fields << "AFK RECONCILIATION OBSERVE state=" << AfkAgreementPolicy::Name(state)
+                        << " clientActive=" << (o.clientAfk ? "yes" : "no")
+                        << " serverActive=" << (o.serverAfk ? "yes" : "no")
+                        << " elapsed=" << (now>=mixedObservedAt_ ? now-mixedObservedAt_ : 0)
+                        << " inputClock=" << o.lastInput << " clientNow=" << o.clientNow
+                        << " inputAdvanced=" << (havePrevious_ && o.lastInput!=previous_.lastInput ? "yes" : "no")
+                        << " life=" << AfkDeadGhostPolicy::LifeName(life) << " owner=" << owner
+                        << " deathRecoveryState=" << deathState
+                        << " playerFlagsKnown=" << (flagsKnown ? "yes" : "no")
+                        << " playerFlags=0x" << std::hex << flags
+                        << " movementKnown=" << (scene.known ? "yes" : "no")
+                        << " movementFlags=0x" << scene.movementFlags;
+                    Debug::Logger::Info(fields.str());
+                }
+                if (decision.status==AfkStatus::Fault && !mixedResultLogged_)
+                {
+                    mixedResultLogged_=true;
+                    Debug::Logger::Info(std::string("AFK RECONCILIATION RESULT state=")+
+                        AfkAgreementPolicy::Name(state)+" result=unsupported reason="+decision.reason+
+                        " verificationBudgetMs="+std::to_string(AfkProductionPolicy::VerificationMs));
+                }
+            }
+            else if (mixedObserved_)
+            {
+                Debug::Logger::Info(std::string("AFK RECONCILIATION RESULT result=")+
+                    (state==AfkAgreementState::BothClear ? "converged_clear" :
+                     state==AfkAgreementState::BothActive ? "converged_active" : "observation_lost")+
+                    " state="+AfkAgreementPolicy::Name(state)+
+                    " inputClock="+std::to_string(o.lastInput)+
+                    " source=authoritative_flags commandSent=no policyReason="+decision.reason);
+                mixedObserved_=false;
+            }
+            previousAgreement_=state;
         }
     public:
         SharedAfkController()
@@ -135,6 +200,8 @@ namespace Bot
             productionBand_=AfkProductionBand::Recent; productionDeferred_=false; productionBlock_.clear();
             baselineScene_={};
             nextDispatchProbe_=0; lastDecision_.clear(); lastDispatchBlock_.clear();
+            mixedObserved_=mixedResultLogged_=false; mixedObservedAt_=nextMixedClockProbe_=0;
+            previousAgreement_=AfkAgreementState::Unknown;
         }
         void Update(const Objects::PlayerState& player, std::uint64_t playerGuid,
             const AfkSafety& safety, std::uint64_t now, const char* owner,
@@ -195,6 +262,7 @@ namespace Bot
                 }
             }
             status_.known=valid;
+            status_.agreement=AfkAgreementPolicy::Classify(o);
             status_.active=valid && (o.serverAfk || o.clientAfk);
             status_.inputAgeMs=valid ? std::uint32_t(o.clientNow-o.lastInput) : 0;
             status_.sourceThresholdMs=valid ? o.thresholdMs : 0;
@@ -282,6 +350,8 @@ namespace Bot
             // tick blocks further actions; it is not proof of a key side effect.
             if (decision.status==AfkStatus::Blocked && nativeBlock) decision.reason=nativeBlock;
             if (decision.status==AfkStatus::Blocked && deathBlock) decision.reason=deathBlock;
+            if (!qualifying && !observeOnly_)
+                LogReconciliation(o,decision,player,life,owner,deathState,now);
             if (!qualifying && !observeOnly_ && valid)
             {
                 const auto band=AfkProductionPolicy::Band(o);

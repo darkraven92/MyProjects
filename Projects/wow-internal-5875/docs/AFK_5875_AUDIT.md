@@ -1,6 +1,178 @@
 # P0.0 shared AFK protection audit
 
-## P0.0.10 Ghost-only water-walk allowance (current)
+## P0.0.11 mixed-state source audit (current, 2026-10-07)
+
+### Runtime evidence and scope
+
+Latest directly inspected `build/wow-internal.log`, session
+`1360.134358440699456960.106923713.436`, confirms the new Ghost path:
+lines 25393-25406 record WATERWALKING=0x10000000, allowedMask=0x1000013f,
+unsupportedBits=0, paired F12 dispatch, clock 107704936 -> 107898701,
+same life/scene/recovery state, `result=pass`, then Ghost `qualified=yes` in
+RoutingToCorpse. Input age was about 193743 ms, BEFORE Due/AFK threshold.
+Ghost harmlessness/early qualification: RUNTIME PASS. The same capture's
+later lines 27525-27555 and 28000-28024 prove TWO Ghost prevention pulses at
+ages 240207 and 240016 ms: RoutingToCorpse clock107898701 ->108138936, then
+Failed recovery clock108138936 ->108378979, paired release, life/scene/recovery
+proof and clear flags. Ghost production prevention: RUNTIME PASS, including
+Failed recovery without AFK starvation. This is not proof of Dead qualification,
+dead-state native clear or successful corpse recovery. Line27667 separately
+records DeathRecovery strategic_route_failed / path_validation_failed. The
+client later exits/world disappears; exit cause is unknown, not attributed to AFK.
+
+The same session confirms combat defer -> first-safe-gap resume at input ages
+293685 and 253868 ms, both before 300000, with unchanged scene/UI, native clock
+advance and confirmed alive prevention (lines 5731-5783, 12261-12313).
+Normal Grinding, scheduler/defer/resume, recovery debt and planning coexistence
+remain RUNTIME PASS, including the earlier four-cycle/debt capture below.
+Qualification PASS remains user-reported; no new qualification run is claimed.
+No natural mixed state appears in this newest capture; no WoW process was
+available during this audit. New mixed-path diagnostics: RUNTIME PENDING.
+
+### Reproducible binary audit
+
+Client `/home/ludvig/Games/WoW Vanilla/WoW.exe`, image base 0x400000,
+SHA256 `b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`.
+Read-only `tools/afk_client_audit.py` now validates writer signatures,
+decoded direct-reference inventory, six clear callers/arguments, incoming
+object-update registration, changed-field callback dispatch and AFK mirror
+gate. Reproduce with:
+
+```sh
+python3 tools/afk_client_audit.py '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x5eb830 --stop-address=0x5eb900 '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x5ee990 --stop-address=0x5eea50 '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+```
+
+The decoded .text inventory contains FIVE direct absolute write instructions
+to 0xB6E5CC in FOUR routines. This is not a proof that arbitrary indirect memory
+aliases cannot write the address. All direct writers and relevant call paths:
+
+| Routine / write sites | Values and cause | Synchronization semantics |
+| --- | --- | --- |
+| 0x4989C0 / 0x4989EB, 0x4989F7 | Active-player lookup 0x468550/0x468460; PLAYER_FLAGS AFK bit sets 1, otherwise zero (including no player). Direct caller 0x490974 in broader 0x4908C0 initialization. | Copies the descriptor state without an AFK send, but clears chat-processing global 0x8435FC and tail-calls 0x49D230. That routine consumes queued chat records, displays chat via 0x49A870, may invoke unit animation via 0x60BB30, frees/unlinks records. NOT a proven standalone reconciliation utility. |
+| 0x5EB740 / 0x5EB7AE | Writes 1 only when local AFK was zero. Idle caller 0x482FBA and AFK chat caller 0x49F525. Null/empty text gets a localized default. | Mark/display path then sends normal AFK chat through 0x5AB630. Not an explicit server clear. |
+| 0x5EB830 / 0x5EB885 | Writes 0 after local-active and CVar/argument guards. | Displays CLEARED_AFK and sends EMPTY AFK chat; server effect is toggle, not set-clear. |
+| 0x5EE990 / 0x5EE9F2 | Writes current PLAYER_FLAGS & 2, hence 0 or 2, for the active player's GUID only. | Incoming descriptor-change callback via 0x5E2850; conditional mirror update, no AFK send or input timestamp write. |
+
+Other direct references at 0x482FAD, 0x49F3C7, 0x49F4FC, 0x5EB768 and
+0x5EC9FD are reads/comparisons (0x5EB836 is the native-clear entry read).
+They are not additional clear or synchronization functions.
+
+### Native clear: complete argument semantics
+
+0x5EB830 has ONE stack argument and `ret 4` at 0x5EB8FB. The incoming ECX
+player convention is supplied by movement callers; no branch uses it to
+choose AFK semantics. Local AFK zero returns at 0x5EB840 BEFORE testing the
+argument. Argument zero at 0x5EB846 reads autoClearAFK pointer 0xC4D68C,
+integer field +0x28, and returns if disabled. ANY nonzero argument skips ONLY
+that CVar test. It is a CVar-bypass parameter, not clear-vs-toggle, not a
+server-only clear mode, and not a way to bypass the local-zero return.
+Historical references below call it `force`; that name has this limited meaning.
+
+Direct callers: 0x513D36 (jump), 0x514E23/0x514F0B/0x514FCA (movement),
+0x49F3D6 (normal chat) all push 0. 0x49F553 (explicit empty AFK command when
+locally active) pushes 1. The active branch displays the clear message, writes
+local zero, builds CMSG_MESSAGECHAT 0x95 / type AFK 0x14 / language 0 / empty
+string 0x882748, and sends via 0x5AB630 at 0x5EB8D0. There is no branch that
+clears local-only without this send. No new call mode is enabled.
+
+### Incoming server synchronization and limits
+
+Local VMaNGOS source, read-only protocol evidence (not proof of the running
+server's exact version): `Objects/Player.cpp:1734` ToggleAFK -> Object
+SetFlag/RemoveFlag -> MarkForClientUpdate on value change -> Map
+SendObjectUpdates -> BuildUpdateData/UpdateData::Send -> ObjectUpdate packet.
+`Server/Packets/ObjectUpdate.cpp` chooses SMSG_UPDATE_OBJECT 0xA9 or compressed
+0x1F6; constants are in `Server/Protocol/Opcodes_1_12_1.h`.
+
+Client 0x465140 registers opcode 0xA9 to 0x4651A0 and compressed 0x1F6 to
+0x4672F0; decompression calls 0x4651A0 at 0x4673B6. Values-update dispatch
+0x465277 -> 0x465330 reads the update mask, snapshots callback fields through
+0x465970, applies incoming values and calls 0x465570. Its byte comparison
+0x4655BB skips callbacks when old/current values are equal; changed fields
+invoke the registered callback at 0x4655DC. Player field registration
+0x5E25D7/0x5E25E8 -> 0x468070 registers 0x5E2850 for four bytes at relative
+offset 8 in the PLAYER block (full descriptor PLAYER_FLAGS=0xBE, byte 0x2F8).
+0x5E2850 resolves the player by GUID and passes OLD flags to 0x5EE990.
+
+Within 0x5EE990, 0x5EE9B8 XORs old/current flags; 0x5EE9BA tests 0xE
+(AFK/DND/GM). Zero skips the mirror write. For the active player's GUID,
+0x5EE9EF/0x5EE9F2 copies currentFlags & 2 into the local mirror. Therefore a
+relevant descriptor CHANGE can reconcile either mixed state. An unchanged
+AFK value, unrelated server update, ordinary input, or movement does NOT
+guarantee a refresh. No reliable convergence latency is established. Neither
+callback nor broader startup/reset is exposed as a new bot command; fabricating
+an oldFlags argument to force this branch is not legitimate incoming evidence.
+
+Server `Handlers/ChatHandler.cpp:611-628`: combat rejects AFK chat; empty AFK
+ALWAYS toggles; non-empty AFK marks ON if clear and updates text if active.
+There is no explicit clear payload. DND mutual exclusion also clears AFK
+but changes DND and is not neutral reconciliation. Whole-source AFK writer
+search found initialization/stat cleanup (`Player::InitStatsForLevel`, line
+3385) and battleground entry clear (`BattleGroundMgr.cpp:1466`), not ordinary
+movement, combat entry, resurrection, or key-input clears. These special
+transitions are not AFK utilities. MasterPlayer chat-tag state is separate
+from authoritative PLAYER_FLAGS. No server files are changed.
+
+### Safe result: explicit residual edge case, not fixed
+
+SOURCE VERIFIED: native clear in ClientOnlyActive can turn the clear server
+ON. In ServerOnlyActive it returns and leaves server AFK ON. Nonzero bypass
+does not solve either. Non-empty mark is not a neutral clear operation: it can
+mark a clear server ON. Replaying callbacks with fabricated old flags or
+calling broad startup/chat initialization is not an approved narrow command.
+No deterministic active path satisfying this phase's complete safety gate
+has been proven. This does not assert that no such path can exist.
+
+`AfkAgreementPolicy` now explicitly classifies BothClear, BothActive,
+ClientOnlyActive, ServerOnlyActive, Unknown (invalid evidence is Unknown).
+BothClear prevention and BothActive qualified composite recovery are unchanged.
+Mixed states retain the existing single paired-input/delivery path, then
+read-only observation within the ORIGINAL total 3000-ms command verification
+budget. This is a fail-closed budget, NOT a measured propagation timeout;
+there is no new wait, extended timeout or convergence guarantee. If both flags
+converge clear within that budget, confirmation is allowed. If they converge
+active, the existing once-only native-clear/CVar/fresh-flags guards apply.
+No extra toggle is sent while mixed. Persistent mixed state session-latches:
+
+- `client_only_afk_no_safe_reconciliation`
+- `server_only_afk_no_safe_reconciliation`
+
+Safety can defer even the harmless input; terminal/death/command guards retain
+their existing meaning. Both flags must be known and clear for clear success.
+The shared read-only status includes agreement. Transition-based START,
+OBSERVE and RESULT telemetry captures flags, input clock, life, movement,
+owner/death state and terminal reason. Flag/clock-change probes are read-only;
+sampled descriptor changes are NOT claimed as hooked incoming packets or
+known manual-input provenance. Natural convergence after a latched fault is
+logged as an observed state change, not an automatically resumed controller.
+
+KNOWN RESIDUAL EDGE CASE: mixed-state recovery is fail-closed by design,
+not fixed. Preserve captures if it occurs naturally; do NOT manufacture it.
+If a single ordinary human-input comparison is later necessary, capture mixed
+state BEFORE the user input and compare subsequent flags/clock using these
+events. A user input invalidates unattended-run qualification and is never
+credited to the bot. No automated experimental toggle, CVar/flag write or
+packet construction is added.
+
+TEST PASS: focused agreement and production regressions; full validation
+`python3 tools/validate.py --jobs 4`: 83 strict C++ tests, 13 Python tests,
+QuestDB SQL self-test, all seven Lua fixtures / 138 checks. Artifact:
+`/tmp/wow-validation-je4i58rl/results.json`. BUILD PASS (validator and separate
+`cmake --build build`); DIFF CHECK PASS. An intermediate run caught a lexical
+quiescence sentinel colliding with the read-only probe expression; equivalent
+condition ordering preserves the unchanged sentinel and quiescence behavior.
+Final rerun has zero failures. Existing Ghost, debt, due bands, combat and
+navigation/death tests pass.
+New telemetry/mixed observation runtime gate remains RUNTIME PENDING.
+
+AFK is sufficiently closed for normal autonomous prevention: alive Grinding,
+early Ghost qualification and two Ghost prevention cycles PASS, residual
+mixed/dead-only limitations explicit. Next bounded phase: DeathRecovery `missing_corpse_anchor` and
+`strategic_route_failed`. That phase is NOT implemented in this checkpoint.
+
+## P0.0.10 Ghost-only water-walk allowance (historical; Ghost runtime now passed)
 
 SOURCE + RUNTIME VERIFIED correlation: newest `build/wow-internal.log`, session
 `1892.134358429566633600.105563093.1520`, confirms normal alive prevention at

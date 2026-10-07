@@ -4,6 +4,8 @@ import argparse
 import hashlib
 from pathlib import Path
 import struct
+import re
+import subprocess
 
 
 def main():
@@ -43,6 +45,27 @@ def main():
         0x5eb8aa: '6a148d4de8e8dcc8e2ff',
         0x5eb8bd: '68482788008d4de8e866cbe2ff',
         0x5eb8f7: '5e8be55dc20400',
+        # All direct local-AFK writers; startup reset is NOT an AFK utility.
+        0x4989db: '33c93bc174168b80680e0000f6400802',
+        0x4989eb: 'c705cce5b60001000000',
+        0x4989f7: '890dcce5b600890dfc358400e928480000',
+        0x5eb7ae: 'c705cce5b60001000000',
+        0x5eb885: '8935cce5b600',
+        # Callback only mirrors AFK when (newFlags XOR oldFlags) & 0xE.
+        0x5ee9af: '8b86680e00008b400833c2a80e578945fc7439',
+        0x5e25d7: '6850285e006a04ba08000000b904000000',
+        0x5e2873: '8b55108b0a518bc8',
+        0x46514d: '68a051460068a9000000',
+        0x465168: '6a0068f072460068f6010000',
+        0x4655bb: 'f3a67420',
+        0x4655dc: 'ff5310',
+        # One stack argument: zero respects CVar, nonzero skips CVar only.
+        0x513d32: '6a008bce',
+        0x514e1f: '6a008bcf',
+        0x514f07: '6a008bcf',
+        0x514fc6: '6a008bcf',
+        0x49f3d4: '6a00',
+        0x49f551: '6a01',
     }
     for va, signature in expected.items():
         wanted = bytes.fromhex(signature)
@@ -57,10 +80,24 @@ def main():
     for caller, target in {0x513d36: 0x5eb830, 0x514e23: 0x5eb830,
                            0x514f0b: 0x5eb830, 0x514fca: 0x5eb830,
                            0x49f3d6: 0x5eb830, 0x49f553: 0x5eb830,
+                           0x490974: 0x4989c0, 0x5e287b: 0x5ee990,
+                           0x465277: 0x465330, 0x46544a: 0x465970,
+                           0x4654a4: 0x465570,
                            0x5eb8d0: 0x5ab630}.items():
         instruction = read(caller, 5)
         if instruction[0] != 0xe8 or caller+5+struct.unpack('<i', instruction[1:])[0] != target:
             raise SystemExit(f'Call target mismatch at {caller:#x}')
+    # Inventory absolute decoded references, not a claim about indirect aliases.
+    disassembly = subprocess.run(['objdump', '-d', '-Mintel', str(args.client)],
+                                 check=True, capture_output=True, text=True).stdout
+    writers = {int(m.group(1), 16) for m in re.finditer(
+        r'^\s*([0-9a-f]+):.*\bmov\s+DWORD PTR ds:0xb6e5cc,', disassembly, re.MULTILINE)}
+    if writers != {0x4989eb, 0x4989f7, 0x5eb7ae, 0x5eb885, 0x5ee9f2}:
+        raise SystemExit(f'Unexpected direct AFK writers: {sorted(writers)}')
+    callers = {int(m.group(1), 16) for m in re.finditer(
+        r'^\s*([0-9a-f]+):.*\bcall\s+0x5eb830\s*$', disassembly, re.MULTILINE)}
+    if callers != {0x513d36, 0x514e23, 0x514f0b, 0x514fca, 0x49f3d6, 0x49f553}:
+        raise SystemExit(f'Unexpected direct native-clear callers: {sorted(callers)}')
     for api in ('GetBindingAction', 'EnumerateFrames', 'IsKeyboardEnabled',
                 'UnitAffectingCombat', 'UnitIsDeadOrGhost', 'SendChatMessage'):
         if api.encode()+b'\0' not in data:
@@ -70,9 +107,14 @@ def main():
     print('SOURCE VERIFIED input timestamp VA=0xcf0bc8 local AFK VA=0xb6e5cc')
     print('SOURCE VERIFIED local AFK encodings: 0 clear, 1 explicit mark, 2 server flag synchronization')
     print('SOURCE VERIFIED autoClearAFK default=1 pointer=0xc4d68c integerField=+0x28 (runtime value NOT inferred)')
-    print('SOURCE VERIFIED clear=0x5eb830 force=0 respects CVar; CMSG_MESSAGECHAT=0x95 type=AFK/0x14 empty text; send=0x5ab630')
+    print('SOURCE VERIFIED clear=0x5eb830 argument=0 respects CVar; nonzero bypasses CVar, NOT clear-vs-toggle')
+    print('SOURCE VERIFIED client-clear early-return precedes argument check; active branch sends CMSG_MESSAGECHAT=0x95 type=AFK/0x14 empty text; send=0x5ab630')
+    print('SOURCE VERIFIED direct AFK writers:', ', '.join(hex(va) for va in sorted(writers)))
+    print('SOURCE VERIFIED server mirror callback=0x5ee990 old/new flags mask=0xE; unchanged flags do NOT refresh mirror')
+    print('SOURCE VERIFIED object-update=0xa9 handler=0x4651a0 -> values=0x465330 -> changed-field callbacks=0x465570 -> player-flags=0x5e2850')
+    print('SOURCE VERIFIED startup/reset=0x4989c0 mirrors flags then tail-calls chat queue processing=0x49d230; NOT approved reconciliation command')
     print('SOURCE VERIFIED movement/chat callers are distinct from generic input timestamp writer')
-    print('RUNTIME PENDING: paired F12 + native auto-clear composite, two prevention windows')
+    print('Runtime status is established by WoW captures, NOT this static audit.')
 
 
 if __name__ == '__main__':
