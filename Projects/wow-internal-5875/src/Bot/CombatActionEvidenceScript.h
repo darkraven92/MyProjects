@@ -43,12 +43,21 @@ local function run()
   if start and duration and duration>0 and duration<=1.5 and start+duration>GetTime() then wait=true end
  end
  if wait then return 'wait' end
+ if mode=='abandon' then
+  if a==0 or type(ClearTarget)~='function' then return 'unsupported_release' end
+  if IsCurrentAction(a) then UseAction(a) end
+  ClearTarget()
+  return 'issued'
+ end
  if mode~='probe' then
   if a>0 then
-   if mode=='refresh' and IsCurrentAction(a) then UseAction(a) end
-   if not IsCurrentAction(a) then UseAction(a) end
+   if mode=='refresh' then
+    -- Stop stage only: IsCurrentAction need not update synchronously after
+    -- UseAction. A fresh later observation authorizes the bounded start.
+    if IsCurrentAction(a) then UseAction(a) end
+   elseif not IsCurrentAction(a) then UseAction(a) end
   elseif mode=='start' then AttackTarget()
-  elseif type(StopAttack)=='function' then StopAttack(); AttackTarget()
+  elseif type(StopAttack)=='function' then StopAttack()
   else return 'unsupported_refresh' end
   return 'issued'
  end

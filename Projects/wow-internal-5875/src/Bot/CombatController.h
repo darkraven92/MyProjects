@@ -2,6 +2,7 @@
 
 #include "AutoAttackController.h"
 #include "CombatLivenessPolicy.h"
+#include "CombatTerminalPolicy.h"
 #include "ChaseController.h"
 #include "CombatFacingPolicy.h"
 #include "CombatPositioningPolicy.h"
@@ -293,6 +294,9 @@ namespace Bot
             false;
 
         CombatLivenessPolicy meleeLiveness_{};
+        CombatTerminalPolicy meleeTerminal_{};
+        bool meleeTerminalPending_=false;
+        const char* lastMeleeTerminalReason_=nullptr;
         CombatLivenessDecision meleeDecision_{};
         AutoAttackController::CombatActionEvidence meleeActionEvidence_{};
         CombatStallClass lastMeleeClassification_=CombatStallClass::UnknownOrStale;
@@ -301,6 +305,83 @@ namespace Bot
         {
             std::uint64_t guid=0;
             return CombatClientEvidence5875::Selection(world,guid) ? guid : 0;
+        }
+
+        void LogCombatExecution(const Objects::UnitState& target, const CombatLivenessSample& s,
+            const CombatClientEvidence5875::ExecutionEvidence& e) const
+        {
+            Debug::Logger::Info("COMBAT EXECUTION EVIDENCE targetGuid="+Hex64(lockedGuid_)+
+                " targetObject="+Hex64(target.address)+" known="+(e.known ? "yes" : "no")+
+                " targetHp="+std::to_string(e.targetHp)+" targetMaxHp="+std::to_string(e.targetMaxHp)+
+                " playerHp="+std::to_string(e.playerHp)+" selectedGuid="+Hex64(e.selected)+
+                " serverVictimGuid="+Hex64(e.playerVictim)+" targetVictimGuid="+Hex64(e.targetVictim)+
+                " playerCombat="+(e.known ? (e.PlayerCombat() ? "yes" : "no") : "unknown")+
+                " targetCombat="+(e.known ? (e.TargetCombat() ? "yes" : "no") : "unknown")+
+                " autoattack="+(s.actionKnown ? (s.attackActive ? "yes" : "no") : "unknown")+
+                " attackTimer=unknown attackPeriodMs="+std::to_string(e.attackPeriodMs)+
+                " unitFlags="+Hex64(e.targetFlags)+" playerUnitFlags="+Hex64(e.playerFlags)+
+                " dynamicFlags="+Hex64(e.dynamicFlags)+" faction="+std::to_string(e.faction)+
+                " movementFlags="+Hex64(e.targetMovementFlags)+" playerMovementFlags="+Hex64(e.playerMovementFlags)+
+                " playerPacified="+(e.known ? ((e.playerFlags&0x20000u) ? "yes" : "no") : "unknown")+
+                " targetNonAttackable="+(e.known ? ((e.targetFlags&0x82010182u) ? "yes" : "no") : "unknown")+
+                " evade=unknown range="+Float(target.distance)+" facing="+(s.facing ? "yes" : "no")+
+                " castOrGcdWait="+(s.actionWait ? "yes" : "no")+" classification=offensive_no_progress");
+        }
+
+        bool ResolveMeleeTerminal(const Objects::WorldState& world,
+            const Objects::UnitState& target, const CombatLivenessSample& s, std::uint64_t tick)
+        {
+            const auto e=CombatClientEvidence5875::Execution(world,target);
+            CombatTerminalSample terminal{};
+            terminal.nowMs=s.nowMs; terminal.targetGuid=lockedGuid_;
+            terminal.selectedGuid=e.selected; terminal.serverVictimGuid=e.playerVictim;
+            terminal.playerHp=e.playerHp;
+            terminal.optionalGrind=grindModeActive_ && !plannerQuestTargetActive_ && !vileFamiliarsActive_;
+            terminal.known=e.known && e.aggressorsKnown && s.fresh && s.selectionKnown;
+            terminal.inputSafe=s.inputSafe && !s.actionWait;
+            terminal.hostileEngaged=e.PlayerCombat() || e.aggressor ||
+                e.targetVictim==world.activePlayerGuid || FindBestDirectAggressor(world)!=nullptr;
+            terminal.attackKnown=s.actionKnown; terminal.attackActive=s.attackActive;
+            const auto d=meleeTerminal_.Observe(terminal);
+            if (d.reason!=lastMeleeTerminalReason_)
+            {
+                lastMeleeTerminalReason_=d.reason;
+                LogCombatExecution(target,s,e);
+                Debug::Logger::Info("COMBAT TERMINAL TARGET targetGuid="+Hex64(lockedGuid_)+
+                    " class=bounded_same_target_repair_exhausted hostileStillEngaged="+
+                    (terminal.known ? (terminal.hostileEngaged ? "yes" : "no") : "unknown")+
+                    " repairAttempts="+std::to_string(meleeLiveness_.Repairs())+
+                    " decision="+(d.action==CombatTerminalAction::SystemFail ? "system_fail" : "verify_safe_abandon")+
+                    " reason="+d.reason);
+            }
+            if (d.action==CombatTerminalAction::SystemFail)
+            {
+                Fail(std::string("combat_terminal_system_failure:")+d.reason,
+                    terminal.known && terminal.inputSafe);
+                return true;
+            }
+            if (d.action==CombatTerminalAction::StopAndClearOwnTarget)
+            {
+                meleeTerminal_.Dispatched(s.nowMs); // one bounded dispatch, never a kill
+                const bool issued=AutoAttackController::AbandonOwnCombatTarget(world,lockedGuid_,
+                    PostChargeImmediateMeleeDistance);
+                if (!issued) { Fail("combat_terminal_system_failure:target_abandon_dispatch_rejected",false); return true; }
+                if (chase_.TargetGuid()==lockedGuid_) chase_.Stop();
+            }
+            if (d.action==CombatTerminalAction::Abandoned)
+            {
+                const auto abandoned=lockedGuid_;
+                BlacklistTarget(abandoned,tick,"bounded offensive_no_progress: verified safe optional abandonment");
+                ++consecutiveTargetFailures_;
+                warrior_.EndTarget();
+                Debug::Logger::Info("COMBAT TARGET ABANDON guid="+Hex64(abandoned)+
+                    " reason=offensive_no_progress outcome=abandoned_not_killed blacklistMs=120000"+
+                    " combatStateAfter="+(consecutiveTargetFailures_>=MaximumConsecutiveTargetFailures ? "Failed" : "AcquiringTarget"));
+                if (consecutiveTargetFailures_>=MaximumConsecutiveTargetFailures)
+                    Fail("too many consecutive safely abandoned combat targets");
+                else BeginAcquire(tick+1);
+            }
+            return true;
         }
 
         bool ObserveMeleeLiveness(const Objects::WorldState& world,
@@ -333,6 +414,8 @@ namespace Bot
                 meleeDecision_.action!=CombatRecoveryAction::None)
             {
                 lastMeleeClassification_=meleeDecision_.classification;
+                if (meleeDecision_.classification==CombatStallClass::OffensiveNoProgress)
+                    LogCombatExecution(target,s,CombatClientEvidence5875::Execution(world,target));
                 Debug::Logger::Info("COMBAT LIVENESS targetGuid="+Hex64(lockedGuid_)+
                     " uiTargetGuid="+Hex64(s.selectedGuid)+
                     " serverVictimGuid="+Hex64(world.player.targetGuid)+
@@ -350,13 +433,20 @@ namespace Bot
                     std::string(CombatRecoveryName(meleeDecision_.verified))+" targetGuid="+Hex64(lockedGuid_)+
                     " result=confirmed evidence="+
                     (meleeDecision_.verified==CombatRecoveryAction::RefreshAttack ? "target_health_decreased" : "post_command_state"));
-            if (meleeDecision_.action==CombatRecoveryAction::Fail)
+            if (meleeTerminalPending_ && !meleeTerminal_.Issued() &&
+                meleeDecision_.verified==CombatRecoveryAction::RefreshAttack)
             {
-                Debug::Logger::Info("COMBAT HARD STALL targetGuid="+Hex64(lockedGuid_)+
-                    " durationMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
-                    " reason=bounded_same_target_recovery_exhausted");
-                Fail("bounded same-target melee recovery exhausted without offensive progress");
-                return true;
+                meleeTerminalPending_=false; meleeTerminal_.Reset(); lastMeleeTerminalReason_=nullptr;
+                Debug::Logger::Info("COMBAT TERMINAL TARGET result=cancelled reason=verified_target_damage");
+            }
+            if (meleeTerminalPending_ || meleeDecision_.action==CombatRecoveryAction::Fail)
+            {
+                if (!meleeTerminalPending_)
+                    Debug::Logger::Info("COMBAT HARD STALL targetGuid="+Hex64(lockedGuid_)+
+                        " durationMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
+                        " reason=bounded_same_target_recovery_exhausted");
+                meleeTerminalPending_=true;
+                return ResolveMeleeTerminal(world,target,s,tick);
             }
             // Self-owned separation / chase reconciliation must still advance
             // their existing FSMs. They gate the new recovery input, not their
@@ -1363,7 +1453,8 @@ namespace Bot
         }
 
         void Fail(
-            const std::string& reason)
+            const std::string& reason,
+            bool allowInputCleanup=true)
         {
             Debug::Logger::Info(
                 "================================"
@@ -1396,9 +1487,9 @@ namespace Bot
                 "================================"
             );
 
-            AutoAttackController::Stop();
+            if (allowInputCleanup) AutoAttackController::Stop();
 
-            if (chase_.IsActive())
+            if (allowInputCleanup && chase_.IsActive())
             {
                 chase_.Stop();
             }
@@ -1412,6 +1503,9 @@ namespace Bot
 
         void ResetTargetState()
         {
+            meleeTerminal_.Reset();
+            meleeTerminalPending_=false;
+            lastMeleeTerminalReason_=nullptr;
             meleeLiveness_.Reset();
             meleeDecision_={};
             meleeActionEvidence_={};

@@ -12,6 +12,62 @@ namespace Bot
     // without sending CMSG_SET_SELECTION if it already equals the request.
     struct CombatClientEvidence5875
     {
+        struct ExecutionEvidence
+        {
+            bool known=false, aggressorsKnown=false, aggressor=false;
+            std::uint64_t selected=0, playerVictim=0, targetVictim=0;
+            std::uint32_t targetHp=0, targetMaxHp=0, playerHp=0, attackPeriodMs=0;
+            std::uint32_t playerFlags=0, targetFlags=0, dynamicFlags=0, faction=0;
+            std::uint32_t targetMovementFlags=0, playerMovementFlags=0;
+            bool PlayerCombat() const { return (playerFlags&0x80000u)!=0; }
+            bool TargetCombat() const { return (targetFlags&0x80000u)!=0; }
+        };
+        static ExecutionEvidence Execution(const Objects::WorldState& world,
+            const Objects::UnitState& target)
+        {
+            ExecutionEvidence e{};
+            GameThreadDispatcher::Invoke([&]
+            {
+                if (!GameThreadDispatcher::IsGameThread() || !Selection(world,e.selected) ||
+                    !FreshHealth(world,target,e.targetHp,e.playerHp,e.attackPeriodMs)) return;
+                // 5875 replicated update fields. Base attack period is not an
+                // executed swing or a next-swing timer; those remain unknown.
+                e.known=Core::Memory::Read(target.descriptors+0x70,e.targetMaxHp) &&
+                    Core::Memory::Read(target.descriptors+0x40,e.targetVictim) &&
+                    Core::Memory::Read(target.descriptors+0xb8,e.targetFlags) &&
+                    Core::Memory::Read(target.descriptors+0x23c,e.dynamicFlags) &&
+                    Core::Memory::Read(target.descriptors+0x8c,e.faction) &&
+                    target.movement && Core::Memory::Read(target.movement+0x40,e.targetMovementFlags) &&
+                    Core::Memory::Read(world.player.descriptors+0x40,e.playerVictim) &&
+                    Core::Memory::Read(world.player.descriptors+0xb8,e.playerFlags) &&
+                    world.player.movement && Core::Memory::Read(world.player.movement+0x40,e.playerMovementFlags);
+                if (!e.known) return;
+                // Do not infer "no aggressor" from a possibly incomplete
+                // cached unit vector. Walk the live manager on the game thread.
+                std::uint32_t current=0;
+                if (!Core::Memory::Read(world.manager+Wow5875::Offsets::ObjectManager::FirstObject,current) || !current)
+                    return;
+                bool playerSeen=false;
+                unsigned count=0;
+                for (; current && !(current&1u) && count<4096; ++count)
+                {
+                    std::uint64_t guid=0, victim=0;
+                    std::uint32_t descriptor=0, hp=0, type=0, next=0;
+                    if (!Core::Memory::Read(current+0x14,type) || !Core::Memory::Read(current+0x30,guid) ||
+                        !Core::Memory::Read(current+0x3c,next) || next==current) return;
+                    if (type==3 || type==4)
+                    {
+                        if (!guid || !Core::Memory::Read(current+0x08,descriptor) || !descriptor ||
+                            !Core::Memory::Read(descriptor+0x58,hp) || !Core::Memory::Read(descriptor+0x40,victim)) return;
+                        if (guid==world.activePlayerGuid) playerSeen=current==world.player.address;
+                        else if (hp && victim==world.activePlayerGuid) e.aggressor=true;
+                    }
+                    current=next;
+                }
+                e.aggressorsKnown=playerSeen && (!current || (current&1u)) && count<4096;
+            });
+            return e;
+        }
         static bool Selection(const Objects::WorldState& world, std::uint64_t& guid)
         {
             guid=0;

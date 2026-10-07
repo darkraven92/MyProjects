@@ -1,4 +1,132 @@
-# P0.2 Combat reliability audit
+# P0.2 / P0.2.1 Combat reliability audit
+
+## P0.2.1 deep-stall checkpoint (2026-10-07)
+
+SOURCE VERIFIED. New refresh/terminal behavior RUNTIME PENDING. Existing P0.2
+natural latch repair and normal 20-minute regression remain RUNTIME PASS.
+
+The newest full log is session968.134358579023063750.120736874.1760, preserved
+read-only at `/tmp/wow-combat-deep-baseline.z2gL3T/wow-internal.log` before edits.
+It ends in combat failure, not a navigation stall. Target entry3461 / GUID
+`0xF130000D85003A7A` had HP100->95->82->69->59->47->36->16->8.
+Full-episode semantic reconstruction (line numbers in that preserved capture):
+
+| Lines | Target / player HP | UI selection / server victim | Latch / classification | Repair / verification |
+| --- | --- | --- | --- | --- |
+| 37845-38219 | 100->95->82 / 424->438->421 | same GUID / same GUID | yes once melee; facing correction | ordinary damage |
+| 38350-38598 | 82 / 402->385 | same GUID / 0 | no; facing then latch desync; noDamage2112ms | same target retained |
+| 38610-38650 | 82->69 / 385 | same GUID / restored same GUID | yes, healthy | reengage attempt1; structural confirmation AND observed damage |
+| 38705-39340 | 69->59->47->36->16->8 / 366->348->327->309 | same GUID / same GUID | productive melee | no additional repair needed |
+| 39698-39716 | 8 / 291 | same GUID / same GUID | yes; offensive_no_progress4296ms | hard_stall_refresh attempt1, pending |
+| 39723-40057 | 8 / 291->253 | same GUID / 0 | no; latch desync4652->8638ms | refresh waiting, no damage |
+| 40068-40103 | 8 / 253 | same GUID / restored same GUID | yes; noDamage8994ms | reengage attempt2 structurally confirmed; immediate bounded failure |
+| 40105-40126 | 8 / 253 | same lock retained until cleanup | Fighting->Failed | WorldMonitor session stop, DLL unload |
+
+Crucially,8994-8638=356ms between the last inactive sample and the restored
+latch/terminal sample. The capture does NOT prove several failed active swings
+after the final reengage. Most of that apparent final window was Attack OFF.
+Player HP loss establishes urgency, but not the identity of the damaging actor.
+
+### Proven refresh and eligibility defect
+
+Old `CombatActionEvidenceScript` refreshed an active Attack with UseAction,
+then tested IsCurrentAction again in the SAME Lua execution to decide whether
+to start. That assumes synchronous latch publication. The live post-refresh
+latch/victim were OFF/0; this proves the refresh did not leave an active attack,
+but does not independently prove the internal same-script publication timing.
+A delayed-publication Lua regression reproduces the unsafe assumption.
+
+Old policy waited the entire damage window for RefreshAttack even when fresh
+evidence already showed Attack off. Its continuous-eligibility clock required
+range/facing/input but NOT selected identity/known active Attack. Thus inactive
+time consumed the supposed post-refresh execution opportunity. Once the final
+latch was restored, refreshed=true plus old no-damage age immediately selected
+Fail. The failing-before-fix C++ replay asserted immediate bounded reengage after
+the observed stop; the old implementation failed that assertion.
+
+Minimal correction: one explicit stop stage, then a FRESH inactive observation
+authorizes the existing guarded/idempotent start on a later tick. No same-script
+toggle pair. The no-damage clock and spent repairs are retained; the execution
+eligibility window requires correct selection and known active Attack. No budget
+refund for latch restoration. Refresh success still requires target damage/death,
+even if the stop stage handed off to structural reengage. MaximumRepairs3,
+one refresh,1s structural verification,4s/8s period-aware windows are unchanged.
+
+### What remains UNKNOWN / source-backed execution evidence
+
+The initiating4.296s HP8 pause is not explained by the old capture: no target
+victim, pacify/non-attackable flags, dynamic flags or actual swing events were
+captured. Do NOT label this target evading/immune/unreachable by guesswork.
+Read-only local VMaNGOS5875 protocol evidence:
+`Objects/UpdateFields_1_12_1.h` identifies full-descriptor offsets target40,
+health58/max70, faction8C, flagsB8, base attack period1F8, dynamic flags23C.
+`Objects/UnitDefines.h` identifies IN_COMBAT80000, PACIFIED20000, non-attackable
+SPAWNING2/NOT_ATTACKABLE_180/IMMUNE_TO_PLAYER100/NON_ATTACKABLE_210000/
+NOT_SELECTABLE02000000/IMMUNE80000000. These bits are diagnostic, not an evade flag.
+`AI/CreatureAI.cpp::EnterEvadeMode` clears server threat/combat and routes home;
+it does not prove a dedicated replicated client evade bit.
+
+VMaNGOS attack timers are private server state; the replicated base period is
+not an executed swing/next-swing timer. Protocol swing/error opcodes exist, but
+no verified client event adapter is present in this checkpoint. Telemetry keeps
+`attackTimer=unknown evade=unknown`, never fabricates execution or error success.
+New game-thread execution readbacks validate manager/player/target identity and
+read both victims, HP/maxHP, unit/dynamic/movement flags and faction. Native
+object enumeration is bounded4096 and must complete with the actual player
+present; unreadable descriptors/links or incomplete enumeration leave aggressor
+absence UNKNOWN, not clear. This does not invent hostility from faction IDs.
+
+### Owner-aware terminal result
+
+Optional Grinding alone may abandon only after authoritative combat-clear,
+no target/other live victim linkage to the player, no remembered aggressor,
+healthy input/UI/cast/world evidence and1s stable player HP. Native combat flag
+set, a live aggressor, falling HP or unknown evidence blocks abandonment.
+One fresh game-thread guarded stop-own-Attack/ClearTarget is permitted only
+while actual UI selection still equals the locked GUID; fresh native safety is
+rechecked at dispatch. Then native UI selection0, server victim0 and observed
+Attack inactive must confirm within1s. Dispatch is not success. Same GUID gets
+the existing120-second blacklist; no kill/loot/success accounting. BeginAcquire
+re-arms only after verified release; existing five-consecutive-failure bound
+remains. Death suspension/reset clears this pending terminal episode.
+
+Quest-mandatory targets never silently abandon. Existing defensive ownership
+remains while the original bounded repairs run. Once those repairs genuinely
+exhaust with an active unresolved hostile, there is no source-proven new safe
+escape here: explicit `unresolved_hostile_after_bounded_repair` system failure
+is retained, with evidence proving why abandonment was unsafe. Unknown/input-
+critical failure performs no new target-release input. WorldMonitor's genuine
+Failed->session-stop policy is NOT blindly suppressed; recoverable optional
+abandonment instead never enters Failed. No random replacement, movement,
+packet fabrication, timer writes, extra attack repairs or combat-owner bypass.
+
+### Validation / runtime gate
+
+Strict replay/Lua regressions cover attack-off time, prompt post-stop reengage,
+356ms not being an offensive period, sustained active-window terminal failure,
+actual damage-only refresh verification, asynchronous latch publication,
+idempotent start and guarded one-shot release. `combat_terminal_policy_test`
+covers safe optional release, each postcondition, mandatory/unknown/hostile/
+input/identity/health blockers, bounded timeout and re-arm. Existing AFK/death/
+navigation regressions remain in full validation. Current full validation:
+88 strict C++ tests PASS, Python/SQL and eight Lua fixture programs PASS;
+Final `/tmp/wow-validation-l5649rdl/results.json`. Isolated publication tree:
+39 published C++ tests, six audit Python tests, SQL fixture, three published Lua
+programs and all build targets PASS (`/tmp/wow-validation-fmppfkw5/results.json`).
+Unpublished local fixtures remain unstaged. Separate build and diff checks PASS.
+
+No WoW process is currently running. New behavior RUNTIME PENDING. Fresh normal
+Grinding >=20min, full log preserved, no intentionally induced stall/death.
+Need ordinary fights unaffected, natural same-GUID repair followed by damage;
+for a deep stall, verified safe abandonment OR explicit evidence that an active
+hostile made terminal failure necessary. A working latch is not damage success.
+
+Navigation P0.3 key fixes RUNTIME PASS in this observed~12.5min session:
+movementRecoveries0/runtimeRecoveries0/runtimeEscalations0; advancing initializers
+survived. Full20–30min gate interrupted by combat, not marked passed. Navigation,
+AFK and DeathRecovery files/policies/budgets2000/4/2 are unchanged here.
+
+## Historical P0.2 implementation audit
 
 2026-10-07. SOURCE VERIFIED; focused tests PASS. New behavior RUNTIME PENDING.
 No WoW process was running during this implementation. Do not manufacture a

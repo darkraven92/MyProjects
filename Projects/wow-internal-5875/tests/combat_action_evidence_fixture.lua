@@ -1,7 +1,7 @@
 local script=io.read('*a')
-local active,uses,stops,starts
+local active,uses,stops,starts,clears
 local function reset()
- active=false; uses=0; stops=0; starts=0
+ active=false; uses=0; stops=0; starts=0; clears=0
  UIParent={IsVisible=function() return true end}
  CastingBarFrame={}
  UnitIsDeadOrGhost=function() return nil end
@@ -17,6 +17,7 @@ local function reset()
  UseAction=function(i) assert(i==12); uses=uses+1; active=not active end
  AttackTarget=function() starts=starts+1 end
  StopAttack=function() stops=stops+1 end
+ ClearTarget=function() clears=clears+1 end
  for _,k in ipairs({'GossipFrame','QuestFrame','MerchantFrame','ClassTrainerFrame','LootFrame',
   'TalentFrame','TradeFrame','MailFrame','ItemTextFrame','TaxiFrame','GameMenuFrame',
   'StaticPopup1','StaticPopup2','StaticPopup3','StaticPopup4'}) do _G[k]=nil end
@@ -31,10 +32,20 @@ reset(); check('12|0'); assert(uses==0)
 reset(); active=true; check('12|1')
 reset(); check('issued','start'); assert(uses==1 and active)
 reset(); active=true; check('issued','start'); assert(uses==0 and active) -- never toggle a healthy latch off
-reset(); active=true; check('issued','refresh'); assert(uses==2 and active)
-reset(); check('issued','refresh'); assert(uses==1 and active)
-for _,mode in ipairs({'probe','start','refresh'}) do
- reset(); CastingBarFrame.casting=1; check('wait',mode); assert(uses==0)
+reset(); active=true; check('issued','refresh'); assert(uses==1 and not active)
+check('issued','start'); assert(uses==2 and active)
+reset(); check('issued','refresh'); assert(uses==0 and not active)
+-- Model delayed client latch publication: never toggle twice on stale state.
+reset(); active=true
+local queued=0
+UseAction=function(i) assert(i==12); uses=uses+1; queued=queued+1 end
+check('issued','refresh'); assert(uses==1 and queued==1 and active)
+active=false; queued=0
+check('issued','start'); assert(uses==2 and queued==1)
+reset(); active=true; check('issued','abandon'); assert(uses==1 and not active and clears==1)
+reset(); ClearTarget=nil; check('unsupported_release','abandon'); assert(uses==0)
+for _,mode in ipairs({'probe','start','refresh','abandon'}) do
+ reset(); CastingBarFrame.casting=1; check('wait',mode); assert(uses==0 and clears==0)
  reset(); CastingBarFrame.channeling=1; check('wait',mode); assert(uses==0)
  reset(); GetActionCooldown=function() return 9,1.5 end; check('wait',mode); assert(uses==0)
  reset(); SpellIsTargeting=function() return 1 end; check('blocked',mode); assert(uses==0)
@@ -47,8 +58,8 @@ end
 reset(); UnitExists=function() return nil end; check('12|0'); check('blocked','start'); assert(uses==0)
 reset(); IsAttackAction=function() return nil end; check('0|-1') -- unknown, not inactive
 check('issued','start'); assert(starts==1)
-check('issued','refresh'); assert(stops==1 and starts==2)
-StopAttack=nil; check('unsupported_refresh','refresh'); assert(starts==2)
+check('issued','refresh'); assert(stops==1 and starts==1)
+StopAttack=nil; check('unsupported_refresh','refresh'); assert(starts==1)
 reset()
 local f={IsVisible=function() return true end,GetObjectType=function() return 'EditBox' end}
 EnumerateFrames=function(prev) if not prev then return f end end

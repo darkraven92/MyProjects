@@ -98,10 +98,16 @@ namespace Bot
                 lastDamageMs_=s.nowMs;
                 if (damage)
                 {
+                    // A refresh is resolved only by damage, even when its
+                    // stop stage already handed off to a structural reengage.
+                    if (refreshed_) d.verified=CombatRecoveryAction::RefreshAttack;
                     repairs_=0; refreshed_=false; losingHealth_=false;
                     if (pending_==CombatRecoveryAction::RefreshAttack ||
                         (pending_==CombatRecoveryAction::ReengageAttack && s.selectedGuid==s.targetGuid))
-                    { d.verified=pending_; pending_=CombatRecoveryAction::None; }
+                    {
+                        if (d.verified==CombatRecoveryAction::None) d.verified=pending_;
+                        pending_=CombatRecoveryAction::None;
+                    }
                 }
             }
             if (sampled_ && s.playerHp<playerHp_) losingHealth_=true;
@@ -116,17 +122,28 @@ namespace Bot
             else if (!s.facing) d.classification=CombatStallClass::FacingBlock;
             else if (s.actionKnown && !s.attackActive) d.classification=CombatStallClass::AutoattackLatchDesync;
             const bool allowed=s.inputSafe && !s.actionWait && s.melee;
-            if (!allowed || !s.facing)
+            // No-damage age remains intact, but an attack-off interval is not
+            // an offensive execution opportunity. Selection/latch repairs
+            // must get the existing full active window, not 356 ms of it.
+            if (!allowed || !s.facing || s.selectedGuid!=guid_ ||
+                !s.actionKnown || !s.attackActive)
                 eligible_=false;
             else if (!eligible_)
             { eligible_=true; eligibleSinceMs_=s.nowMs; }
             if (pending_!=CombatRecoveryAction::None)
             {
+                // Refresh explicitly stops once. Observe that stop before
+                // requesting the existing guarded start on a later tick.
+                // This is not refresh success and does not refund an attempt.
+                if (pending_==CombatRecoveryAction::RefreshAttack &&
+                    s.selectedGuid==guid_ && s.actionKnown && !s.attackActive)
+                    pending_=CombatRecoveryAction::None;
                 const bool structural=(pending_==CombatRecoveryAction::RestoreTarget && s.selectedGuid==guid_) ||
                     (pending_==CombatRecoveryAction::ReengageAttack && s.actionKnown && s.attackActive);
                 if (structural)
                 { d.verified=pending_; pending_=CombatRecoveryAction::None; }
-                else if (s.nowMs-dispatchedMs_ < (pending_==CombatRecoveryAction::RefreshAttack ? window : StructuralVerificationMs))
+                else if (pending_!=CombatRecoveryAction::None &&
+                    s.nowMs-dispatchedMs_ < (pending_==CombatRecoveryAction::RefreshAttack ? window : StructuralVerificationMs))
                     return d;
                 else pending_=CombatRecoveryAction::None;
             }

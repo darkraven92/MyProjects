@@ -9,11 +9,69 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.3 Navigation reliability**. Preserve verified Combat, AFK and
+- Current phase: V6 **P0.2.1 Deep combat terminal resolution**. Preserve verified navigation, AFK and
   DeathRecovery behavior and mixed-state fail-closed design. No swimming,
   trainer/talent/GUI/Questing-architecture work in this checkpoint.
 
-## Current P0.3 navigation checkpoint (2026-10-07)
+## Current P0.2.1 combat checkpoint (2026-10-07)
+
+SOURCE VERIFIED: newest complete session968.134358579023063750.120736874.1760
+ends against GUID0xF130000D85003A7A/entry3461. Earlier latch reengage repaired
+82->69 damage. Final HP8 stall triggers refresh at4296ms; post-refresh Attack
+off/server victim0, reengage only near8638ms, active latch confirmed at8994ms
+then immediate Failed/session stop. Only356ms after the last inactive sample:
+NOT proof of several failed active swings after final reengage. Initial HP8
+pause remains UNKNOWN (no evade/immune/swing data in that capture).
+
+Proven policy defect: same-script toggle assumes synchronous IsCurrentAction;
+pending refresh waits for damage even when Attack is observably off; eligibility
+counts inactive/unselected time. New explicit one-stop -> fresh off -> bounded
+same-target start; active offensive eligibility is distinct from unchanged
+no-damage clock. Three repairs/one refresh,1s structural,4s/8s period-aware
+windows unchanged; HP decrease/death alone verifies refresh/refunds budget.
+
+Typed optional-Grind terminal verification: authoritative native combat clear,
+complete live victim scan/no remembered aggressor, stable HP and safe UI/input
+required. One stop-own-Attack/ClearTarget, verify selection0/victim0/Attack off,
+existing120s SAME-GUID blacklist, abandoned NOT kill, BeginAcquire. Mandatory,
+active hostile, unknown or input-conflicting conditions retain explicit system
+failure. No new speculative survival/escape or Failed whitelist. Real WorldMonitor
+Failed->stop remains; safe optional target failure never enters Failed. Sparse
+replicated flags/victims/execution evidence; attack timer/evade remain UNKNOWN.
+Full source/timeline/guards/remaining uncertainty: `docs/COMBAT_RELIABILITY_AUDIT.md`.
+
+TEST PASS:88 strict C++20/Wall/extra/Werror tests, Python/SQL and eight Lua
+fixture programs; final full run `/tmp/wow-validation-l5649rdl/results.json`.
+Isolated intended publication tree also PASS:39 published strict C++ tests,
+six navigation-audit Python tests, QuestDB SQL fixture, three published Lua
+programs and DLL/GUI/loader/testhost build. Results
+`/tmp/wow-validation-fmppfkw5/results.json`, staged snapshot
+`/tmp/wow-combat-p021-published.Cp8Xzu`. Unpublished QuestDB Python fixtures are
+reported absent in that snapshot, not silently claimed tested there.
+Failing-before-fix replay proves delayed reengage;
+new terminal tests, asynchronous Lua latch and own-release guards added.
+BUILD/DIFF CHECK PASS in full validation and separate final commands; staged
+diff inspected and checked, ONLY11 intended files/hunks. Dirty work remains local.
+RUNTIME PENDING: no WoW process available. Normal unattended Grind>=20min,
+full capture, natural repair/damage or safe abandonment; never deliberately
+create a dangerous stall. Source/test completion does not establish the
+initiating damage failure is fixed. P0.2 natural latch repair remains PASS.
+
+P0.3 key navigation fixes RUNTIME PASS in observed~12.5min latest session:
+movementRecoveries0/runtimeRecoveries0/runtimeEscalations0, progressing loaders
+preserved. Full20–30min gate interrupted by combat failure, still PENDING.
+AFK normal/Ghost and complete natural DeathRecovery remain baseline RUNTIME
+PASS. No navigation/AFK/death source or budgets2000/4/2 changed here.
+
+Intended files: combat liveness/action/client-evidence/AutoAttack, ONLY new
+terminal-related CombatController hunks, new terminal policy/test, extended
+liveness/Lua tests, combat audit and this state. Preserve unrelated dirty pull,
+quest, WorldMonitor, GUI/services/data work unstaged. Baseline HEAD
+03c52b1177d035763d7e71d6aa3fd89af4abe2a9. Resolve checkpoint identity with
+`git log -1 --format='%H %s' -- src/Bot/CombatTerminalPolicy.h`; verify remote HEAD.
+No swimming or other V6 phase begins. Next task is this bounded runtime gate.
+
+## Historical P0.3 navigation checkpoint (2026-10-07)
 
 SOURCE VERIFIED: newest full session684.134358538029914000.116409170.1128
 ran20.0032 minutes, movementRecoveries16/runtimeRecoveries42/runtimeEscalations30
@@ -1003,7 +1061,12 @@ separate.
 
 # Runtime validation gates
 
-Current first gate: P0.3 normal unattended Grinding20–30 minutes; preserve FULL
+Current first gate: P0.2.1 normal unattended Grinding>=20 minutes; preserve FULL
+combat episode and require damage after repair, verified safe optional target
+abandonment, or evidence explaining an unavoidable active-hostile system failure.
+Do not deliberately provoke a stall/death. P0.3 key fixes passed~12.5min;
+the full20–30min navigation gate was interrupted by combat and remains pending.
+The same longer run can complete that regression gate: preserve FULL
 log and run `python3 tools/navigation_log_audit.py CAPTURE`. Compare movement,
 runtime recovery and escalation rates to0.800/2.100/1.500 per minute. No progressing
 loader falsely killed at48 ticks, impossible posture51, sustained stationary
@@ -1247,7 +1310,11 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. Validate P0.3 in normal natural Grinding20–30 minutes with full capture;
+1. Validate P0.2.1 deep-stall repair/terminal behavior in normal natural Grinding
+   >=20 minutes with full capture. No unsafe induced stall. Actual target damage
+   verifies refresh; same-target safe abandonment is NOT a kill. Active/unknown
+   hostile evidence must never be silently discarded. Then finish the interrupted
+   P0.3 normal Grinding20–30-minute regression gate;
    compare recovery rates and inspect progressing initialization/posture/query
    evidence before declaring reduced churn. P0.2 natural same-target latch
    repair and normal20-minute combat regression now PASS. Keep normal fights,

@@ -109,6 +109,30 @@ int main(int argc, char** argv)
     assert(p.Observe(s).action==CombatRecoveryAction::None);
     s=Sample(16002);
     assert(p.Observe(s).action==CombatRecoveryAction::RefreshAttack);
+    // Replay the deep-stall boundary: refresh turns the latch off. Off time
+    // cannot consume the post-reengage offensive observation window.
+    p.Reset(); p.Observe(Sample());
+    s=Sample(4001); s.playerHp=90;
+    d=p.Observe(s); assert(d.action==CombatRecoveryAction::RefreshAttack);
+    p.Dispatched(d.action,s.nowMs);
+    s=Sample(4251); s.playerHp=90; s.attackActive=false;
+    d=p.Observe(s);
+    assert(d.action==CombatRecoveryAction::ReengageAttack);
+    assert(d.verified==CombatRecoveryAction::None); // refresh dispatch != damage
+    p.Dispatched(d.action,s.nowMs);
+    s=Sample(4501); s.playerHp=80;
+    d=p.Observe(s);
+    assert(d.verified==CombatRecoveryAction::ReengageAttack);
+    assert(d.action==CombatRecoveryAction::None);
+    s=Sample(4857); s.playerHp=80;
+    assert(p.Observe(s).action==CombatRecoveryAction::None); // 356 ms is not a swing
+    assert(p.Repairs()==2 && p.NoDamageMs(s.nowMs)==4856);
+    s=Sample(8501); s.playerHp=70;
+    assert(p.Observe(s).action==CombatRecoveryAction::Fail); // still bounded
+    // Active-window verification does not refund repairs; actual damage does.
+    s=Sample(8751); s.playerHp=70; s.targetHp=99;
+    d=p.Observe(s);
+    assert(d.verified==CombatRecoveryAction::RefreshAttack && p.Repairs()==0);
     // Slow weapons are not diagnosed before two swing periods + probe slack.
     p.Reset(); s=Sample(); s.attackPeriodMs=5000; p.Observe(s);
     s=Sample(8001); s.attackPeriodMs=5000;

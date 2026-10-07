@@ -118,7 +118,8 @@ namespace Bot
             std::string& result,
             const Objects::WorldState* combatWorld = nullptr,
             std::uint64_t expectedTarget = 0,
-            float meleeEnvelope = 0.0f)
+            float meleeEnvelope = 0.0f,
+            bool requireDisengaged = false)
         {
             if (script == nullptr || *script == '\0')
                 return false;
@@ -174,6 +175,14 @@ namespace Bot
                                 !Objects::UnitSnapshot::Read(target->address,freshTarget) ||
                                 freshTarget.guid!=expectedTarget || !freshTarget.health)
                                 return;
+                            if (requireDisengaged)
+                            {
+                                const auto e=CombatClientEvidence5875::Execution(*combatWorld,*target);
+                                if (!e.known || !e.aggressorsKnown || e.PlayerCombat() ||
+                                    e.aggressor || e.targetVictim==combatWorld->activePlayerGuid ||
+                                    e.playerHp!=combatWorld->player.health || e.targetHp!=target->health ||
+                                    (e.playerVictim && e.playerVictim!=expectedTarget)) return;
+                            }
                             const float dx=freshTarget.x-freshPlayer.x, dy=freshTarget.y-freshPlayer.y,
                                 dz=freshTarget.z-freshPlayer.z;
                             const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
@@ -537,6 +546,14 @@ namespace Bot
             std::string result;
             const auto script=CombatActionScript(refresh ? "refresh" : "start");
             return ExecuteLuaReadback(script.c_str(),"wow-internal/CombatRecovery.lua",result,&world,guid,meleeEnvelope) && result=="issued";
+        }
+        static bool AbandonOwnCombatTarget(const Objects::WorldState& world,
+            std::uint64_t guid, float meleeEnvelope)
+        {
+            std::string result;
+            const auto script=CombatActionScript("abandon");
+            return ExecuteLuaReadback(script.c_str(),"wow-internal/CombatTargetRelease.lua",
+                result,&world,guid,meleeEnvelope,true) && result=="issued";
         }
         static bool RestoreCombatTarget(const Objects::WorldState& world,
             const Objects::UnitState& target)
