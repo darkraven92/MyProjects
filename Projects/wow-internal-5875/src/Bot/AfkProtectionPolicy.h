@@ -6,7 +6,8 @@ namespace Bot
 {
     enum class AfkStatus { Unknown, Active, ApproachingThreshold, AfkDetected,
         ClearingAfk, VerifiedClear, Blocked, Fault };
-    enum class AfkAction { None, InputPulse, ClearFlag };
+    enum class AfkAction { None, InputPulse, ClearFlag, NativeAutoClear };
+    enum class AfkAutoClearSetting { Unknown, Disabled, Enabled };
     enum class AfkResult { None, Pending, Confirmed, Failed };
     struct AfkObservation
     {

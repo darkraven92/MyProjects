@@ -1,15 +1,95 @@
 # P0.0 shared AFK protection audit
 
-Status: SOURCE VERIFIED / TEST PASS (policy and Lua guards); RUNTIME PENDING.
-The first live qualification started observing but aborted before any F12.
-The next live run aborted at `initial_afk_state_not_clear` with authoritative
-client/server AFK active and native input age 354 ms. P0.0.2 removes that harness
-defect; it does not establish that F12 works.
-The P0.0.3 capture successfully acquired the hold but aborted on an input
-change after immediately entering baseline. Pre-baseline quiescence is now
-required; it remains RUNTIME PENDING on the rebuilt client.
-Neither a qualifying input nor either prevention window has been demonstrated.
-Do not label the character protected merely because this controller is enabled.
+P0.0.4 (2026-10-07): SOURCE VERIFIED; composite candidate RUNTIME PENDING.
+The newest live capture proves qualification hold/quiescence and the natural
+300241-ms idle threshold. Targeted F12 delivery and native input-clock advance
+are RUNTIME PASS. **F12 alone clearing AFK is RUNTIME FAIL**: both states stayed
+active through the 3000-ms deadline (observed failure at 3245 ms). Prevention
+is RUNTIME PENDING; no prevention window began. Do not label the bot protected.
+
+## P0.0.4 clear-path control-flow audit
+
+The capture's baseline was 60801599. After quiescence stableMs=1541, natural
+AFK was observed, paired F12 was delivered, and the native clock advanced to
+61101864 without scene changes. Both AFK states remained active. This is NOT
+evidence that Wine dropped the input, and extending the timeout is not a fix.
+
+The binary contains two separate mechanisms:
+
+- Key-event dispatch at 0x765F10 copies event fields, then writes event+0xC
+  to 0xCF0BC8 at 0x765F34, BEFORE invoking registered consumers through vtable
+  +0x60. Release dispatch 0x765FD0 writes the same clock at 0x765FEC and calls
+  the consumer through +0x64. Clock delivery does not imply a bound gameplay
+  action, nor a call to the AFK-clear routine.
+- Actual clearing is 0x5EB830, same player-this/one-stack-argument ABI as its
+  movement callers, `ret 4`. It first tests local 0xB6E5CC and returns if clear.
+  At 0x5EB846 it tests the force argument; with force=0 it reads the CVar
+  pointer at 0xC4D68C and integer field +0x28, returning if zero. It obtains
+  CLEARED_AFK text at 0x5EB86C, displays the normal client notice, clears its
+  own local flag at 0x5EB885, constructs opcode 0x95 / chat type 0x14 /
+  language 0 / empty text, and calls network send 0x5AB630 at 0x5EB8D0.
+  That wrapper obtains the connection via 0x5AB490 and sends via 0x5379A0.
+  This is client/server behavior, not just a local flag edit.
+- Direct callers: movement at 0x513D36, 0x514E23, 0x514F0B, 0x514FCA pass
+  force=0; normal chat at 0x49F3D6 also passes 0. Explicit empty AFK chat
+  at 0x49F553 passes 1, bypassing the setting. Jump registration at 0x8500B8
+  maps to 0x513BD0; that action's accepted movement branch contains the
+  0x513D36 call. MoveForwardStart registration 0x8500D0 maps to 0x513E20.
+  Thus real keys that invoke these actions can clear AFK. A **real unbound
+  F12** is not proven to clear it either. No human-input trace or full Wine
+  dispatch-stack capture was made; no claim that all hardware keys clear AFK.
+
+`autoClearAFK` registration at 0x5E24CC–0x5E24F4 supplies default string `1`
+(0x82E748), name 0x8602CC, description 0x8602DC, and stores the returned CVar
+pointer at 0xC4D68C. The executable says “Automatically clear AFK when moving
+or chatting”; the argument/value branches and packet construction corroborate
+that description. Only registration and this clear routine directly reference
+that pointer in the disassembly. No `autoClearAFK` override was found in the
+local WTF/Config.wtf; that is NOT proof of the live setting. No WoW process was
+running during this audit. **Actual runtime CVar remains unknown.**
+
+New read-only `AFK AUTO CLEAR setting=enabled|disabled|unknown` samples this
+signature-validated pointer/field. Unknown/non-boolean values fail closed.
+No setting is changed. Disabled would block automatic semantic clearing, but
+is NOT established as the cause of this run. The proven missing operation is
+the semantic client/server clear after the successfully delivered unbound key.
+
+The local VMaNGOS 1.12.1 opcode table confirms CMSG_MESSAGECHAT=149/0x95;
+SharedDefines.h confirms CHAT_MSG_AFK=0x14. ChatHandler.cpp:611–628 ignores
+AFK in combat and toggles for empty text. Consequently a native-clear dispatch
+requires BOTH live flags active, never one mismatched state or already clear.
+
+### One new qualification-only candidate
+
+`paired_F12_then_native_auto_clear` is explicitly a **composite**, NOT evidence
+that F12 alone clears AFK. Qualify mode delivers the paired unbound key, verifies
+fresh clock advancement and unchanged scene/UI, then requests the audited
+0x5EB830 function with force=0 on the game thread once, only when both flags
+remain active and autoClearAFK is authoritatively enabled. Entry/gate/packet/
+send/return and CVar-registration signatures are checked. The native function
+displays its expected AFK-cleared chat notice; no dialog/gameplay movement is
+requested. Native code performs its normal state update and server packet;
+the bot does not write either flag, input clock or CVar.
+
+The original 3000-ms deadline starts at F12 dispatch and is NOT restarted by
+delivery or native clear. Mismatched flags wait boundedly; no second clear,
+toggle or key is sent while awaiting confirmation. Both flags must clear, then
+two prevention intervals must still pass. Unsafe/unknown/side-effect/failed
+dispatch aborts and releases the hold. Initial clear failure is logged as
+`AFK QUALIFICATION PREREQUISITE`, not a failed prevention window. Existing
+production guards and the separate production policy are unchanged.
+
+Native timestamp is reread immediately before the key pulse, after UI/window/
+scene guards. Delivery logs separate `baselineClock`, `inputClockBefore` and
+`inputClockAfter`; equality of baseline/before is expected during genuine idle,
+not evidence of reusing an old sample.
+
+Transport choice: reuse already-proven targeted message delivery plus the
+audited client clear mechanism; do not replace it with SendInput, keybd_event,
+X11 events or another function key merely to repeat an unbound event. Those
+broader paths have no established additional semantic benefit and may affect
+focus/global input. A controlled human comparison is only needed if the new
+capture disproves this source-backed model. Production remains unqualified.
 
 ## Evidence and cause
 
@@ -35,13 +115,14 @@ Addresses below are VAs, not offsets into an arbitrary PE file.
 | Explicit clear | Empty AFK chat dispatcher 0x49F4F3–0x49F553 uses local flag to mark/clear |
 | TurnLeftStart/Stop | 0x513EE0/0x513F10 read the input timestamp; issuing movement is not proof of refreshing it |
 
-The 300000-ms client threshold is **source evidence, not a measured timeout**.
+The 300000-ms client threshold is source evidence, corroborated by the newest
+controlled 300241-ms observation (not an exact independent server timeout).
 Server policy, suppressed client checks, manual AFK and flags in transit can
 produce different observations. The controller records local and server state
 separately. The newest post-abort Grinding run observed both flags active at
 input age 300158 ms, consistent with the source threshold, but logged
 `continuousSafeIdle=no`. This is not a controlled qualification baseline or
-prevention proof; the safe-idle measurement gate remains pending.
+prevention proof; the newer P0.0.4 baseline supersedes this earlier measurement.
 
 P0.0.1 correction: B6E5CC is **not exclusively 0/1**. Explicit mark writes 1,
 but server synchronization writes 0 or 2. The old `client>1` rejection made a
@@ -108,8 +189,8 @@ Visible EditBoxes, keyboard handlers, dialogs or an F12 binding block it.
 The paired driver attempts release even after a failed/throwing press. No
 held-input state survives a tick, stop, exception or client restart.
 
-**This input path is a candidate, not runtime verified.** Wine/client event
-handling may ignore targeted messages. Delivery is logged as
+**Delivery and native clock are runtime verified; F12-only clear failed.**
+Delivery is logged as
 `paired_message_delivered`, not proof of hardware key state or AFK clearance.
 Only a subsequently advanced native input timestamp confirms qualifying
 activity. If it does not advance, stop with verification_timeout; do not
@@ -130,10 +211,9 @@ of navigation-safe production dispatch. Idle-only protection is not sufficient
 for indefinite busy-workload AFK prevention; that requirement remains open.
 
 Production retains its separate guarded empty-AFK-chat fallback after verified
-input. **Qualification never uses that toggle**: it tests F12 alone. Otherwise
-the toggle could clear AFK and falsely qualify F12. If autoClearAFK is disabled
-or the input path does not clear the flags, qualification must fail honestly.
-Flags/timers are never written by the bot.
+input. Qualification does not use that forced Lua toggle: the new explicitly
+named composite uses non-forced native auto-clear as described above. It must
+never be reported as F12-alone success. Flags/timers are never written by the bot.
 
 ## P0.0.3 pre-baseline input quiescence
 
@@ -245,8 +325,9 @@ Required log sequence:
    For a clear baseline, inspect the natural AFK THRESHOLD OBSERVATION elapsed.
 2. AFK ACTION unbound_F12; matching AFK INPUT RELEASE; native input clock
    advances (`AFK CANDIDATE DELIVERY advanced=yes`). Separately require
+   `AFK ACTION action=native_auto_clear inputPath=game_thread_native_5875`,
    `AFK CLEAR VERIFY result=confirmed`, then `AFK QUALIFICATION BASELINE RESET
-   reason=candidate_clear_confirmed`. No AFK-chat toggle during qualification.
+   reason=candidate_clear_confirmed`. No forced Lua AFK toggle.
 3. Two complete safe/clear intervals, each ending near the safety margin with
    a verified paired pulse. AFK PREVENTION WINDOW 1 then 2. Missing observation,
    intervening AFK, unsafe ownership or early pulses cannot count as windows.
@@ -281,6 +362,13 @@ abort, hold release and runtime wiring. The test failed compilation before
 the new typed phase/API existed. P0.0.2 tests now run after the prerequisite
 quiescence and retain the delivery/clear/two-window regressions.
 These do not prove Windows/Wine event handling or client AFK prevention.
+
+`afk_native_clear_test.cpp`: reproduces the rejected input-only candidate;
+unknown/disabled CVar fails closed; native clear is requested only after input
+proof and both-active flags; issued clear never counts as success; client-only,
+server-only and neither-clear timeout without extending the deadline; no repeat
+clear; unchanged scene, fresh pre-dispatch sample ordering/no direct flag/CVar
+writes; initial success still requires two prevention intervals.
 
 Native signature mismatch disables the adapter. All held-input guarantees
 apply to the synchronous message design, not untested OS keyboard injection.

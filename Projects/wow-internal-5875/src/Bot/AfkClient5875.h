@@ -44,6 +44,27 @@ namespace Bot
                 Match(0x365f34,std::array<unsigned char,6>{0x89,0x0d,0xc8,0x0b,0xcf,0}) &&
                 Match(0x2c010,std::array<unsigned char,5>{0xe9,0x7b,0xf7,0xff,0xff});
         }
+        static bool AutoClearSupported()
+        {
+            // Entry/ABI, non-forced CVar gate, packet opcode/type/empty message,
+            // network send and ret 4. This is NOT a writable AFK-state adapter.
+            return Supported() &&
+                Match(0x1eb830,std::array<unsigned char,24>{
+                    0x55,0x8b,0xec,0x83,0xec,0x18,0xa1,0xcc,0xe5,0xb6,0,0x56,
+                    0x33,0xf6,0x3b,0xc6,0x0f,0x84,0xb1,0,0,0,0x39,0x75}) &&
+                Match(0x1eb846,std::array<unsigned char,19>{
+                    0x39,0x75,0x08,0x75,0x0e,0xa1,0x8c,0xd6,0xc4,0,
+                    0x39,0x70,0x28,0x0f,0x84,0x9e,0,0,0}) &&
+                Match(0x1eb87d,std::array<unsigned char,5>{0x68,0x95,0,0,0}) &&
+                Match(0x1eb8aa,std::array<unsigned char,10>{0x6a,0x14,0x8d,0x4d,0xe8,0xe8,0xdc,0xc8,0xe2,0xff}) &&
+                Match(0x1eb8bd,std::array<unsigned char,13>{
+                    0x68,0x48,0x27,0x88,0,0x8d,0x4d,0xe8,0xe8,0x66,0xcb,0xe2,0xff}) &&
+                Match(0x1eb8d0,std::array<unsigned char,5>{0xe8,0x5b,0xfd,0xfb,0xff}) &&
+                Match(0x1eb8f7,std::array<unsigned char,7>{0x5e,0x8b,0xe5,0x5d,0xc2,0x04,0}) &&
+                Match(0x1e24d4,std::array<unsigned char,17>{
+                    0x68,0x48,0xe7,0x82,0,0x6a,0,0xba,0xdc,0x02,0x86,0,0xb9,0xcc,0x02,0x86,0}) &&
+                Match(0x1e24ea,std::array<unsigned char,10>{0xe8,0xa1,0xb6,0x05,0,0xa3,0x8c,0xd6,0xc4,0});
+        }
         struct WindowSearch { DWORD thread=0; HWND window=nullptr; };
         static BOOL CALLBACK FindWindow(HWND hwnd, LPARAM parameter)
         {
@@ -89,6 +110,15 @@ namespace Bot
             }
         };
     public:
+        static AfkAutoClearSetting ReadAutoClearSetting()
+        {
+            if (!AutoClearSupported()) return AfkAutoClearSetting::Unknown;
+            std::uint32_t pointer=0, value=0;
+            if (!Core::Memory::Read(Wow5875::Client::Base()+0x84d68c,pointer) ||
+                !pointer || !Core::Memory::Read(std::uintptr_t(pointer)+0x28,value) || value>1)
+                return AfkAutoClearSetting::Unknown;
+            return value ? AfkAutoClearSetting::Enabled : AfkAutoClearSetting::Disabled;
+        }
         static AfkCandidateScene ReadScene(const Objects::PlayerState& player)
         {
             Objects::PlayerState fresh;
@@ -185,6 +215,26 @@ namespace Bot
                 const char* guard=text(const_cast<char*>("WOW_INTERNAL_AFK_INPUT"),0xffffffffu,0);
                 if (!guard || std::strcmp(guard,"ready")!=0)
                 { result.reason=guard ? guard : "guard_unavailable"; return; }
+                if (action==AfkAction::NativeAutoClear)
+                {
+                    // Called ONLY by the opt-in composite qualification after
+                    // input delivery and unchanged-scene evidence. Recheck here
+                    // because the server's empty AFK message is a toggle.
+                    result.before=Read(player);
+                    if (!AfkProtectionPolicy::Valid(result.before) ||
+                        result.before.lastInput!=expected.lastInput ||
+                        !result.before.clientAfk || !result.before.serverAfk)
+                    { result.reason="afk_or_input_changed_before_native_clear"; return; }
+                    if (ReadAutoClearSetting()!=AfkAutoClearSetting::Enabled)
+                    { result.reason="native_auto_clear_setting_not_enabled"; return; }
+                    using AutoClear=void (__thiscall*)(void*,int);
+                    // Same player this/force=0 ABI as the movement callers.
+                    // The CLIENT performs its normal local update AND packet.
+                    reinterpret_cast<AutoClear>(base+0x1eb830)(reinterpret_cast<void*>(player.address),0);
+                    result.blocked=false; result.issued=true;
+                    result.reason="native_auto_clear_requested";
+                    return;
+                }
                 if (action==AfkAction::ClearFlag)
                 {
                     const auto live=Read(player);
@@ -201,6 +251,11 @@ namespace Bot
                 KeyDriver driver{search.window,false};
                 result.sceneBefore=ReadScene(player);
                 if (!result.sceneBefore.known) { result.reason="candidate_scene_unavailable"; return; }
+                // Fresh authoritative sample immediately before dispatch, AFTER
+                // window/UI guards. Never substitute the five-minute baseline.
+                result.before=Read(player);
+                if (!AfkProtectionPolicy::Valid(result.before) || result.before.lastInput!=expected.lastInput)
+                { result.reason="input_changed_before_pulse"; return; }
                 result.blocked=false;
                 result.issued=AfkInputPulse(driver);
                 result.releaseDelivered=driver.released;

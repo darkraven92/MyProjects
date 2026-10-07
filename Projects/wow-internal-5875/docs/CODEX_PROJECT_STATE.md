@@ -1,6 +1,6 @@
 # Project
 
-Updated: 2026-10-06. Read this file AND `AGENTS.md` before continuing.
+Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 
 - Repository scope: `/home/ludvig/Programming/Projects/wow-internal-5875`.
 - Git root is `/home/ludvig/Programming`; sibling projects are OUT OF SCOPE.
@@ -412,8 +412,8 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 - **AFK first:** launch a logged-in safe client with
   `WOW_INTERNAL_AFK_MODE=qualify` in the WoW process environment. Detailed fish
   commands and evidence sequence are in `docs/AFK_5875_AUDIT.md`. Need natural
-  pre-baseline quiescence, baseline or initial-AFK clear, individually verified
-  input, then two clear prevention intervals
+  baseline or initial-AFK clear with the new explicit composite
+  `paired_F12_then_native_auto_clear`, then two clear prevention intervals
   and both workload integrations. No automatic RUNTIME PASS from log counters.
 
 - 2026-10-06 post-P0.1.1 natural log: vendor intent 1 proved issued hard-stall
@@ -472,11 +472,12 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    wall-inset steering or collision. Its report cannot grant runtime PASS.
 6. Current Grinding run has repeated acquisition/watchdog resets; exact control
    flow/root cause awaits P0 combat/ownership audit.
-7. AFK: qualification attempts still aborted before F12; the latest acquired
-   its hold but entered baseline before startup input settled. P0.0.3 adds
-   bounded input quiescence and awaits a new client run. The input candidate must advance the
-   native input clock in Wine. If ignored, it faults once instead of pretending
-   protection. Actual threshold and two windows require user login/start.
+7. AFK: newest capture proves hold/quiescence and 300241-ms baseline. Paired
+   F12 delivery and native input timestamp are RUNTIME PASS; F12-alone clear
+   is RUNTIME FAIL (both flags still active at 3245 ms). No prevention window
+   began. P0.0.4 adds a separate source-audited native auto-clear continuation;
+   live CVar, clear and two prevention windows await user login/start. No WoW
+   process was running during this audit. Do not merely retry F12 alone.
    GUI status transport and a broader water-state model remain unimplemented.
 8. Much prior working project code/data/tests is still dirty/untracked. This
    checkpoint publishes only reviewed audit/tooling files, not the complete
@@ -484,14 +485,48 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.3 AFK FIRST (user priority override):** pre-baseline input quiescence;
-already-AFK entry and asynchronous clearing preserved. SOURCE VERIFIED;
-validation results recorded above.
-RUNTIME PENDING until the user runs the rebuilt client qualification. Do not advance to
+**P0.0.4 AFK FIRST (user priority override):** real client/server clear path;
+quiescence, already-AFK entry and asynchronous clearing preserved. SOURCE VERIFIED;
+see current checkpoint below. RUNTIME PENDING until rebuilt-client qualification. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a
 blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
 default protection cannot interfere with active gameplay owners. Candidate
-input is not yet proven sufficient under Wine. No GUI/profile/talent expansion.
+input alone advances the clock but does NOT clear AFK. No GUI/profile/talent expansion.
+
+## P0.0.4 source/test checkpoint
+
+Latest `build/wow-internal.log`: baselineClock=60801599, stableMs=1541,
+natural AFK elapsed=300241, F12 press/release, clockAfter=61101864, unchanged
+scene, both flags still active at 3245 ms. Delivery/native clock RUNTIME PASS;
+F12-alone clear RUNTIME FAIL; prevention RUNTIME PENDING (not window-1 failure).
+
+SOURCE VERIFIED from local 5875 binary (hash in AFK_5875_AUDIT.md): input
+dispatcher 0x765F34 updates timestamp before consumers; clear is 0x5EB830.
+Its force=0 branch reads autoClearAFK pointer 0xC4D68C + integer field 0x28,
+then updates local state AND sends empty AFK message opcode0x95/type0x14 via
+0x5AB630. Movement and normal chat call it separately; an unbound key is not
+the same as these semantic actions. Default CVar=1 is source-backed; actual
+live value is unknown, not inferred from default or Config.wtf absence.
+No evidence proves a missing Wine transport; no OS-global input substitute.
+
+Files: AfkClient5875 adds read-only CVar/signature guards, fresh pre-pulse
+clock after UI/window/scene guards, native non-forced clear adapter. SharedAfkController
+and AfkQualificationPolicy add ONE qualification-only composite candidate:
+paired F12 -> delivery/scene proof -> once-only native clear when both flags
+active and CVar enabled -> both flags clear -> two prevention intervals.
+The original total 3000-ms deadline is unchanged. Unknown/disabled setting
+fails closed; bot never writes clocks/flags/CVar; no forced Lua toggle in
+qualification. Production permissions and Questing/Grinding wiring unchanged.
+Initial failure now logs a prerequisite failure, NOT a prevention-window failure.
+AfkProtectionPolicy only adds typed candidate action/setting identifiers.
+tools/afk_client_audit.py validates call targets, CVar/default and clear packet
+signatures; tests/afk_native_clear_test.cpp covers the rejected old candidate,
+unknown/disabled CVar, mixed flags, bounded timeout, no retry/false window,
+scene safety, fresh timestamp ordering, both prevention intervals and no writes.
+
+Validation results and scoped Git checkpoint are recorded in Git state below.
+New candidate RUNTIME PENDING; busy-workload protection still blocked pending
+qualification and explicit safety review. AFK remains highest priority.
 
 Preserved V6 P0.1 follow-up: internal initialization fallback retains movement
 ownership, hard-stall terminal cause is typed, and objective execution can
@@ -557,6 +592,14 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.4 base: `d012a470d39575ea9e70bb0cee53c41954ef67d0`.
+  Current validation: TEST PASS, 77 strict C++ tests, 13 Python tests plus
+  QuestDB SQL self-test, six Lua fixtures / 113 checks. Artifact:
+  `/tmp/wow-validation-h993csap/results.json` (validation includes build/diff).
+  BUILD PASS; DIFF CHECK PASS. Runtime composite/two windows remain pending.
+  Scoped commit/push verification follows final diff review; resolve the
+  checkpoint by `git log -1 --format='%H %s' -- src/Bot/AfkClient5875.h`.
+  Remaining dirty project work is not included or claimed published.
 - P0.0.3 base: `543447e8f0d2b60a4c2b786f5f57b15d093723b4`.
   Validated scoped checkpoint: `f04ac4c89d4189b23d0e43b4fa9f31b847a59bfa`
   (`afk: require bounded input quiescence before qualification`). Pushed to
@@ -630,10 +673,10 @@ override their location. It writes reports only, never controls WoW.
 
 1. **AFK runtime gate first:** user launches/logs in on safe land with qualify
    mode; quiescence start/reset/complete, clear OR already-AFK baseline,
-   independent candidate input-clock confirmation, asynchronous
-   two-flag clear and two prevention windows. Neither flag may be fabricated.
-   If targeted messages fail, inspect exact evidence before considering a
-   bounded targeted Wine/X11 alternative. Never substitute a blind W loop.
+   read-only `AFK AUTO CLEAR` value, fresh candidate input-clock confirmation,
+   native auto-clear action, asynchronous two-flag clear and two prevention
+   windows. Neither flag may be fabricated. Do not retry the rejected F12-only
+   clear path or change the CVar silently. Never substitute a blind W loop.
 2. Capture/reconstruct the failing live cave transition with current recovery
    telemetry; use the expanded offline report. Apply only a proved shared-layer
    correction, then regression/build/diff and runtime qualification.

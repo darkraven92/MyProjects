@@ -6,8 +6,9 @@ namespace Bot
     enum class AfkQualificationPhase
     { Initial, AwaitingQuiescence, Synchronizing, Baseline, CandidateReady, Delivery, Clear, Prevention, Complete, Failed };
 
-    // Diagnostic flow only. Never use the production AFK-chat toggle here:
-    // qualification must establish whether the paired candidate ALONE works.
+    // Diagnostic flow only. The original input-only candidate remains testable;
+    // the new explicit composite uses the client's non-forced auto-clear path.
+    // Neither candidate inherits production's explicit AFK-chat toggle.
     class AfkQualificationPolicy
     {
         AfkQualificationPhase phase_=AfkQualificationPhase::Initial;
@@ -21,6 +22,7 @@ namespace Bot
         unsigned windows_=0;
         bool deliveryVerified_=false, clearVerified_=false;
         bool preventionCandidate_=false;
+        bool nativeCandidate_=false, nativeClearIssued_=false, preventionStarted_=false;
         const char* failure_="qualification_failed";
         AfkDecision Fail(const char* reason)
         {
@@ -29,6 +31,15 @@ namespace Bot
             return {AfkStatus::Fault,AfkAction::None,AfkResult::Failed,reason};
         }
     public:
+        AfkQualificationPolicy() = default;
+        explicit AfkQualificationPolicy(bool nativeCandidate) : nativeCandidate_(nativeCandidate) {}
+        bool PreventionStarted() const { return preventionStarted_; }
+        // A command is not confirmation. Keep the ORIGINAL input deadline.
+        void NativeClearIssued()
+        {
+            if (nativeCandidate_ && phase_==AfkQualificationPhase::Clear && deliveryVerified_)
+                nativeClearIssued_=true;
+        }
         // Startup noise may reset only the quiet interval, never the deadline.
         // Tick-driven diagnostic timing; neither constant changes WoW's clock.
         static constexpr std::uint64_t QuietIntervalMs=1500, MaximumQuiescenceMs=10000;
@@ -48,7 +59,7 @@ namespace Bot
         AfkAction PendingAction() const { return input_.PendingAction(); }
 
         AfkDecision Update(const AfkObservation& o, bool safe, bool unchanged,
-            std::uint64_t now)
+            std::uint64_t now, AfkAutoClearSetting autoClear=AfkAutoClearSetting::Unknown)
         {
             if (phase_==AfkQualificationPhase::Failed) return Fail(failure_);
             if (!AfkProtectionPolicy::Valid(o)) return Fail("qualification_observation_unknown");
@@ -110,9 +121,18 @@ namespace Bot
                     }
                     return result; // delivery alone never completes a window
                 }
+                if (active && nativeCandidate_ && !nativeClearIssued_ && o.clientAfk && o.serverAfk)
+                {
+                    if (autoClear!=AfkAutoClearSetting::Enabled)
+                        return Fail(autoClear==AfkAutoClearSetting::Disabled ?
+                            "auto_clear_afk_disabled" : "auto_clear_afk_unknown");
+                    return {AfkStatus::ClearingAfk,AfkAction::NativeAutoClear,AfkResult::Pending,
+                        "verified_input_requires_native_auto_clear"};
+                }
                 if (active)
                     return {AfkStatus::ClearingAfk,AfkAction::None,AfkResult::Pending,"waiting_client_and_server_clear"};
                 clearVerified_=true;
+                preventionStarted_=true;
                 if (window_.Confirmed(AfkAction::InputPulse,o)) ++windows_;
                 phase_=windows_==2 ? AfkQualificationPhase::Complete : AfkQualificationPhase::Prevention;
                 return {AfkStatus::VerifiedClear,AfkAction::None,AfkResult::Confirmed,"candidate_clear_confirmed"};
@@ -155,6 +175,7 @@ namespace Bot
             preventionCandidate_=phase_==AfkQualificationPhase::Prevention;
             input_.Issued(AfkAction::InputPulse,o,now);
             issuedAt_=now; deliveryVerified_=clearVerified_=false;
+            nativeClearIssued_=false;
             phase_=AfkQualificationPhase::Delivery;
         }
     };
