@@ -54,4 +54,18 @@ int main()
     }
     p.Reset(); // re-arm is an explicit controller boundary, not synthetic success
     assert(p.Observe(Sample()).action==CombatTerminalAction::Observe);
+
+    // A mandatory objective receives a typed owner failure only after the
+    // same safe disengagement and post-command proof; it is never blacklisted
+    // as an optional Grind target or credited as a kill.
+    p.Reset(); s=Sample(); s.optionalGrind=false; s.mandatoryObjective=true;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s.nowMs=1001;
+    assert(p.Observe(s).action==CombatTerminalAction::StopAndClearOwnTarget);
+    p.Dispatched(s.nowMs);
+    s.nowMs=1251; s.selectedGuid=s.serverVictimGuid=0; s.attackActive=false;
+    assert(p.Observe(s).action==CombatTerminalAction::OwnerFailure);
+    p.Reset(); s=Sample(); s.optionalGrind=false; s.mandatoryObjective=true;
+    s.hostileEngaged=true;
+    assert(p.Observe(s).action==CombatTerminalAction::SystemFail);
 }

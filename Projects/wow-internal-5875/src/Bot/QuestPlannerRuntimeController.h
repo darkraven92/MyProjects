@@ -1137,6 +1137,25 @@ namespace Bot
 
             try
             {
+                std::uint64_t failedCombatGuid=0;
+                std::uint32_t failedCombatEntry=0;
+                const char* failedCombatReason=nullptr;
+                if (combat.ConsumeOwnerTargetFailure(failedCombatGuid,
+                        failedCombatEntry,failedCombatReason))
+                {
+                    if (!objectiveDirector_.FailActiveFromCombat(failedCombatReason))
+                    {
+                        ContainRuntimeFault(world,combat,tick,
+                            "mandatory combat failure without active objective");
+                        return;
+                    }
+                    combat.ClearPlannerQuestTarget();
+                    Debug::Logger::Info("COMBAT OWNER HANDOFF from=Combat to=QuestPlanner"
+                        " guid="+std::to_string(failedCombatGuid)+
+                        " entry="+std::to_string(failedCombatEntry)+
+                        " reason="+failedCombatReason+
+                        " decision=objective_failure_not_kill");
+                }
                 SetRuntimeActivity("Update");
                 UpdateImpl(world, combat, tick);
                 SetRuntimeActivity(StateName());

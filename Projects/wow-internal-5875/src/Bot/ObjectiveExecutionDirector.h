@@ -20,6 +20,15 @@ namespace Bot
         const QuestProfile* catalogueProfile_ = nullptr;
         QuestProfile resolvedProfile_{};
         bool haveResolvedProfile_ = false;
+        const char* externalCombatFailure_ = nullptr;
+
+        template <typename Executor>
+        static const char* ExecutorFailureReason(const Executor* executor)
+        {
+            if constexpr (requires { executor->FailureReason(); })
+                return executor->FailureReason();
+            return nullptr;
+        }
 
     public:
         bool Start(
@@ -102,30 +111,52 @@ namespace Bot
             CombatController& combat,
             std::uint64_t tick)
         {
-            if (active_ != nullptr)
+            if (active_ != nullptr && !externalCombatFailure_)
                 active_->Update(snapshot, world, combat, tick);
+        }
+
+        bool FailActiveFromCombat(const char* reason)
+        {
+            if (active_ == nullptr || reason == nullptr || *reason == '\0')
+                return false;
+            externalCombatFailure_ = reason;
+            return true;
         }
 
         bool OwnsControl() const
         {
-            return active_ != nullptr && active_->OwnsControl();
+            return active_ != nullptr && !externalCombatFailure_ &&
+                   active_->OwnsControl();
+        }
+
+        ObjectiveExecutorState State() const
+        {
+            return active_ == nullptr ? ObjectiveExecutorState::Idle :
+                externalCombatFailure_ ? ObjectiveExecutorState::Failed : active_->State();
         }
 
         bool ReadyForTurnIn() const
         {
-            return active_ != nullptr &&
+            return active_ != nullptr && !externalCombatFailure_ &&
                    active_->State() == ObjectiveExecutorState::ReadyForTurnIn;
         }
 
         bool Failed() const
         {
             return active_ != nullptr &&
-                   active_->State() == ObjectiveExecutorState::Failed;
+                   (externalCombatFailure_ || active_->State() == ObjectiveExecutorState::Failed);
+        }
+
+        const char* FailureReason() const
+        {
+            return externalCombatFailure_ ? externalCombatFailure_ :
+                Failed() ? ExecutorFailureReason(active_.get()) : nullptr;
         }
 
         void ReleaseActive()
         {
             active_.reset();
+            externalCombatFailure_ = nullptr;
             catalogueProfile_ = nullptr;
             haveResolvedProfile_ = false;
             // resolvedProfile_ remains value storage, but an inactive director
@@ -152,7 +183,8 @@ namespace Bot
 
         const char* StateName() const
         {
-            return active_ == nullptr ? "Idle" : active_->StateName();
+            return active_ == nullptr ? "Idle" :
+                externalCombatFailure_ ? "FailedCombat" : active_->StateName();
         }
     };
 }

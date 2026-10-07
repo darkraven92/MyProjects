@@ -188,8 +188,13 @@ namespace Bot
                             const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
                             const float angle=std::fabs(std::remainder(std::atan2(dy,dx)-freshPlayer.rotation,
                                 6.2831853071795864769f));
-                            if (!std::isfinite(distance) || distance>meleeEnvelope ||
-                                !CombatFacingPolicy::IsAbilityFacingReady(angle)) return;
+                            // A guarded release is not a melee attack. It may
+                            // retire a stalled chase while the same optional
+                            // target is out of range; fresh disengagement and
+                            // exact selected-GUID checks above still apply.
+                            if (!requireDisengaged &&
+                                (!std::isfinite(distance) || distance>meleeEnvelope ||
+                                 !CombatFacingPolicy::IsAbilityFacingReady(angle))) return;
                         }
 
                         luaExecuted =

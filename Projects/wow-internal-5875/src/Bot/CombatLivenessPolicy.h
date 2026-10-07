@@ -53,6 +53,7 @@ namespace Bot
         CombatStallClass classification=CombatStallClass::Healthy;
         CombatRecoveryAction action=CombatRecoveryAction::None;
         CombatRecoveryAction verified=CombatRecoveryAction::None;
+        bool damageObserved=false;
     };
     // Structural progress (selection/facing/latch) is NOT damage progress.
     // Existing 250 ms poll / 1 s latch probe / 4 s soft / 8 s hard-stall
@@ -68,6 +69,14 @@ namespace Bot
         static constexpr unsigned MaximumRepairs=3;
         static constexpr std::uint64_t StructuralVerificationMs=1000;
         void Reset() { *this=CombatLivenessPolicy{}; }
+        void Pause(std::uint64_t now)
+        {
+            // Water/death/external ownership is not an attack opportunity.
+            // Keep the spent repair budget, but never borrow its elapsed time.
+            lastDamageMs_=now;
+            eligible_=false;
+            pending_=CombatRecoveryAction::None;
+        }
         unsigned Repairs() const { return repairs_; }
         bool Pending() const { return pending_!=CombatRecoveryAction::None; }
         std::uint64_t NoDamageMs(std::uint64_t now) const
@@ -93,6 +102,7 @@ namespace Bot
             { Reset(); d.classification=CombatStallClass::TargetEnded; return d; }
             if (guid_!=s.targetGuid || object_!=s.targetObject) Reset();
             const bool damage=sampled_ && s.targetHp<hp_;
+            d.damageObserved=damage;
             if (!sampled_ || damage)
             {
                 lastDamageMs_=s.nowMs;

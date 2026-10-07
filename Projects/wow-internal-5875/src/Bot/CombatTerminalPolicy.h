@@ -4,12 +4,12 @@
 
 namespace Bot
 {
-    enum class CombatTerminalAction { Observe, StopAndClearOwnTarget, Abandoned, SystemFail };
+    enum class CombatTerminalAction { Observe, StopAndClearOwnTarget, Abandoned, OwnerFailure, SystemFail };
     struct CombatTerminalSample
     {
         std::uint64_t nowMs=0, targetGuid=0, selectedGuid=0, serverVictimGuid=0;
         std::uint32_t playerHp=0;
-        bool optionalGrind=false, known=false, inputSafe=false;
+        bool optionalGrind=false, mandatoryObjective=false, known=false, inputSafe=false;
         bool hostileEngaged=true, attackKnown=false, attackActive=false;
     };
     struct CombatTerminalDecision
@@ -31,7 +31,8 @@ namespace Bot
         void Dispatched(std::uint64_t now) { issued_=true; dispatched_=now; }
         CombatTerminalDecision Observe(const CombatTerminalSample& s)
         {
-            if (!s.optionalGrind) return {CombatTerminalAction::SystemFail,"mandatory_target_repair_exhausted"};
+            if (!s.optionalGrind && !s.mandatoryObjective)
+                return {CombatTerminalAction::SystemFail,"terminal_owner_not_recoverable"};
             if (!s.known || !s.targetGuid || !s.playerHp)
                 return {CombatTerminalAction::SystemFail,"hostile_engagement_unknown"};
             if (s.hostileEngaged) return {CombatTerminalAction::SystemFail,"unresolved_hostile_after_bounded_repair"};
@@ -44,7 +45,11 @@ namespace Bot
             if (issued_)
             {
                 if (!s.selectedGuid && !s.serverVictimGuid && s.attackKnown && !s.attackActive)
-                    return {CombatTerminalAction::Abandoned,"own_attack_and_selection_verified_clear"};
+                    return s.mandatoryObjective
+                        ? CombatTerminalDecision{CombatTerminalAction::OwnerFailure,
+                            "mandatory_combat_liveness_exhausted"}
+                        : CombatTerminalDecision{CombatTerminalAction::Abandoned,
+                            "own_attack_and_selection_verified_clear"};
                 if (s.nowMs-dispatched_>=VerificationMs)
                     return {CombatTerminalAction::SystemFail,"target_abandon_not_confirmed"};
                 return {CombatTerminalAction::Observe,"verifying_own_target_release"};
@@ -52,7 +57,7 @@ namespace Bot
             if (s.selectedGuid!=guid_ || (s.serverVictimGuid && s.serverVictimGuid!=guid_) || !s.attackKnown)
                 return {CombatTerminalAction::SystemFail,"terminal_target_ownership_unknown"};
             if (s.nowMs-started_>=VerificationMs)
-                return {CombatTerminalAction::StopAndClearOwnTarget,"optional_target_safe_to_abandon"};
+                return {CombatTerminalAction::StopAndClearOwnTarget,"target_safe_to_release"};
             return {};
         }
     };

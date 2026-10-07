@@ -1,5 +1,56 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5 chase/terminal closure (2026-10-07; static validation in progress)
+
+Starting HEAD `bf08ec65c53edcb751d6c37da5533c5b00e2cb9b` was verified.
+The historical natural optional chase of GUID `0xF130000CCD005092`
+exhausted three hard-stall recoveries while its distance changed
+23.4473 -> 21.1605 -> 14.5037 yards; it received the existing 120-second
+GUID blacklist and the bot continued. The old global-recovery branch decided
+to abandon from `targetVictim != player` alone. That did not prove the absence
+of another aggressor, a native combat flag, mandatory ownership, or a safe
+post-command release. It was an unsafe ownership shortcut despite a useful
+observed outcome.
+
+P0.5 routes exhausted chase through the same read-only combat execution
+evidence and guarded terminal protocol as exhausted offense. Optional Grind
+targets are released only after complete known aggressor enumeration, no native
+combat/victim linkage, stable player HP, safe input, exact selected GUID, and
+verified Attack/selection release. Death, water pause, world/input unknown,
+active hostile or another owner cannot silently become optional abandonment.
+The same GUID is blacklisted for 120 seconds only after verified release; no
+kill is credited. Mandatory planner combat can produce an owner-visible typed
+failure after the same safe release; otherwise systemic/active-hostile failure
+remains explicit. No repair count or navigation safety budget was enlarged.
+
+Direct chase now uses target-relative physical progress: destination-distance
+gain or displacement toward the locked target. CTM dispatch, replanning, and
+lateral displacement do not refund the 8/16-tick liveness windows. Navigation
+initialization/long approach remain outside the direct ChaseController clock;
+the first Combat chase lock starts a new epoch. Typed chase reasons distinguish
+invalid/unreachable target, approach-plan rejection, movement-command rejection
+and exhausted physical progress. Target unload and invalid max-HP no longer
+count as verified kills. The P0.2.1 3-repair/1-refresh and fresh post-reengage
+offensive window remain unchanged. Read-only swing timer and evade state remain
+UNKNOWN; no synthetic execution evidence was added.
+
+Initial native target selection is also bounded to the existing five-failure
+count at the existing eight-tick retry cadence. Reissued SetTarget is never
+treated as selection proof: only `ClientSelectedGuid == pendingTargetGuid`
+completes it. At the bound, an optional pending target may be blacklisted only
+if fresh complete native evidence proves no combat/aggressor/own Attack; a
+mandatory planner target returns a typed owner failure under the same guard.
+Active/unknown combat fails explicitly instead of abandoning a hostile or
+retrying forever. Server victim alone never confirms UI selection.
+
+P0.4 remains PAUSED; P0.4.1 observation and P0.4-TEMP living-water block are
+unchanged. Full-tree 95 C++ tests and isolated staged-tree 46 C++ tests,
+Python/SQL/Lua fixtures, MinGW build and diff checks passed; exact artifacts
+are in the project state. The GUI runtime attempt found no running WoW client
+and did not start one, so P0.5 remains RUNTIME PENDING. A new natural
+deep-offense terminal episode is required to call that rare branch RUNTIME
+PASS.
+
 ## P0.2.1 deep-stall checkpoint (2026-10-07)
 
 SOURCE VERIFIED. New refresh/terminal behavior RUNTIME PENDING. Existing P0.2

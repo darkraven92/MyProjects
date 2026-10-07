@@ -27,7 +27,8 @@ int main(int argc, char** argv)
     auto s = Sample(); CombatLivenessPolicy p;
     assert(p.Observe(s).action == CombatRecoveryAction::None);
     s = Sample(8001); s.targetHp = 90;
-    assert(p.Observe(s).action == CombatRecoveryAction::None);
+    auto firstDamage = p.Observe(s);
+    assert(firstDamage.action == CombatRecoveryAction::None && firstDamage.damageObserved);
     assert(p.NoDamageMs(s.nowMs) == 0);
     s = Sample(9001); s.targetHp = 90; s.selectedGuid = 0;
     auto d = p.Observe(s);
@@ -169,4 +170,13 @@ int main(int argc, char** argv)
     s=Sample(251); s.fresh=false; s.targetHp=0;
     assert(p.Observe(s).classification==CombatStallClass::UnknownOrStale);
     assert(p.Repairs()==1);
+    // Water/death ownership pauses an episode without refunding attempts or
+    // charging inactive wall time to the post-handoff attack window.
+    p.Reset(); s=Sample(); s.attackActive=false;
+    d=p.Observe(s); p.Dispatched(d.action,s.nowMs);
+    p.Pause(10001);
+    assert(p.Repairs()==1 && !p.Pending());
+    s=Sample(10002);
+    assert(p.Observe(s).action==CombatRecoveryAction::None);
+    assert(p.NoDamageMs(s.nowMs)==1);
 }

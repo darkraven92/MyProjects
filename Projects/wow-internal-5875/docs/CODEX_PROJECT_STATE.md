@@ -9,9 +9,51 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.4-TEMP living-water avoidance**, after P0.4.1.
-  Preserve verified navigation/cache, combat, AFK, DeathRecovery and mixed-state
-  fail-closed behavior. No trainer/talent/GUI/Questing-architecture expansion.
+- Current phase: V6 **P0.5 combat reliability closure**. P0.4 autonomous
+  swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
+  water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
+  navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5 combat closure checkpoint (2026-10-07)
+
+Starting HEAD `bf08ec65c53edcb751d6c37da5533c5b00e2cb9b` verified.
+Historical optional chase GUID `0xF130000CCD005092` exhausted its 3/3
+recoveries, was blacklisted 120 seconds, and Grind continued. Source audit
+found the prior global chase-abandon branch checked only that the failed
+target's victim was not the player; this was not sufficient to establish safe
+disengagement or mandatory/aggressor ownership. P0.5 routes exhausted chase
+through full read-only combat evidence and the verified guarded terminal
+release protocol. Direct chase now requires target-relative physical progress,
+not command dispatch or lateral movement. Typed terminal reasons and target
+loss/invalid no-kill attribution are added. Safe mandatory planner combat
+failure is owner-visible rather than optional-blacklisted. Existing 3-repair/
+1-refresh offense, 120-second blacklist, AFK, water pause, DeathRecovery, and
+navigation 2000/4/2 budgets remain unchanged. See
+`docs/COMBAT_RELIABILITY_AUDIT.md` for the source analysis.
+Initial same-GUID UI selection retries are now bounded by the existing
+five-failure limit and require native selected-GUID confirmation; optional
+timeout abandonment requires complete no-hostile/no-Attack evidence, while
+mandatory timeout is returned to its objective owner.
+
+Static status: SOURCE VERIFIED, TEST PASS, BUILD PASS, DIFF CHECK PASS.
+Full dirty worktree validation:
+95 strict C++ tests, 26 navigation/water audit Python tests, 13 local QuestDB
+Python tests, SQL fixture and eight Lua fixtures; results
+`/tmp/wow-validation-f3ca94vp/results.json`. Isolated staged-tree validation:
+46 C++ tests, 26 audit Python tests, SQL fixture and three published Lua
+fixtures, plus complete DLL/GUI/loader build; results
+`/tmp/wow-validation-22lbd2st/results.json`, tree
+`ddb3b714bac16af6d6ef7fc0e078517cfd292565`. The first isolated run
+exposed an accidental dependency on an unrelated dirty quest-interface
+method; the staged implementation was corrected and the final isolated run
+passed. P0.5's new normal-runtime gate remains PENDING. The P0.2.1 rare
+deep-offensive-stall terminal path remains RUNTIME PENDING until a natural
+episode exercises its fresh post-reengage window and terminal branch. Do not
+infer a new runtime PASS from prior logs or a build. A normal GUI launch was
+attempted after static validation: the GUI opened with `WoW: Stopped` and
+`Game not running`, but its Start WoW control did not start the client in this
+environment. No new `build/wow-internal.log` session or 20-minute P0.5 runtime
+exists; the GUI opened for this attempt was closed. Runtime remains PENDING.
 
 ## P0.4-TEMP living-water avoidance checkpoint (2026-10-07)
 

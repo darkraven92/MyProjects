@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CombatSelectionTimeoutPolicy.h"
+
 #include "AutoAttackController.h"
 #include "CombatLivenessPolicy.h"
 #include "CombatTerminalPolicy.h"
@@ -244,6 +246,7 @@ namespace Bot
 
         std::uint64_t pendingTargetGuid_ =
             0;
+        int selectionAttemptsForGuid_ = 0;
 
         std::uint64_t lastTargetCommandTick_ =
             0;
@@ -297,6 +300,11 @@ namespace Bot
         CombatTerminalPolicy meleeTerminal_{};
         bool meleeTerminalPending_=false;
         const char* lastMeleeTerminalReason_=nullptr;
+        const char* terminalCause_="offensive_no_progress";
+        bool chaseTerminalPending_=false;
+        std::uint64_t ownerTargetFailureGuid_=0;
+        std::uint32_t ownerTargetFailureEntry_=0;
+        const char* ownerTargetFailureReason_=nullptr;
         CombatLivenessDecision meleeDecision_{};
         AutoAttackController::CombatActionEvidence meleeActionEvidence_{};
         CombatStallClass lastMeleeClassification_=CombatStallClass::UnknownOrStale;
@@ -328,6 +336,25 @@ namespace Bot
                 " castOrGcdWait="+(s.actionWait ? "yes" : "no")+" classification=offensive_no_progress");
         }
 
+        void BeginChaseTerminal(const Objects::WorldState& world,
+            const Objects::UnitState& target, const char* reason)
+        {
+            if (!MovementController::HoldPosition(world.player))
+            {
+                Fail("combat_terminal_system_failure:chase_stop_rejected", false);
+                return;
+            }
+            if (chase_.IsActive()) chase_.Stop();
+            terminalCause_=reason;
+            chaseTerminalPending_=true;
+            meleeTerminal_.Reset();
+            meleeTerminalPending_=true;
+            lastMeleeTerminalReason_=nullptr;
+            Debug::Logger::Info("COMBAT CHASE RECOVERY guid="+Hex64(target.guid)+
+                " entry="+std::to_string(target.entryId)+
+                " reason="+reason+" decision=verify_terminal_owner");
+        }
+
         bool ResolveMeleeTerminal(const Objects::WorldState& world,
             const Objects::UnitState& target, const CombatLivenessSample& s, std::uint64_t tick)
         {
@@ -337,6 +364,8 @@ namespace Bot
             terminal.selectedGuid=e.selected; terminal.serverVictimGuid=e.playerVictim;
             terminal.playerHp=e.playerHp;
             terminal.optionalGrind=grindModeActive_ && !plannerQuestTargetActive_ && !vileFamiliarsActive_;
+            terminal.mandatoryObjective=plannerQuestTargetActive_ && !vileFamiliarsActive_ &&
+                !grindModeActive_;
             terminal.known=e.known && e.aggressorsKnown && s.fresh && s.selectionKnown;
             terminal.inputSafe=s.inputSafe && !s.actionWait;
             terminal.hostileEngaged=e.PlayerCombat() || e.aggressor ||
@@ -348,10 +377,11 @@ namespace Bot
                 lastMeleeTerminalReason_=d.reason;
                 LogCombatExecution(target,s,e);
                 Debug::Logger::Info("COMBAT TERMINAL TARGET targetGuid="+Hex64(lockedGuid_)+
-                    " class=bounded_same_target_repair_exhausted hostileStillEngaged="+
+                    " class="+terminalCause_+" hostileStillEngaged="+
                     (terminal.known ? (terminal.hostileEngaged ? "yes" : "no") : "unknown")+
                     " repairAttempts="+std::to_string(meleeLiveness_.Repairs())+
-                    " decision="+(d.action==CombatTerminalAction::SystemFail ? "system_fail" : "verify_safe_abandon")+
+                    " decision="+(d.action==CombatTerminalAction::SystemFail ? "system_fail" :
+                        (terminal.mandatoryObjective ? "verify_owner_failure" : "verify_safe_abandon"))+
                     " reason="+d.reason);
             }
             if (d.action==CombatTerminalAction::SystemFail)
@@ -371,15 +401,28 @@ namespace Bot
             if (d.action==CombatTerminalAction::Abandoned)
             {
                 const auto abandoned=lockedGuid_;
-                BlacklistTarget(abandoned,tick,"bounded offensive_no_progress: verified safe optional abandonment");
+                if (chaseTerminalPending_)
+                    ++autonomyTargetsAbandoned_;
+                BlacklistTarget(abandoned,tick,std::string(terminalCause_)+
+                    ": verified safe optional abandonment");
                 ++consecutiveTargetFailures_;
                 warrior_.EndTarget();
                 Debug::Logger::Info("COMBAT TARGET ABANDON guid="+Hex64(abandoned)+
-                    " reason=offensive_no_progress outcome=abandoned_not_killed blacklistMs=120000"+
+                    " reason="+terminalCause_+" outcome=abandoned_not_killed blacklistMs=120000"+
                     " combatStateAfter="+(consecutiveTargetFailures_>=MaximumConsecutiveTargetFailures ? "Failed" : "AcquiringTarget"));
                 if (consecutiveTargetFailures_>=MaximumConsecutiveTargetFailures)
                     Fail("too many consecutive safely abandoned combat targets");
                 else BeginAcquire(tick+1);
+            }
+            if (d.action==CombatTerminalAction::OwnerFailure)
+            {
+                ownerTargetFailureGuid_=lockedGuid_;
+                ownerTargetFailureEntry_=target.entryId;
+                ownerTargetFailureReason_=d.reason;
+                Debug::Logger::Info("COMBAT OWNER HANDOFF from=Combat to=QuestObjective guid="+
+                    Hex64(lockedGuid_)+" reason="+d.reason+
+                    " outcome=failed_not_killed");
+                BeginAcquire(tick+1);
             }
             return true;
         }
@@ -410,6 +453,13 @@ namespace Bot
             s.actionKnown=meleeActionEvidence_.attack.valid && meleeActionEvidence_.attack.actionSlotFound;
             s.attackActive=meleeActionEvidence_.attack.active;
             meleeDecision_=meleeLiveness_.Observe(s);
+            if (meleeDecision_.damageObserved)
+            {
+                autonomyRecoveryAttemptsByGuid_.erase(target.guid);
+                Debug::Logger::Info("COMBAT LIVENESS EPISODE guid="+Hex64(target.guid)+
+                    " decision=reset reason=verified_target_hp_decrease hp="+
+                    std::to_string(s.targetHp));
+            }
             if (meleeDecision_.classification!=lastMeleeClassification_ ||
                 (meleeDecision_.action!=CombatRecoveryAction::None && !meleeTerminalPending_))
             {
@@ -434,7 +484,7 @@ namespace Bot
                     " result=confirmed evidence="+
                     (meleeDecision_.verified==CombatRecoveryAction::RefreshAttack ? "target_health_decreased" : "post_command_state"));
             if (meleeTerminalPending_ && !meleeTerminal_.Issued() &&
-                meleeDecision_.verified==CombatRecoveryAction::RefreshAttack)
+                meleeDecision_.damageObserved)
             {
                 meleeTerminalPending_=false; meleeTerminal_.Reset(); lastMeleeTerminalReason_=nullptr;
                 Debug::Logger::Info("COMBAT TERMINAL TARGET result=cancelled reason=verified_target_damage");
@@ -442,9 +492,13 @@ namespace Bot
             if (meleeTerminalPending_ || meleeDecision_.action==CombatRecoveryAction::Fail)
             {
                 if (!meleeTerminalPending_)
+                {
+                    terminalCause_="optional_offensive_recovery_exhausted";
+                    chaseTerminalPending_=false;
                     Debug::Logger::Info("COMBAT HARD STALL targetGuid="+Hex64(lockedGuid_)+
                         " durationMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
                         " reason=bounded_same_target_recovery_exhausted");
+                }
                 meleeTerminalPending_=true;
                 return ResolveMeleeTerminal(world,target,s,tick);
             }
@@ -1506,6 +1560,8 @@ namespace Bot
             meleeTerminal_.Reset();
             meleeTerminalPending_=false;
             lastMeleeTerminalReason_=nullptr;
+            terminalCause_="offensive_no_progress";
+            chaseTerminalPending_=false;
             meleeLiveness_.Reset();
             meleeDecision_={};
             meleeActionEvidence_={};
@@ -1515,6 +1571,7 @@ namespace Bot
 
             pendingTargetGuid_ =
                 0;
+            selectionAttemptsForGuid_ = 0;
 
             attackStarted_ =
                 false;
@@ -1812,8 +1869,11 @@ namespace Bot
                 return false;
             }
 
+            if (pendingTargetGuid_ != target.guid)
+                selectionAttemptsForGuid_ = 0;
             pendingTargetGuid_ =
                 target.guid;
+            ++selectionAttemptsForGuid_;
 
             lastTargetCommandTick_ =
                 tick;
@@ -1892,20 +1952,9 @@ namespace Bot
                     "================================"
                 );
 
-                ++consecutiveTargetFailures_;
-
-                BlacklistTarget(
-                    target.guid,
-                    tick,
-                    "ChaseController failed to start."
-                );
-
-                ResetTargetState();
-
-                SetState(
-                    CombatState::
-                        AcquiringTarget
-                );
+                const auto reason=ChaseFailureName(chase_.FailureReason());
+                SetState(CombatState::Chasing);
+                BeginChaseTerminal(world,target,reason);
 
                 return false;
             }
@@ -1988,6 +2037,8 @@ namespace Bot
                 )
             );
 
+            if (lockedGuid_ != target.guid)
+                autonomyRecoveryAttemptsByGuid_.erase(target.guid);
             lockedGuid_ =
                 target.guid;
 
@@ -3914,6 +3965,47 @@ namespace Bot
 
                 if (retryReady)
                 {
+                    if (selectionAttemptsForGuid_ >= MaximumConsecutiveTargetFailures)
+                    {
+                        const auto e=CombatClientEvidence5875::Execution(world,*pending);
+                        const auto action=AutoAttackController::ProbeCombatAction();
+                        CombatSelectionTimeoutEvidence timeout{};
+                        timeout.optionalGrind=grindModeActive_ && !plannerQuestTargetActive_ &&
+                            !vileFamiliarsActive_;
+                        timeout.mandatoryObjective=plannerQuestTargetActive_ &&
+                            !grindModeActive_ && !vileFamiliarsActive_;
+                        timeout.known=e.known && e.aggressorsKnown &&
+                            world.player.valid && world.player.health>0;
+                        timeout.hostileEngaged=e.PlayerCombat() || e.aggressor ||
+                            e.targetVictim==world.activePlayerGuid ||
+                            FindBestDirectAggressor(world)!=nullptr;
+                        timeout.attackKnown=action.known && action.attack.valid &&
+                            action.attack.actionSlotFound && action.inputSafe && !action.waiting;
+                        timeout.attackActive=action.attack.active;
+                        const auto result=DecideSelectionTimeout(timeout);
+                        Debug::Logger::Info("COMBAT TERMINAL DECISION guid="+
+                            Hex64(pendingTargetGuid_)+" entry="+std::to_string(pending->entryId)+
+                            " reason=target_selection_timeout attempts="+
+                            std::to_string(selectionAttemptsForGuid_)+
+                            " decision="+(result==CombatSelectionTimeoutAction::AbandonOptional
+                                ? "optional_abandon" : result==CombatSelectionTimeoutAction::FailMandatoryOwner
+                                    ? "mandatory_owner_failure" : "system_fail"));
+                        if (result==CombatSelectionTimeoutAction::AbandonOptional)
+                        {
+                            BlacklistTarget(pendingTargetGuid_,tick,
+                                "target_selection_timeout: verified safe optional abandonment");
+                            BeginAcquire(tick+1);
+                        }
+                        else if (result==CombatSelectionTimeoutAction::FailMandatoryOwner)
+                        {
+                            ownerTargetFailureGuid_=pendingTargetGuid_;
+                            ownerTargetFailureEntry_=pending->entryId;
+                            ownerTargetFailureReason_="mandatory_target_selection_timeout";
+                            BeginAcquire(tick+1);
+                        }
+                        else Fail("target_selection_timeout: active_hostile_or_unknown",false);
+                        return;
+                    }
                     IssueTargetSelection(
                         *pending,
                         tick
@@ -3949,6 +4041,8 @@ namespace Bot
 
             if (target == nullptr)
             {
+                Debug::Logger::Info("COMBAT TARGET TERMINAL guid="+Hex64(lockedGuid_)+
+                    " reason=target_unloaded outcome=not_killed");
                 FinishTarget(
                     world,
                     nullptr,
@@ -3963,6 +4057,10 @@ namespace Bot
                 target->health == 0 ||
                 target->maxHealth == 0)
             {
+                const bool confirmedDead=target->health==0;
+                Debug::Logger::Info("COMBAT TARGET TERMINAL guid="+Hex64(lockedGuid_)+
+                    " reason="+(confirmedDead ? "target_dead" : "target_invalid")+
+                    " outcome="+(confirmedDead ? "verified_kill" : "not_killed"));
                 if (target->health==0 && meleeLiveness_.Pending())
                     Debug::Logger::Info("COMBAT RECOVERY VERIFY targetGuid="+Hex64(lockedGuid_)+
                         " result=confirmed evidence=target_died");
@@ -3970,7 +4068,7 @@ namespace Bot
                     world,
                     target,
                     tick,
-                    true
+                    confirmedDead
                 );
 
                 return;
@@ -4376,38 +4474,8 @@ namespace Bot
 
             if (chase_.Failed())
             {
-                ++consecutiveTargetFailures_;
-
-                Debug::Logger::Info(
-                    "ChaseController failed for "
-                    "current target."
-                );
-
-                BlacklistTarget(
-                    lockedGuid_,
-                    tick,
-                    "ChaseController entered Failed."
-                );
-
-                if (
-                    consecutiveTargetFailures_ >=
-                        MaximumConsecutiveTargetFailures)
-                {
-                    Fail(
-                        "too many consecutive "
-                        "target/chase failures."
-                    );
-
-                    return;
-                }
-
-                FinishTarget(
-                    world,
-                    nullptr,
-                    tick,
-                    false
-                );
-
+                BeginChaseTerminal(world,*target,
+                    ChaseFailureName(chase_.FailureReason()));
                 return;
             }
 
@@ -4462,6 +4530,7 @@ namespace Bot
             // Preserve the same locked target and Attack state. Only ground
             // chase, loot movement and seated recovery are relinquished.
             if (chase_.IsActive()) chase_.Stop();
+            meleeLiveness_.Pause(GetTickCount64());
             loot_.Reset();
             recovery_.Reset();
         }
@@ -4487,6 +4556,9 @@ namespace Bot
             ResetTargetState();
             deferredCorpses_.clear();
             recentAggressorUntil_.clear();
+            ownerTargetFailureGuid_=0;
+            ownerTargetFailureEntry_=0;
+            ownerTargetFailureReason_=nullptr;
             currentCombatTick_ = tick;
             emergencyHealthLatched_ = false;
             consecutiveTargetFailures_ = 0;
@@ -4504,6 +4576,9 @@ namespace Bot
             ResetTargetState();
             deferredCorpses_.clear();
             recentAggressorUntil_.clear();
+            ownerTargetFailureGuid_=0;
+            ownerTargetFailureEntry_=0;
+            ownerTargetFailureReason_=nullptr;
             currentCombatTick_ = tick;
             emergencyHealthLatched_ = false;
             consecutiveTargetFailures_ = 0;
@@ -4586,6 +4661,21 @@ namespace Bot
             Debug::Logger::Info("Reason: " + reason);
             Debug::Logger::Info("================================");
 
+            if (attempts >= MaximumAutonomyCombatRecoveriesPerTarget)
+            {
+                // The third bounded recovery is exhausted. Do not infer
+                // passivity from just this target's victim GUID: another
+                // attacker or the player's native combat flag may remain.
+                // The normal per-tick terminal policy now requires fresh
+                // complete client evidence and stable HP before any release.
+                BeginChaseTerminal(world,*target,
+                    "optional_chase_recovery_exhausted");
+                Debug::Logger::Info("COMBAT CHASE RECOVERY guid="+Hex64(lockedGuid_)+
+                    " attempt="+std::to_string(attempts)+
+                    " reason=chase_no_physical_progress decision=verify_terminal_owner");
+                return true;
+            }
+
             if (attackStarted_ && !lowHealthMeleeFinisher)
             {
                 AutoAttackController::Stop();
@@ -4606,24 +4696,6 @@ namespace Bot
             facingGuardHolding_ = true;
             lastFacingCommandTick_ = 0;
             warriorOpenerUntilTick_ = 0;
-
-            const bool directAggressor =
-                target->targetGuid == world.activePlayerGuid;
-
-            if (
-                attempts >= MaximumAutonomyCombatRecoveriesPerTarget &&
-                !directAggressor)
-            {
-                ++autonomyTargetsAbandoned_;
-                BlacklistTarget(
-                    target->guid,
-                    tick,
-                    "AutonomySupervisor hard-stall recovery budget exhausted.");
-                FinishTarget(world, target, tick, false);
-                Debug::Logger::Info(
-                    "AUTONOMY 14G.4.1: stalled non-aggressor abandoned; selecting different work.");
-                return true;
-            }
 
             /*
              * Phase 14M.0.2 low-HP finisher ownership:
@@ -5266,6 +5338,19 @@ namespace Bot
             return
                 state_ ==
                     CombatState::Failed;
+        }
+
+        bool ConsumeOwnerTargetFailure(std::uint64_t& guid,
+            std::uint32_t& entry, const char*& reason)
+        {
+            if (!ownerTargetFailureReason_) return false;
+            guid=ownerTargetFailureGuid_;
+            entry=ownerTargetFailureEntry_;
+            reason=ownerTargetFailureReason_;
+            ownerTargetFailureGuid_=0;
+            ownerTargetFailureEntry_=0;
+            ownerTargetFailureReason_=nullptr;
+            return true;
         }
 
         std::uint64_t LockedGuid() const

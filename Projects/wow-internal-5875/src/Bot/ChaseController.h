@@ -1,7 +1,7 @@
 #pragma once
 
 #include "MovementController.h"
-#include "MovementProgressWatchdog.h"
+#include "ChaseProgressWatchdog.h"
 #include "TargetSelector.h"
 
 #include "../Debug/Logger.h"
@@ -24,6 +24,25 @@ namespace Bot
         TargetDead,
         Failed
     };
+
+    enum class ChaseFailureReason
+    {
+        None, TargetInvalid, TargetUnreachable, ApproachPlanRejected,
+        MovementCommandRejected, RecoveryExhausted
+    };
+
+    inline const char* ChaseFailureName(ChaseFailureReason reason)
+    {
+        switch (reason)
+        {
+            case ChaseFailureReason::TargetUnreachable: return "target_unreachable";
+            case ChaseFailureReason::TargetInvalid: return "target_invalid";
+            case ChaseFailureReason::ApproachPlanRejected: return "approach_plan_rejected";
+            case ChaseFailureReason::MovementCommandRejected: return "movement_command_rejected";
+            case ChaseFailureReason::RecoveryExhausted: return "chase_no_physical_progress";
+            default: return "none";
+        }
+    }
 
     class ChaseController
     {
@@ -132,6 +151,7 @@ namespace Bot
 
         ChaseState state_ =
             ChaseState::Idle;
+        ChaseFailureReason failureReason_ = ChaseFailureReason::None;
 
         std::uint64_t targetGuid_ =
             0;
@@ -162,7 +182,7 @@ namespace Bot
         int replans_ =
             0;
 
-        MovementProgressWatchdog movementWatchdog_{
+        ChaseProgressWatchdog movementWatchdog_{
             MovementProgressWatchdogConfig{
                 WatchdogMeaningfulNetMovement,
                 WatchdogMeaningfulTargetGain,
@@ -283,7 +303,7 @@ namespace Bot
 
         void ResetMovementTracking(
             const Objects::PlayerState& player,
-            float targetDistance,
+            const Objects::UnitState& target,
             std::uint64_t tick)
         {
             lastPlayerX_ = player.x;
@@ -294,7 +314,10 @@ namespace Bot
                 player.x,
                 player.y,
                 player.z,
-                targetDistance,
+                target.x,
+                target.y,
+                target.z,
+                target.distance,
                 tick);
         }
 
@@ -328,6 +351,7 @@ namespace Bot
                         newPlan
                     ))
             {
+                failureReason_ = ChaseFailureReason::ApproachPlanRejected;
                 Debug::Logger::Info(
                     "ChaseController: "
                     "BuildApproachPlan failed."
@@ -378,6 +402,7 @@ namespace Bot
                         newPlan
                     ))
             {
+                failureReason_ = ChaseFailureReason::MovementCommandRejected;
                 Debug::Logger::Info(
                     "ChaseController: "
                     "ClickToMove command rejected."
@@ -403,8 +428,10 @@ namespace Bot
         }
 
         void Fail(
-            const std::string& reason)
+            const std::string& reason,
+            ChaseFailureReason kind)
         {
+            failureReason_ = kind;
             Debug::Logger::Info(
                 "================================"
             );
@@ -417,6 +444,8 @@ namespace Bot
                 "Reason: " +
                 reason
             );
+            Debug::Logger::Info(std::string("COMBAT CHASE TERMINAL reason=") +
+                ChaseFailureName(kind) + " guid=" + Hex64(targetGuid_));
 
             Debug::Logger::Info(
                 "Locked GUID: " +
@@ -458,6 +487,7 @@ namespace Bot
             const Objects::UnitState& target,
             std::uint64_t tick)
         {
+            failureReason_ = ChaseFailureReason::None;
             if (
                 state_ == ChaseState::Chasing ||
                 state_ == ChaseState::InRange)
@@ -486,6 +516,7 @@ namespace Bot
                 target.guid == 0 ||
                 target.health == 0)
             {
+                failureReason_ = ChaseFailureReason::TargetInvalid;
                 Debug::Logger::Info(
                     "ChaseController: "
                     "invalid target."
@@ -500,6 +531,7 @@ namespace Bot
                         target.entryId
                     ))
             {
+                failureReason_ = ChaseFailureReason::TargetInvalid;
                 Debug::Logger::Info(
                     "ChaseController: "
                     "target entry is not allowed."
@@ -512,6 +544,7 @@ namespace Bot
                 target.distance >
                     MaximumChaseDistance)
             {
+                failureReason_ = ChaseFailureReason::TargetUnreachable;
                 Debug::Logger::Info(
                     "ChaseController: "
                     "target is beyond maximum "
@@ -523,6 +556,7 @@ namespace Bot
 
             targetGuid_ =
                 target.guid;
+            failureReason_ = ChaseFailureReason::None;
 
             lastCommandTick_ =
                 tick;
@@ -544,7 +578,7 @@ namespace Bot
 
             ResetMovementTracking(
                 player,
-                target.distance,
+                target,
                 tick
             );
 
@@ -634,7 +668,8 @@ namespace Bot
                     false))
             {
                 Fail(
-                    "initial movement command failed."
+                    "initial movement command failed.",
+                    failureReason_
                 );
 
                 return false;
@@ -733,7 +768,8 @@ namespace Bot
             {
                 Fail(
                     "target exceeded maximum "
-                    "chase distance."
+                    "chase distance.",
+                    ChaseFailureReason::TargetUnreachable
                 );
 
                 return;
@@ -814,6 +850,9 @@ namespace Bot
                     world.player.x,
                     world.player.y,
                     world.player.z,
+                    target->x,
+                    target->y,
+                    target->z,
                     target->distance,
                     tick);
 
@@ -860,6 +899,9 @@ namespace Bot
                         world.player.x,
                         world.player.y,
                         world.player.z,
+                        target->x,
+                        target->y,
+                        target->z,
                         target->distance,
                         tick);
 
@@ -913,16 +955,17 @@ namespace Bot
                     ChaseState::Chasing)
             {
                 /*
-                 * Phase 14G.3.1 movement watchdog. It tracks net displacement
-                 * from an anchor plus real gain toward the live target. This
-                 * catches the common "jitter against a rock" failure where the
-                 * old 0.05-yard per-tick test kept resetting forever.
+                 * Chase progress is target-relative. Sideways motion or a
+                 * dispatched command cannot refund a stalled chase episode.
                  */
                 const auto movementObservation =
                     movementWatchdog_.Update(
                         world.player.x,
                         world.player.y,
                         world.player.z,
+                        target->x,
+                        target->y,
+                        target->z,
                         target->distance,
                         tick,
                         target->distance > ResumeChaseDistance);
@@ -1091,7 +1134,8 @@ namespace Bot
                         {
                             Fail(
                                 "maximum stuck recovery "
-                                "attempts exceeded."
+                                "attempts exceeded.",
+                                ChaseFailureReason::RecoveryExhausted
                             );
 
                             return;
@@ -1108,7 +1152,8 @@ namespace Bot
                             isReplan))
                     {
                         Fail(
-                            "movement command failed."
+                            "movement command failed.",
+                            failureReason_
                         );
 
                         return;
@@ -1120,6 +1165,9 @@ namespace Bot
                             world.player.x,
                             world.player.y,
                             world.player.z,
+                            target->x,
+                            target->y,
+                            target->z,
                             target->distance,
                             tick);
                     }
@@ -1154,6 +1202,7 @@ namespace Bot
              */
             state_ =
                 ChaseState::Idle;
+            failureReason_ = ChaseFailureReason::None;
 
             targetGuid_ =
                 0;
@@ -1233,6 +1282,8 @@ namespace Bot
                 state_ ==
                     ChaseState::Failed;
         }
+
+        ChaseFailureReason FailureReason() const { return failureReason_; }
 
         std::uint64_t TargetGuid() const
         {
