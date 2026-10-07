@@ -627,9 +627,14 @@ override their location. It writes reports only, never controls WoW.
   QuestDB SQL fixture; six Lua fixtures / 113 checks. BUILD PASS and
   DIFF CHECK PASS. Final artifact: `/tmp/wow-validation-v9eov92z/results.json`.
   New production behavior RUNTIME PENDING; mixed-state recovery remains an
-  explicit protocol blocker, not claimed fixed. Checkpoint/push follows review.
-  WorldMonitor contains unrelated prior dirty work: stage ONLY the AFK safety
-  hunk, never the whole file. Remaining user work must stay untouched.
+  explicit protocol blocker, not claimed fixed. Validated scoped checkpoint:
+  `9ed1929415c82a01864959cd2a31d08c6f8e9e7b`
+  (`afk: retain deferred prevention across benign workload activity`). Pushed
+  to origin; independent `git ls-remote` matched that local HEAD before this
+  documentation follow-up. Resolve later HEADs using the commands below.
+  WorldMonitor contains unrelated prior dirty work: ONLY the two AFK safety
+  hunks were staged, not the whole file. Remaining user work is untouched and
+  is not included or claimed published by this checkpoint.
 - P0.0.4 base: `d012a470d39575ea9e70bb0cee53c41954ef67d0`.
   Current validation: TEST PASS, 77 strict C++ tests, 13 Python tests plus
   QuestDB SQL self-test, six Lua fixtures / 113 checks. Artifact:
