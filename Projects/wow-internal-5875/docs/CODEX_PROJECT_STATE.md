@@ -656,8 +656,12 @@ override their location. It writes reports only, never controls WoW.
   seven Lua fixtures / 138 checks. BUILD PASS; DIFF CHECK PASS.
   Final artifact: `/tmp/wow-validation-loia88my/results.json`.
   Death/ghost qualification and normal two-cycle production are RUNTIME PENDING.
-  Validate the entire dirty worktree but stage ONLY reviewed AFK files and the
-  isolated WorldMonitor hunk. Never publish unrelated existing runtime work.
+  Scoped code checkpoint: `148cd30620d27a11c6c8f7ea0249117736e5b646`
+  (`afk: qualify dead and ghost prevention at safe command gaps`). Push passed;
+  independent ls-remote matched local HEAD before this documentation follow-up.
+  Only reviewed AFK files and the isolated WorldMonitor hunk were staged.
+  Existing unrelated dirty work remains unpublished and unchanged. Resolve
+  later documentation HEADs with the commands below.
 - P0.0.6 base: `5f91e854cfbfa27923dd8ff88bbca77faccfaeae`.
   TEST PASS: 78 strict C++20/Wall/extra/Werror tests; 13 Python tests plus
   QuestDB SQL fixture; six Lua fixtures / 113 checks. BUILD PASS and
