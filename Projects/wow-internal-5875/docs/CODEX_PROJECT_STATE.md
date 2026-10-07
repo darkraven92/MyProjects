@@ -764,6 +764,15 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.10 validated AFK code checkpoint:
+  `edb5fe7a5fd9f783fc11106c992a87c3c89732f4`
+  (`afk: allow source-verified ghost water-walk pulses`). Push passed;
+  independent `git ls-remote` matched local HEAD before this documentation
+  follow-up. Six intended AFK policy/adapter/controller/test/docs files only.
+  Full validation (82 strict C++ tests, Python/SQL and all Lua), explicit build
+  and diff check passed in the dirty worktree. Ghost pulse RUNTIME PENDING;
+  source/runtime-correlated water-walk bit is verified. Alive production PASS
+  and mixed-state/death-recovery blockers retained; unrelated work unpublished.
 - P0.0.9 validated AFK code checkpoint:
   `0e53bba5647521d84ea16b762737f98c9b5950e7`
   (`afk: prequalify natural dead and ghost command gaps`). Push passed;
