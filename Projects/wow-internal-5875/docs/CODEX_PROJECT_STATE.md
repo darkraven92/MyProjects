@@ -828,13 +828,19 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
-- P0.0.11 source/test checkpoint is based on validated continuity HEAD
-  `dae6246a489545ac5033c5d6dbcf615fad8f1bdc` / code `edb5fe7a...`.
+- P0.0.11 validated code checkpoint:
+  `5c84d0fe8214baff4b9157d0e6d7ebd011f4495a`
+  (`afk: audit mixed-state synchronization and retain bounded safe failure`).
+  Push passed; independent `git ls-remote origin
+  refs/heads/codex/wow-internal-continuation` matched that local code HEAD.
   Branch `codex/wow-internal-continuation`, remote
   `origin=git@github.com:darkraven92/MyProjects.git` verified before edits.
-  Intended scope: seven AFK policy/controller/test/tool/documentation files;
+  Seven intended AFK policy/controller/test/tool/documentation files only;
   no unrelated WorldMonitor, DeathRecovery, navigation or data changes staged.
-  Checkpoint hash and verified remote HEAD are recorded after commit below.
+  Final validation83 strict C++/Python/SQL/all Lua, explicit build and diff check
+  passed in the dirty worktree. Mixed path remains runtime pending/residual;
+  normal alive and Ghost prevention passed from captures. This docs-only
+  follow-up records the verified code HEAD; its own HEAD is available in git log.
 - P0.0.10 validated AFK code checkpoint:
   `edb5fe7a5fd9f783fc11106c992a87c3c89732f4`
   (`afk: allow source-verified ghost water-walk pulses`). Push passed;

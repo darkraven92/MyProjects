@@ -172,6 +172,13 @@ early Ghost qualification and two Ghost prevention cycles PASS, residual
 mixed/dead-only limitations explicit. Next bounded phase: DeathRecovery `missing_corpse_anchor` and
 `strategic_route_failed`. That phase is NOT implemented in this checkpoint.
 
+Validated code checkpoint `5c84d0fe8214baff4b9157d0e6d7ebd011f4495a`
+(`afk: audit mixed-state synchronization and retain bounded safe failure`)
+was pushed to `origin/codex/wow-internal-continuation`; independent remote
+HEAD lookup matched local code HEAD. Seven intended AFK files only;
+unrelated dirty work remains unpublished. This docs-only follow-up records
+that result; its own commit is discoverable through scoped git history.
+
 ## P0.0.10 Ghost-only water-walk allowance (historical; Ghost runtime now passed)
 
 SOURCE + RUNTIME VERIFIED correlation: newest `build/wow-internal.log`, session
