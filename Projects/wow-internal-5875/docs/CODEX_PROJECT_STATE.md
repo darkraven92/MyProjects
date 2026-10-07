@@ -1061,14 +1061,19 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
-- P0.3 checkpoint base `6cbf0cdec1bf3342125cc91b205459dab6ce6945`; current
-  branch `codex/wow-internal-continuation`, verified origin
-  `git@github.com:darkraven92/MyProjects.git`. Full worktree and isolated
-  intended-tree validation/build PASS; only the intended files and five isolated
-  owner hunks listed above are staged. Own commit identity is obtained through
-  `git log -1 --format='%H %s' -- src/Bot/PlayerPostureEvidencePolicy.h`.
-  Current HEAD/remote synchronization is verified independently after push;
-  no complete dirty-worktree publication or new runtime PASS is implied.
+- P0.3 last validated code checkpoint:
+  `65cb275b06829fe030d8e25b34d2eba65d312531`
+  (`navigation: preserve progressing loaders and correct posture evidence`).
+  Base `6cbf0cdec1bf3342125cc91b205459dab6ce6945`; branch
+  `codex/wow-internal-continuation`, verified origin
+  `git@github.com:darkraven92/MyProjects.git`. Full worktree87-test and isolated
+  intended-tree38-test validation/build PASS;15 intended files, including only
+  five isolated owner hunks. Push PASS; independent remote branch lookup
+  returned the identical full code hash. Unrelated dirty work remains unchanged.
+  This documentation-only follow-up records actual code/remote identity; resolve
+  its own HEAD through `git log -1 --format='%H %s' -- docs/CODEX_PROJECT_STATE.md`
+  and compare current local/remote HEAD. No complete dirty-worktree publication
+  or new navigation runtime PASS is implied.
 
 - P0.2 validated combat code checkpoint:
   `c88f673ee01102251f4a6860acf04ce4de5a6129`
