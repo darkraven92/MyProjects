@@ -9,9 +9,63 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.3.2 NavMesh session cache / incremental tile reuse**. Preserve verified combat, AFK and
-  DeathRecovery behavior and mixed-state fail-closed design. No swimming,
-  trainer/talent/GUI/Questing-architecture work in this checkpoint.
+- Current phase: V6 **P0.4 water safety SOURCE GAP / behavior not enabled**.
+  Preserve verified navigation/cache, combat, AFK, DeathRecovery and mixed-state
+  fail-closed behavior. No trainer/talent/GUI/Questing-architecture expansion.
+
+## P0.4 source gate (2026-10-07; authoritative current status)
+
+Starting HEAD verified exactly4ff143940b0f3e409742e00ab0e0840e4117b572 on the
+requested branch. Latest FULL capture preserved at
+`/tmp/wow-p04-baseline.yBnhXp/wow-internal.log`,137775lines, session
+2000.134358700080773630.132596093.1776,38.07115minutes, normal user Stop.
+Final67kills/67lootOk/0deaths (longer than the user's55-kill intermediate report),
+movementRecoveries0/runtimeRecoveries0/runtimeStrategic0/runtimeIdleDeadlocks0/
+runtimeEscalations0; seven confirmed AFK actions.
+
+P0.3 Navigation RUNTIME PASS; P0.3.1 Acquisition liveness RUNTIME PASS;
+P0.3.2 NavMesh cache RUNTIME PASS: cold30+60+614=704 disk/additions,5085hits;
+four warm full-map requests704hits/0reads/0adds each,264.276–293.499ms.
+Prior combat/AFK/Ghost/death qualifications retained. No natural death in this
+latest capture. Historical sections below retain their original pending gates;
+this section supersedes those baseline statuses, not their evidence details.
+
+Read `docs/WATER_SWIMMING_DROWNING_AUDIT.md` before continuing. SOURCE VERIFIED
+movement swimming bit00200000 at player+118 -> movement+40; mirror packet/event
+type1 BREATH/current/max/scale/paused; mesh ground01/water08/steep10. Critical
+negative findings: active breath can be REFILLING at surface; missing breath
+is not dry/surface proof; water polygons may be underwater terrain, not waterline.
+No reliable live submersion/surface-height snapshot or bounded ascent RELEASE
+adapter is yet SOURCE VERIFIED. User sections31/48 require STOP before guessed
+behavior. No production file, ownership, filter, budget or input path changed.
+
+Per-capability P0.4: water-state detection SOURCE GAP / RUNTIME PENDING;
+surface swimming, shore exit, submersion detection, drowning prevention and
+combat-in-water interaction NOT IMPLEMENTED / RUNTIME PENDING. DeathRecovery
+baseline RUNTIME PASS, unchanged; new water interaction not qualified. Do not
+claim water-safe eating/loot or enable capabilities from this audit alone.
+
+Added read-only `tools/water_client_audit.py` (exact PE/hash/signatures),
+`tools/water_log_audit.py` and13 deterministic Python tests. The log audit
+reports no verified water encounter and waterRuntimeQualified=false for the
+baseline; zero water events is not PASS. Behavior regressions for unimplemented
+surfacing/shoreline are not claimed. No WoW process available for live probing.
+Next: validate coherent exact-client mirror/submersion evidence and ascent/release
+semantics, then implement/test supported water behavior. No unsafe runtime test
+or later roadmap work. All2000/4/2, cache and liveness invariants remain intact.
+
+Validation: TEST PASS full dirty worktree91 strict C++ tests,22 audit Python
+tests (13 new water-tool tests),13 QuestDB Python tests, SQL fixture and8 Lua
+fixtures. Results `/tmp/wow-validation-fev2rjt0/results.json`. BUILD PASS in
+validation and separate `cmake --build build`; DIFF CHECK PASS.
+Isolated intended tree `/tmp/wow-p04-isolated.8Eot1v`: TEST PASS42 published
+C++ tests,22 audit Python tests, SQL and3 published Lua fixtures; full DLL/GUI/
+loader/testhost BUILD PASS. Results `/tmp/wow-validation-vwqoi5ni/results.json`.
+No unpublished dependencies were added. Seven intended audit/tool/test/doc
+files only; no broad dirty source hunks staged. Final documentation records
+these results without changing the tested implementation. Current checkpoint
+hash is discoverable via `git log -1 -- tools/water_client_audit.py`; verify
+local/origin/ls-remote HEAD rather than assuming a hash from this document.
 
 ## Current P0.3.2 topology reuse checkpoint (2026-10-07)
 

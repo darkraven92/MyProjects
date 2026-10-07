@@ -1,8 +1,17 @@
 # P0.3 navigation reliability audit
 
-Updated 2026-10-07. Current phase P0.3.2: session topology reuse. P0.3 and
-P0.3.1 baseline RUNTIME PASS; new cache performance RUNTIME PENDING.
+Updated 2026-10-07. P0.3/P0.3.1/P0.3.2 baseline RUNTIME PASS.
+Current P0.4 water source gate is documented in WATER_SWIMMING_DROWNING_AUDIT.md;
+no navigation behavior changed. Water-tagged terrain is NOT a waterline.
 Historical checkpoint sections below retain their original evidence.
+
+Latest full capture (P0.4 audit): `/tmp/wow-p04-baseline.yBnhXp/wow-internal.log`,
+137775lines/38.07115minutes,67kills/67loot successes/0deaths, final movement0/
+runtime0/strategic0/idleDeadlocks0/escalations0. Seven confirmed AFK inputs.
+Cache cold30+60+614=704 reads/additions;5085hits; four warm full-map requests
+704hits/0reads/0adds each,264.276–293.499ms. Only session teardown invalidated.
+This supplies live cache performance PASS, superseding the historical pending
+section below. No water encounter or water behavior PASS can be inferred.
 
 ## P0.3.2 current baseline and cache
 
