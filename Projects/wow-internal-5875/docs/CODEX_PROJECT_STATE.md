@@ -9,11 +9,67 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.2.1 Deep combat terminal resolution**. Preserve verified navigation, AFK and
+- Current phase: V6 **P0.3.1 Acquisition liveness ownership / navigation terminal attribution**. Preserve verified combat, AFK and
   DeathRecovery behavior and mixed-state fail-closed design. No swimming,
   trainer/talent/GUI/Questing-architecture work in this checkpoint.
 
-## Current P0.2.1 combat checkpoint (2026-10-07)
+## Current P0.3.1 navigation handoff checkpoint (2026-10-07)
+
+SOURCE VERIFIED: complete newest session1808.134358630204354240.125757707.1448,
+13122 lines, preserved `/tmp/wow-p031-baseline.Dow16n/wow-internal.log`.
+Start/stop monotonic125758217/127036291:21.3012min. Exact baseline counters:
+movementRecoveries0/runtimeRecoveries6/runtimeIdleDeadlocks5/runtimeStrategic1/
+runtimeEscalations1. Five optional Roam terminals immediately triggered false
+acquisition deadlocks at ticks428/1705/2131/2558/3723, ages427/428/426/427/425.
+RuntimeRobustness returned from progressing initialization BEFORE reconciling
+acquisitionEpochActive_; the old epoch survived ~125s full-map loads. This is
+not another physical movement stall or a reason to raise watchdog limits.
+
+Fix: reconcile actual owner before EVERY initialization return, using follower
+OwnsMovement plus explicit initialization and Roaming/ApproachingTarget states.
+Navigation/vendor/recovery/first-aid/dialog/death ownership ends acquisition
+debt; navigation release starts a fresh epoch. Idle/AcquiringTarget/WaitingFor-
+TargetSelection/GUID churn inside acquisition does NOT reset age. Existing
+40-tick idle window unchanged, with transition-only ACQUISITION LIVENESS logs.
+Death ownership still resets/skips this supervisor in WorldMonitor as before.
+
+Strategic event was real outcome debt1346ticks (gray migration, no new XP/kill),
+but fired tick2132 immediately after false idle recovery2131. Keep XP/kill/
+level/vendor outcome clock; planning, physical work and alternate sectors are
+NOT outcomes. Use existing40-tick acquisition/cooldown opportunity after nav
+handoff or tactical reset to avoid duplicate strategic teardown. Do not forgive
+outcome debt or suppress sustained work-without-outcome detection.
+
+Known local edge0x10000600000215->0x1000060000021D was suppressed, recovery
+unavailable, then reported other_unknown. Now append typed failure
+bounded_local_recovery_unavailable BEFORE SetState publishes intent release.
+No change to geometry acceptance, recovery budgets, hazards or roam abandonment.
+Persistent-hazard/projection/path-validation terminals stay failures, not success.
+
+Focused failing-before-fix replay reproduced acquisition debt during planning.
+TEST PASS:89 strict C++ tests, all registered Python/SQL/Lua fixtures, full
+validation `/tmp/wow-validation-ynvhy5s5/results.json`. BUILD/DIFF CHECK PASS
+in full validation and separate final build/diff commands. Isolated intended
+tree PASS:40 published strict C++ tests, six navigation Python tests, SQL and
+three Lua fixtures, full DLL/GUI/loader/testhost build; artifacts
+`/tmp/wow-validation-5ewtyz9a/results.json`, tree `/tmp/wow-p031-published.c5O3Ad`.
+Only9 intended files/hunks staged, inspected and diff-checked; no unrelated
+dependencies published. Runtime-after counters UNKNOWN.
+P0.3.1 RUNTIME PENDING: fresh normal Grind>=20min, preserve full log, zero false
+nav-handoff idle recoveries, still bounded real acquisition detection; no
+known-edge exhaustion other_unknown; AFK/combat and natural death remain green.
+No WoW process available to exercise this gate. Do not manufacture failures.
+
+Intended changes: RuntimeRobustnessSupervisor, ONLY new WorldMonitor/Grind
+ownership/telemetry hunks, navigation failure enum/follower terminal ordering,
+acquisition replay and existing attribution test, these two navigation docs.
+All unrelated dirty work preserved. Baseline HEADd1a0c91777f5490914e64a65d373ecdd2664fa9b.
+Resolve checkpoint via `git log -1 --format='%H %s' -- tests/acquisition_liveness_owner_test.cpp`;
+verify local/remote HEAD. Existing path length2000/surface4/backtracks2 and
+AFK/DeathRecovery/combat source policies unchanged. No swimming or later V6
+phase begins; next action is P0.3.1 runtime qualification.
+
+## Historical P0.2.1 combat checkpoint (2026-10-07)
 
 SOURCE VERIFIED: newest complete session968.134358579023063750.120736874.1760
 ends against GUID0xF130000D85003A7A/entry3461. Earlier latch reengage repaired

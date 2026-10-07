@@ -2075,6 +2075,11 @@ namespace Bot
         bool Failed() const { return state_ == GrindModeState::Failed; }
         const GrindBagMonitor::Snapshot& Bags() const { return bags_; }
         const VendorController& Vendor() const { return vendor_; }
+        bool NavigationOwnsMovement() const
+        {
+            return (approachNavigator_ && approachNavigator_->OwnsMovement()) ||
+                (roamNavigator_ && roamNavigator_->OwnsMovement());
+        }
         bool NavigationInitializationPending() const
         {
             return (approachNavigator_ && approachNavigator_->InitializationProgressing()) ||

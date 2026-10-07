@@ -29,7 +29,8 @@ namespace Navigation
         StartProjectionFailed,
         DestinationProjectionFailed,
         AvoidanceProjectionUnresolved,
-        PersistentHazardRejected
+        PersistentHazardRejected,
+        BoundedLocalRecoveryUnavailable
     };
 
     // Snapshot of actual incremental work, not a route generation or CTM
@@ -119,6 +120,7 @@ namespace Navigation
                 case NavigationPlanFailure::DestinationProjectionFailed: return "destination_projection_failed";
                 case NavigationPlanFailure::AvoidanceProjectionUnresolved: return "avoidance_projection_unresolved";
                 case NavigationPlanFailure::PersistentHazardRejected: return "persistent_hazard_rejected";
+                case NavigationPlanFailure::BoundedLocalRecoveryUnavailable: return "bounded_local_recovery_unavailable";
                 default: return "other_unknown";
             }
         }

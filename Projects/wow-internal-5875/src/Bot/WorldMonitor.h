@@ -1331,6 +1331,10 @@ namespace Bot
                         grindMode.State() == GrindModeState::Vendoring;
                     robustnessSample.navigationInitializationPending =
                         grindMode.NavigationInitializationPending();
+                    robustnessSample.navigationOwned =
+                        grindMode.NavigationOwnsMovement() || navMeshReturn.OwnsMovement();
+                    robustnessSample.deathRecoveryActive = deathRecoveryOwnedTick;
+                    robustnessSample.dialogActive = vileFamiliarsTurnIn.IsActive();
                     robustnessSample.vendorState =
                         static_cast<int>(grindMode.Vendor().State());
                     robustnessSample.vendorProgressSerial =
@@ -1362,6 +1366,22 @@ namespace Bot
 
                     const RuntimeRobustnessEvent robustnessEvent =
                         runtimeRobustness.Update(robustnessSample, tick);
+
+                    if (const char* decision = runtimeRobustness.AcquisitionDecision())
+                    {
+                        Debug::Logger::Info(
+                            std::string("ACQUISITION LIVENESS state=") + combat.StateName() +
+                            " grindState=" + grindMode.StateName() +
+                            " owner=" + RuntimeActivityOwnerName(runtimeRobustness.Owner()) +
+                            " epochActive=" + (runtimeRobustness.AcquisitionEpochActive() ? "yes" : "no") +
+                            " ageTicks=" + std::to_string(runtimeRobustness.AcquisitionDecisionAgeTicks()) +
+                            " decision=" + decision +
+                            " reason=" + (robustnessEvent.reason == RuntimeRobustnessReason::IdleDeadlock
+                                ? "bounded_acquisition_window_exhausted"
+                                : robustnessSample.navigationInitializationPending ? "navigation_initialization_owner"
+                                : robustnessSample.navigationOwned ? "navigation_movement_owner"
+                                : "actual_owner_handoff"));
+                    }
 
                     if (robustnessEvent.kind ==
                         RuntimeRobustnessEventKind::Watching)

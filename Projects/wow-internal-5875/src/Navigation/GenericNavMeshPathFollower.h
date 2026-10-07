@@ -5963,8 +5963,8 @@ namespace Navigation
                         " meaningfulProgress=no repeatCount=" +
                         std::to_string(repeatedCorridorPlans_) +
                         " decision=escalate reason=bounded_recovery_unavailable");
+                    lastPlanFailure_ = NavigationPlanFailure::BoundedLocalRecoveryUnavailable;
                     SetState(GenericNavMeshFollowState::Failed);
-                    lastPlanFailure_ = NavigationPlanFailure::OtherUnknown;
                     StopAtCurrentPosition(player);
                     return false;
                 }

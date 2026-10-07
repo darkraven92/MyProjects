@@ -1,8 +1,108 @@
 # P0.3 navigation reliability audit
 
-Updated 2026-10-07. SOURCE VERIFIED; TEST/BUILD/DIFF PASS; new fixes RUNTIME
-PENDING. This is a bounded loader/posture/attribution checkpoint, not a rewrite
-of navigation or a claim that all prior navigation failures are solved.
+Updated 2026-10-07. Current phase P0.3.1: acquisition ownership and terminal
+attribution. SOURCE VERIFIED; TEST/BUILD/DIFF PASS; RUNTIME PENDING.
+Older P0.3 loader/posture fixes have runtime evidence; preserve their behavior.
+
+## P0.3.1 authoritative full-log audit
+
+Snapshot `/tmp/wow-p031-baseline.Dow16n/wow-internal.log` (temporary), session
+`1808.134358630204354240.125757707.1448`,13122lines. Bot monotonic start125758217,
+stop127036291:21.3012 minutes, normal user Stop (not combat-system failure).
+Exact final counters: movementRecoveries0/runtimeRecoveries6/runtimeIdleDeadlocks5/
+runtimeStrategic1/runtimeEscalations1. Rates:0/0.2817/0.0469 movement/runtime/
+escalations per minute. Final kills2/loot2, session XP0 during gray migration;
+five confirmed AFK protection inputs. No new complete natural death in this
+capture; prior DeathRecovery qualification remains independently PASS.
+
+| Terminal line / intent | Owner terminal | Deadlock tick / age | Outcome |
+| --- | --- | --- | --- |
+| 919 / 1 | persistent_hazard_rejected | 428 / 427 | false acquisition reset |
+| 6012 / 7 | persistent_hazard_rejected | 1705 / 428 | false acquisition reset |
+| 6751 / 8 | persistent_hazard_rejected | 2131 / 426 | false acquisition reset |
+| 7540 / 9 | path_validation_failed | 2558 / 427 | false acquisition reset |
+| 11864 / 14 | other_unknown (known edge exhaustion) | none | optional roam abandoned |
+| 12573 / 15 | destination_projection_failed | 3723 / 425 | false acquisition reset |
+
+Offline query-event distribution (not unique objectives): persistent hazard9,
+destination projection5, unsafe_terrain_attempt_limit3, other_unknown1. Each of
+the five false deadlocks occurred FIVE log lines after optional abandonment.
+Initializer advanced704tiles and finished e.g.125706ms, while acquisition epoch
+remained active through the whole Roaming ownership. No physical hard-stall
+recovery occurred. Reproduce full read with `tools/navigation_log_audit.py`.
+
+## Proven acquisition ownership defect and fix
+
+RuntimeRobustnessSupervisor::Update performed owner tracking, then returned
+early for bounded initialization BEFORE running acquisition-epoch reconciliation.
+The previously active Grinding/AcquiringTarget epoch therefore survived Roaming
+and accumulated wall/polling age. On loader completion, Roam failed correctly;
+Grind returned to Grinding and looked like the SAME old acquisition epoch.
+The old40-tick idle guard immediately fired with425–428ticks of borrowed debt.
+
+Reconcile acquisition FIRST, every sample, including the first and pending init
+samples. Resolve actual follower ownership from approach/roam OwnsMovement and
+shared return navigator, plus initialization and Roaming/ApproachingTarget.
+Vendor/recovery/first-aid/dialog/death are explicitly not acquisition. Ending
+an epoch clears its acquisition debt only, not global recovery counters or
+strategic outcome debt. Actual handoff starts a fresh40-tick epoch. UI target,
+GUID/SetTarget churn and movement while still genuinely acquiring do not reset
+that epoch. Combat handoff ends it. World loss/death retain existing reset/skip.
+ACQUISITION LIVENESS is emitted on start/pause/resume/reset/deadlock only.
+
+## Strategic work versus outcome liveness
+
+At tick2131 a false idle recovery reset ownership. Tick2132 immediately issued
+StrategicNoOutcome with outcome age1346ticks. Unlike acquisition debt, outcome
+age is genuine: kills/XP/level/vendor completion did not advance during lengthy
+level-band migration. Initialization cursor and physical displacement prove work,
+not productivity. Keep the strategic1200-tick window and existing cooldowns.
+
+A navigation-to-acquisition handoff gets the existing40-tick acquisition window
+before another strategic teardown; a tactical recovery gets the existing40-tick
+owner-recovery cooldown. Outcome age remains unchanged and strategic detection
+still fires after that opportunity when no actual outcome occurs. This is event
+ordering/repair opportunity, not fake progress or arbitrary timeout inflation.
+
+## Typed repeated-geometry exhaustion
+
+Intent14 local failure0x10000600000215->0x1000060000021D, fingerprint
+16377577323959940644, candidate2095319634814919648, failureAnchorDistance9.998.
+Portal staging reached a lateral target; earnedProgress=no was correctly retained.
+Hysteresis matched the SAME directed edge and suppressed ordinary CTM. Surface
+recovery/backtracking then unavailable; current code wrote OtherUnknown AFTER
+SetState released intent. Corrected to BoundedLocalRecoveryUnavailable BEFORE
+terminal publication: release/profile/owner all report
+`bounded_local_recovery_unavailable`. Existing suppression/escalation still fails
+closed. No geometric masks, hazard storage, route safety or budgets changed.
+
+## P0.3.1 validation and next runtime gate
+
+Focused failing-before-fix replay reproduced the exact epoch defect. Added
+deterministic initialization/active-movement ownership, terminal fresh epoch,
+real40-tick deadlock, no GUID-churn refund, death/vendor/recovery/dialog exclusions,
+combat completion, strategic handoff/repair cooldown and unchanged outcome clock
+tests. Attribution test requires typed reason BEFORE intent publication.
+TEST PASS:89 strict C++20/Wall/extra/Werror tests, six navigation Python tests,
+13 local QuestDB Python tests, SQL fixture and all eight registered Lua programs.
+BUILD/DIFF CHECK PASS in full validation; artifacts
+`/tmp/wow-validation-ynvhy5s5/results.json`. Separate final build/diff PASS.
+Isolated staged tree PASS:40 published strict C++ tests, six navigation Python
+tests, SQL fixture, three Lua fixture programs and full DLL/GUI/loader/testhost
+build; `/tmp/wow-validation-5ewtyz9a/results.json`, tree
+`/tmp/wow-p031-published.c5O3Ad`. QuestDB Python discovery explicitly reports no
+published test files (the13 local tests belong to unrelated dirty work); SQL
+remains mandatory. Only9 intended files/hunks staged. Runtime-after counters
+UNKNOWN, not zero by inference.
+
+Fresh NORMAL unattended Grind>=20minutes. Preserve full log. Expect no immediate
+GLOBAL RECOVERY after optional NAV OBJECTIVE ABANDON, no false nav-owned idle
+debt, still bounded actual idle acquisition, unchanged tactical/strategic outcome
+visibility. No known repeated-edge OtherUnknown. Do not induce bad geometry,
+combat faults or death. Combat P0.2/P0.2.1, AFK and any natural DeathRecovery must
+remain operational. Source/test pass does not establish runtime counter reduction.
+
+## Historical P0.3 baseline
 
 ## Baseline and reproducible offline audit
 

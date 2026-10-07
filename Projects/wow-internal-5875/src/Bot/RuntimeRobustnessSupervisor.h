@@ -24,7 +24,9 @@ namespace Bot
         FirstAid,
         Vendor,
         GrindMovement,
-        Combat
+        Combat,
+        DeathRecovery,
+        Dialog
     };
 
     inline const char* RuntimeActivityOwnerName(RuntimeActivityOwner owner)
@@ -37,6 +39,8 @@ namespace Bot
             case RuntimeActivityOwner::Vendor: return "Vendor";
             case RuntimeActivityOwner::GrindMovement: return "Navigation";
             case RuntimeActivityOwner::Combat: return "Combat";
+            case RuntimeActivityOwner::DeathRecovery: return "DeathRecovery";
+            case RuntimeActivityOwner::Dialog: return "Dialog";
             case RuntimeActivityOwner::None:
             default:
                 return "None";
@@ -83,6 +87,9 @@ namespace Bot
         bool firstAidActive = false;
         bool vendorActive = false;
         bool navigationInitializationPending = false;
+        bool navigationOwned = false;
+        bool deathRecoveryActive = false;
+        bool dialogActive = false;
         int vendorState = 0;
         int vendorProgressSerial = 0;
         int firstAidCraftsIssued = 0;
@@ -172,6 +179,12 @@ namespace Bot
         std::uint64_t unexpectedSeatedSinceTick_ = 0;
         bool acquisitionEpochActive_ = false;
         std::uint64_t acquisitionEpochSinceTick_ = 0;
+        const char* acquisitionDecision_ = nullptr;
+        std::uint64_t acquisitionDecisionAge_ = 0;
+        bool navigationHandoffObserved_ = false;
+        std::uint64_t lastNavigationHandoffTick_ = 0;
+        bool boundedRecoveryObserved_ = false;
+        std::uint64_t lastBoundedRecoveryTick_ = 0;
 
         RuntimeActivityOwner owner_ = RuntimeActivityOwner::None;
         int ownerState_ = 0;
@@ -289,6 +302,10 @@ namespace Bot
         static RuntimeActivityOwner ResolveOwner(
             const RuntimeRobustnessSample& sample)
         {
+            if (sample.deathRecoveryActive)
+                return RuntimeActivityOwner::DeathRecovery;
+            if (sample.dialogActive)
+                return RuntimeActivityOwner::Dialog;
             if (sample.recoveryActive)
                 return RuntimeActivityOwner::Recovery;
 
@@ -299,7 +316,8 @@ namespace Bot
                 return RuntimeActivityOwner::Vendor;
 
             // GrindModeState::ApproachingTarget=2, Roaming=3.
-            if (sample.grindState == 2 || sample.grindState == 3)
+            if (sample.navigationOwned || sample.navigationInitializationPending ||
+                sample.grindState == 2 || sample.grindState == 3)
                 return RuntimeActivityOwner::GrindMovement;
 
             // Phase 14K.1.4: while GrindMode owns the loop, Idle,
@@ -338,6 +356,8 @@ namespace Bot
                 case RuntimeActivityOwner::Recovery:
                     return sample.combatState;
                 case RuntimeActivityOwner::FirstAid:
+                case RuntimeActivityOwner::DeathRecovery:
+                case RuntimeActivityOwner::Dialog:
                 case RuntimeActivityOwner::Acquisition:
                 case RuntimeActivityOwner::None:
                 default:
@@ -530,6 +550,8 @@ namespace Bot
         {
             ++recoveriesWithoutProgress_;
             ++recoveryEvents_;
+            boundedRecoveryObserved_ = true;
+            lastBoundedRecoveryTick_ = tick;
 
             anchor_ = sample;
             lastProgressTick_ = tick;
@@ -561,11 +583,43 @@ namespace Bot
             const RuntimeRobustnessSample& sample,
             std::uint64_t tick)
         {
+            acquisitionDecision_ = nullptr;
             if (!sample.active)
             {
                 Reset();
                 return {};
             }
+
+            // Ownership must be reconciled BEFORE the initializer's early
+            // return. Planning time is not target-acquisition time. Target/UI
+            // churn within the acquisition family still cannot renew its age.
+            const auto previousOwner = owner_;
+            const auto currentOwner = ResolveOwner(sample);
+            const bool acquisitionExpected =
+                currentOwner == RuntimeActivityOwner::Acquisition;
+            if (acquisitionExpected)
+            {
+                if (!acquisitionEpochActive_ || tick < acquisitionEpochSinceTick_)
+                {
+                    acquisitionDecision_ = initialized_ ? "resume" : "start";
+                    acquisitionEpochActive_ = true;
+                    acquisitionEpochSinceTick_ = tick;
+                    if (initialized_ && previousOwner == RuntimeActivityOwner::GrindMovement)
+                    {
+                        navigationHandoffObserved_ = true;
+                        lastNavigationHandoffTick_ = tick;
+                    }
+                }
+            }
+            else
+            {
+                if (acquisitionEpochActive_ || !initialized_ || previousOwner != currentOwner)
+                    acquisitionDecision_ = currentOwner == RuntimeActivityOwner::Combat
+                        ? "reset" : "pause";
+                acquisitionEpochActive_ = false;
+                acquisitionEpochSinceTick_ = 0;
+            }
+            acquisitionDecisionAge_ = AcquisitionEpochAgeTicks(tick);
 
             if (!initialized_)
             {
@@ -657,37 +711,6 @@ namespace Bot
                     ? tick - lastOwnerProgressTick_
                     : 0;
 
-            const bool legitimateStationaryOwner =
-                sample.recoveryActive ||
-                sample.firstAidActive ||
-                sample.vendorActive;
-
-            // Phase 14K.1.4: acquisition liveness is one continuous epoch
-            // across Idle -> AcquiringTarget -> WaitingForTargetSelection churn.
-            // A transient target GUID is not progress. This closes the owner
-            // boundary where repeated SetTarget attempts could reset the 10 s
-            // watchdog forever without ever starting combat. Legitimate stationary
-            // owners and real movement/combat states still end the epoch.
-            const bool acquisitionEpoch =
-                !legitimateStationaryOwner &&
-                sample.grindState == 1 &&
-                IsAcquisitionCombatState(sample.combatState);
-
-            if (acquisitionEpoch)
-            {
-                if (!acquisitionEpochActive_ ||
-                    tick < acquisitionEpochSinceTick_)
-                {
-                    acquisitionEpochActive_ = true;
-                    acquisitionEpochSinceTick_ = tick;
-                }
-            }
-            else
-            {
-                acquisitionEpochActive_ = false;
-                acquisitionEpochSinceTick_ = 0;
-            }
-
             const std::uint64_t acquisitionEpochAge =
                 acquisitionEpochActive_ &&
                 tick >= acquisitionEpochSinceTick_
@@ -703,9 +726,7 @@ namespace Bot
             const bool unexpectedSeated =
                 sample.postureValid &&
                 !sample.playerStanding &&
-                !legitimateStationaryOwner &&
-                sample.grindState == 1 &&
-                IsAcquisitionCombatState(sample.combatState);
+                acquisitionExpected;
 
             if (unexpectedSeated)
             {
@@ -745,6 +766,8 @@ namespace Bot
             {
                 lastIdleRecoveryTick_ = tick;
                 ++idleDeadlockEvents_;
+                acquisitionDecision_ = "deadlock";
+                acquisitionDecisionAge_ = acquisitionEpochAge;
                 // Start a fresh acquisition epoch after the bounded reset.
                 // If recovery fails to hand off, a new deadlock requires a full
                 // IdleDeadlockTicks window instead of immediately retriggering.
@@ -813,7 +836,18 @@ namespace Bot
             // Strategic loop detection remains active even while the character
             // is physically moving. A grind bot walking for five minutes with
             // no XP, kill, level or completed vendor trip is not productive.
-            if (strategicAge >= StrategicOutcomeTicks &&
+            // Do not stack a strategic reset on a terminal navigation handoff
+            // or immediately after another bounded reset. Outcome age remains
+            // intact: work is NOT a kill/XP/vendor outcome. Use the EXISTING
+            // recovery cooldown/acquisition window, not a larger threshold.
+            const bool handoffOpportunity = navigationHandoffObserved_ &&
+                tick >= lastNavigationHandoffTick_ &&
+                tick - lastNavigationHandoffTick_ < IdleDeadlockTicks;
+            const bool recoveryOpportunity = boundedRecoveryObserved_ &&
+                tick >= lastBoundedRecoveryTick_ &&
+                tick - lastBoundedRecoveryTick_ < OwnerRecoveryCooldownTicks;
+            if (!handoffOpportunity && !recoveryOpportunity &&
+                strategicAge >= StrategicOutcomeTicks &&
                 (lastStrategicRecoveryTick_ == 0 ||
                  tick < lastStrategicRecoveryTick_ ||
                  tick - lastStrategicRecoveryTick_ >= StrategicCooldownTicks))
@@ -894,6 +928,12 @@ namespace Bot
             unexpectedSeatedSinceTick_ = 0;
             acquisitionEpochActive_ = false;
             acquisitionEpochSinceTick_ = 0;
+            acquisitionDecision_ = nullptr;
+            acquisitionDecisionAge_ = 0;
+            navigationHandoffObserved_ = false;
+            lastNavigationHandoffTick_ = 0;
+            boundedRecoveryObserved_ = false;
+            lastBoundedRecoveryTick_ = 0;
 
             owner_ = RuntimeActivityOwner::None;
             ownerState_ = 0;
@@ -940,6 +980,9 @@ namespace Bot
         {
             return acquisitionEpochActive_;
         }
+
+        const char* AcquisitionDecision() const { return acquisitionDecision_; }
+        std::uint64_t AcquisitionDecisionAgeTicks() const { return acquisitionDecisionAge_; }
 
         std::uint64_t AcquisitionEpochAgeTicks(std::uint64_t tick) const
         {

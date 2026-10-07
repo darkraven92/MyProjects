@@ -69,6 +69,12 @@ int main()
         NavigationPlanFailure::None) == NavigationPlanFailure::OtherUnknown);
     assert(NavigationInitTelemetryPolicy::TerminalFailure(
         NavigationPlanFailure::NoPath) == NavigationPlanFailure::NoPath);
+    assert(NavigationInitTelemetryPolicy::TerminalFailure(
+        NavigationPlanFailure::BoundedLocalRecoveryUnavailable) ==
+        NavigationPlanFailure::BoundedLocalRecoveryUnavailable);
+    assert(std::string_view(NavigationInitTelemetryPolicy::ReasonName(
+        NavigationPlanFailure::BoundedLocalRecoveryUnavailable)) ==
+        "bounded_local_recovery_unavailable");
     assert(std::string_view(NavigationInitTelemetryPolicy::TierName(
         NavigationInitTier::FullMap)) == "full_map");
 
@@ -94,4 +100,11 @@ int main()
     assert(follower.find("NAV PLAN FAILURE intent=") != std::string::npos);
     assert(follower.find("underlyingHazardQueryError = path.error;") != std::string::npos);
     assert(follower.find("queryStatus=0x") != std::string::npos);
+    // Attribute before SetState publishes MOVEMENT INTENT RELEASE. Failure
+    // must remain typed through optional-owner abandonment, not only afterward.
+    const auto exhausted = follower.find(
+        "lastPlanFailure_ = NavigationPlanFailure::BoundedLocalRecoveryUnavailable;");
+    assert(exhausted != std::string::npos);
+    const auto terminal = follower.find("SetState(GenericNavMeshFollowState::Failed);", exhausted);
+    assert(terminal > exhausted && terminal - exhausted < 150);
 }
