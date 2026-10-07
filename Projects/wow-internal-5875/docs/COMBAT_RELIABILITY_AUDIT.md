@@ -26,6 +26,11 @@ Crucially,8994-8638=356ms between the last inactive sample and the restored
 latch/terminal sample. The capture does NOT prove several failed active swings
 after the final reengage. Most of that apparent final window was Attack OFF.
 Player HP loss establishes urgency, but not the identity of the damaging actor.
+`lowHpHardStallRecoveries=0` is expected here: ForceAutonomyCombatRecovery
+defers aligned Fighting to the same-target watchdog BEFORE reaching its legacy
+finisher counter. The new repair path increments autoAttackLivenessRecoveries,
+not that global/finisher counter. Counters are not relabelled or reset to hide
+this episode; terminal and damage verification remain separately observable.
 
 ### Proven refresh and eligibility defect
 
@@ -110,9 +115,9 @@ covers safe optional release, each postcondition, mandatory/unknown/hostile/
 input/identity/health blockers, bounded timeout and re-arm. Existing AFK/death/
 navigation regressions remain in full validation. Current full validation:
 88 strict C++ tests PASS, Python/SQL and eight Lua fixture programs PASS;
-Final `/tmp/wow-validation-l5649rdl/results.json`. Isolated publication tree:
+Final `/tmp/wow-validation-h3q8sgiv/results.json`. Isolated publication tree:
 39 published C++ tests, six audit Python tests, SQL fixture, three published Lua
-programs and all build targets PASS (`/tmp/wow-validation-fmppfkw5/results.json`).
+programs and all build targets PASS (`/tmp/wow-validation-_lbw4d7f/results.json`).
 Unpublished local fixtures remain unstaged. Separate build and diff checks PASS.
 
 No WoW process is currently running. New behavior RUNTIME PENDING. Fresh normal

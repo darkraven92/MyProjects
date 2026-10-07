@@ -41,11 +41,11 @@ replicated flags/victims/execution evidence; attack timer/evade remain UNKNOWN.
 Full source/timeline/guards/remaining uncertainty: `docs/COMBAT_RELIABILITY_AUDIT.md`.
 
 TEST PASS:88 strict C++20/Wall/extra/Werror tests, Python/SQL and eight Lua
-fixture programs; final full run `/tmp/wow-validation-l5649rdl/results.json`.
+fixture programs; final full run `/tmp/wow-validation-h3q8sgiv/results.json`.
 Isolated intended publication tree also PASS:39 published strict C++ tests,
 six navigation-audit Python tests, QuestDB SQL fixture, three published Lua
 programs and DLL/GUI/loader/testhost build. Results
-`/tmp/wow-validation-fmppfkw5/results.json`, staged snapshot
+`/tmp/wow-validation-_lbw4d7f/results.json`, staged snapshot
 `/tmp/wow-combat-p021-published.Cp8Xzu`. Unpublished QuestDB Python fixtures are
 reported absent in that snapshot, not silently claimed tested there.
 Failing-before-fix replay proves delayed reengage;
@@ -69,6 +69,11 @@ liveness/Lua tests, combat audit and this state. Preserve unrelated dirty pull,
 quest, WorldMonitor, GUI/services/data work unstaged. Baseline HEAD
 03c52b1177d035763d7e71d6aa3fd89af4abe2a9. Resolve checkpoint identity with
 `git log -1 --format='%H %s' -- src/Bot/CombatTerminalPolicy.h`; verify remote HEAD.
+Combat source checkpoint73990cebf3fe8a4899e6c544be7531547d3faa4a pushed normally;
+GitHub remote HEAD equality verified. Follow-up only deduplicates deep-stall
+telemetry while terminal release verification is pending and records continuity;
+no additional recovery or terminal-policy behavior. Current HEAD is resolved
+with `git rev-parse HEAD` / `git ls-remote origin refs/heads/codex/wow-internal-continuation`.
 No swimming or other V6 phase begins. Next task is this bounded runtime gate.
 
 ## Historical P0.3 navigation checkpoint (2026-10-07)

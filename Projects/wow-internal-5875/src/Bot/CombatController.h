@@ -411,7 +411,7 @@ namespace Bot
             s.attackActive=meleeActionEvidence_.attack.active;
             meleeDecision_=meleeLiveness_.Observe(s);
             if (meleeDecision_.classification!=lastMeleeClassification_ ||
-                meleeDecision_.action!=CombatRecoveryAction::None)
+                (meleeDecision_.action!=CombatRecoveryAction::None && !meleeTerminalPending_))
             {
                 lastMeleeClassification_=meleeDecision_.classification;
                 if (meleeDecision_.classification==CombatStallClass::OffensiveNoProgress)
