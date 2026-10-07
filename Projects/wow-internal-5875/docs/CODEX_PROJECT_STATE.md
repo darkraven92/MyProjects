@@ -9,11 +9,75 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.1 DeathRecovery reliability**. AFK normal autonomous
-  prevention is sufficiently closed; preserve its verified behavior and residual
-  mixed-state fail-closed design. No swimming or combat-watchdog changes here.
+- Current phase: V6 **P0.2 Combat reliability**. Preserve verified AFK and
+  DeathRecovery behavior and mixed-state fail-closed design. No swimming,
+  trainer/talent/GUI/Questing-architecture work in this checkpoint.
 
-## Current P0.1 DeathRecovery checkpoint (2026-10-07)
+## Current P0.2 Combat checkpoint (2026-10-07)
+
+SOURCE VERIFIED: CombatController used descriptor UNIT_FIELD_TARGET (server
+attack victim) as UI selection. AttackStop clears that victim; native SetTarget
+returns early when actual selection B4E2D8/DC already matches. New signature-
+validated read-only native selection replaces combat selection guards, without
+changing WorldState/AFK victim semantics. Exact audit, sample provenance, state
+machine, timing, safe bounded repair ladder and uncertainties are in
+`docs/COMBAT_RELIABILITY_AUDIT.md`.
+
+Newest live session352.134358492686284770.111867086.624 has locked
+0xF130000D58003734/entry3416 at1.5767yd, target83/100 while player435/536 then
+falling. Global recovery stops Attack and subsequent repeated same-GUID
+SetTarget returns cannot resolve the falsely labelled zero client target.
+Actual UI GUID was not independently captured in that historical episode;
+initial cause of no damage remains uncertain, NOT invented from the zero victim.
+lowHpHardStallRecoveries only counts <=15% target finishers, not this83% target.
+
+New typed per-target/object watchdog distinguishes selection/latch/facing/range/
+cast/ownership/no-progress/unknown evidence. Only target HP decrease/death earns
+damage progress; commands, movement and target restore do not refund repairs.
+Three repair dispatches max, one no-damage hard refresh, 1s structural verify;
+4s urgent/8s normal windows also respect native main-hand period and continuous
+eligible evidence. Command-time same-GUID/alive/range/facing/UI/cast guards;
+unsupported no-slot refresh fails closed. Global aligned-melee recovery defers
+to this watchdog; non-melee recovery and navigation2000/4/2 stay unchanged.
+AFK and death code are UNCHANGED. Separate structural vs damage verification
+is explicit; no direct combat-state writes, random movement or arbitrary target.
+
+Latest log directly verifies TWO baseline death-to-alive cycles:
+DEATH RECLAIM fresh_alive_probes at20440/23844; DEATH RECOVERY EXIT aliveConfirmed
+at20468/23872, Grind resume. User reports no manual intervention. DeathRecovery
+baseline is now RUNTIME PASS; historical P0.1 pending status below describes
+the earlier checkpoint, not the newest evidence. AFK normal/Ghost baseline
+remains RUNTIME PASS; post-combat-patch regression and desync recovery PENDING.
+
+TEST PASS:85 strict C++20/Wall/extra/Werror tests, Python/SQL tests and eight
+Lua fixtures; final full run `/tmp/wow-validation-2uy50ri0/results.json`.
+BUILD PASS and DIFF CHECK PASS: full validation and subsequent separate
+`cmake --build build`, `git diff --check -- .`. Isolated intended-checkpoint
+DLL/loader/GUI/testhost build PASS in `/tmp/wow-combat-checkpoint-JvOAAX/build`.
+That check exposed a pre-existing committed WorldMonitor reference to missing
+WaitingForManualVendor: ONLY its already-local enum declaration/state-name case
+is included as a mechanical compile dependency, preserving existing enum values
+and leaving vendor behavior/AFK unchanged. No broad Grind controller changes.
+Full-worktree validation includes pre-existing dirty work, NOT a claim that all
+that work is committed.
+
+Files intended: combat controller hunks, AutoAttackController, new
+CombatLivenessPolicy/CombatClientEvidence5875/CombatActionEvidenceScript,
+combat regression/fixture, validation registration and combat/project docs,
+plus the two isolated Grind enum/name compile-dependency hunks above.
+Pre-existing dirty combat pull/quest/chase diagnostics and all unrelated
+WorldMonitor/GUI/trainer/equipment/quest files must remain unstaged.
+Commit/remote identity: resolve this checkpoint with
+`git log -1 --format='%H %s' -- src/Bot/CombatLivenessPolicy.h` and compare
+`git rev-parse HEAD` with
+`git ls-remote origin refs/heads/codex/wow-internal-continuation`.
+
+RUNTIME PENDING: no running WoW. Normal natural Grinding must preserve ordinary
+damage, AFK combat-defer/resume and death priority; capture any natural desync
+through same-GUID recovery and damage confirmation. Never deliberately kill or
+manufacture an unsafe stall. No later V6 subsystem starts in this checkpoint.
+
+## Historical P0.1 DeathRecovery checkpoint (2026-10-07)
 
 SOURCE VERIFIED: distinct missing-anchor and strategic-route defects.
 Full state/source/binary/runtime reconstruction: `docs/DEATH_RECOVERY_AUDIT.md`.
@@ -299,6 +363,10 @@ movement bits, plus the separate mixed-state blocker. Do not begin swimming.
 
 # Runtime verified
 
+- Latest352.134358492686284770.111867086.624 has two fresh-alive reclaim
+  confirmations and death exits (20440/20468,23844/23872), followed by Grind
+  resume. User confirms natural zero-intervention recovery. DeathRecovery
+  RUNTIME PASS baseline; these are BEFORE the combat checkpoint.
 - AFK qualification: RUNTIME PASS per user's P0.0.6 report (full capture not
   available in latest log). Normal Grinding prevention: RUNTIME PASS in four
   newest cycles, input ages 240131/240217/240142/240245 ms, unchanged scene/UI,
@@ -312,7 +380,8 @@ movement bits, plus the separate mixed-state blocker. Do not begin swimming.
   threshold. Two later Ghost prevention pulses pass at ages240207/240016 in
   RoutingToCorpse and Failed recovery, same-life/scene/recovery proof and clear
   AFK flags (lines27525-27555,28000-28024). Ghost production RUNTIME PASS;
-  corpse recovery is NOT passed.
+  corpse recovery was NOT passed in that older AFK capture; it now has the
+  separate newest DeathRecovery PASS immediately above.
 - Combat defer -> first-safe-gap resume: RUNTIME PASS in that session, alive
   confirmed pulses at input ages293685/253868, before threshold300000.
 
@@ -489,6 +558,15 @@ claim that the cave/vendor corridor itself is fixed.
 
 # Source/test verified
 
+## P0.2 same-target combat liveness
+
+SOURCE VERIFIED / TEST PASS / BUILD PASS / DIFF CHECK PASS. Actual signature-
+validated UI selection replaces the server-victim-as-selection predicate.
+Bounded typed repair/progress policy and command-time guarded Lua recovery
+covered by new strict regression and real-script fixture; full85 C++ suite and
+isolated intended-checkpoint build passed. See current checkpoint and combat
+audit for exact evidence/limits. RUNTIME PENDING for new recovery behavior.
+
 ## P0.0.3 pre-baseline input quiescence
 
 SOURCE VERIFIED: newest `build/wow-internal.log` lines 145-152 prove hold
@@ -664,10 +742,10 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
-- Current P0.1 DeathRecovery: new server-cache acquisition/bounded wait and
-  uninterrupted incremental fallback require natural death-to-alive runtime.
-  Latest pre-fix strategic failure is explained but terrain remains unsafe;
-  full-map route success is not proven. See DEATH_RECOVERY_AUDIT.md.
+- P0.2 combat watchdog: normal fights and natural desync recovery must qualify
+  fresh UI evidence, same-GUID repair, damage verification, AFK and death
+  preemption. Baseline DeathRecovery now passed twice; post-combat-patch death
+  regression remains pending. No live WoW process available during this phase.
 
 - **AFK residual gates:** Ghost early qualification/harmlessness and two later
   prevention cycles passed; separately qualify Dead if naturally available.
@@ -713,7 +791,9 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
    Earlier death at 280643 ms and AFK at 300229 remain historical failures.
    Previously inspected DeathRecovery Failed is `strategic_route_failed` with
    path_validation_failed (line22000); older missing_corpse_anchor is separate.
-   Both death-autonomy defects remain queued; no recovery rewrite here.
+   Those death-autonomy defects were fixed in the previous checkpoint, with
+   two newest natural death-to-alive exits now verified. New combat/watchdog
+   runtime evidence is the immediate gate; no death rewrite in P0.2.
 1. Post-P0.1.1 vendor capture proves exact hard-stall attribution and same-edge
    suppression, but a different local route also stalls and the owner fails
    boundedly. Offline inspection at the live hard-stall position projected
@@ -755,11 +835,11 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.1 DeathRecovery reliability:** source-proven bootstrap/cache gap and
-pending-loader cancellation fixed; exact routing/reclaim evidence retained.
-Runtime death-to-alive remains PENDING. AFK normal Grinding and Ghost paths
-remain PASS; mixed-state residual stays fail-closed, untouched. No swimming,
-combat-watchdog, GUI/profile/talent expansion until this bounded gate/report.
+**P0.2 Combat reliability:** native UI selection / server victim distinction
+and bounded same-target damage watchdog implemented; SOURCE/TEST/BUILD/DIFF PASS,
+RUNTIME PENDING. Baseline DeathRecovery has two newest confirmed cycles. AFK
+normal Grinding and Ghost remain PASS; mixed-state residual stays fail-closed,
+untouched. No swimming, GUI/profile/talent/trainer expansion in this checkpoint.
 
 ## P0.0.7 bounded death/ghost checkpoint
 
@@ -853,11 +933,12 @@ separate.
 
 # Runtime validation gates
 
-Current first gate: normal Grind, natural death only; capture DEATH/Death/
-CORPSE/RECLAIM/NAV/NAVMESH/MOVEMENT INTENT/AFK. Require server corpse location,
-uninterrupted tier fallback, validated physical route progress, reclaim and two
-fresh alive probes, death exit and resumed workload. One full zero-intervention
-cycle for PASS; prefer two for stability. Preserve Ghost AFK during long route.
+Current first gate: normal Grinding, no deliberately unsafe stall. Capture
+COMBAT/Combat/TARGET/ATTACK/LIVENESS/DESYNC/HARD STALL/RECOVERY/DEATH/AFK. Normal
+fights unaffected; natural desync keeps SAME GUID, verifies selection/latch then
+damage or death, with bounded attempts. Preserve combat-defer AFK and natural
+death ownership/reclaim/resume. No new recovery RUNTIME PASS from ordinary
+fights alone. Baseline death-to-alive gate has passed twice before this patch.
 
 1. Preserve one continuous post-fix session log before another GUI log clear.
 2. Repeat the SAME natural corridor twice: intent -> exact steering attribution
@@ -1065,9 +1146,12 @@ override their location. It writes reports only, never controls WoW.
 
 # Next steps
 
-1. Validate the current bounded DeathRecovery fixes in a natural death-to-alive
-   cycle (prefer two). If terrain still fails, inspect exact query/tier/geometry
-   evidence without weakening safety; do not guess a safe route. AFK normal
+1. Validate P0.2 in normal natural Grinding: normal fights/AFK/death priority
+   unchanged; any natural desync recovers SAME GUID with post-command evidence
+   and then target HP progress/death. No unsafe manufactured stall. Baseline
+   DeathRecovery now has two natural confirmed exits in the newest capture;
+   its post-combat-patch regression gate remains pending. If terrain fails,
+   inspect exact query/tier/geometry without weakening safety. AFK normal
    Grinding/debt/planning/combat safe gaps and Ghost qualification have passed.
    Preserve the P0.0.11 mixed-state residual fail-closed design; capture its new
    diagnostics only if mixed state occurs naturally. No speculative toggles,

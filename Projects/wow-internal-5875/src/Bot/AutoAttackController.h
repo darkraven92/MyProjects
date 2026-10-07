@@ -1,6 +1,10 @@
 #pragma once
 
 #include "GameThreadDispatcher.h"
+#include "CombatClientEvidence5875.h"
+#include "CombatActionEvidenceScript.h"
+#include "CombatFacingPolicy.h"
+#include "TargetController.h"
 
 #include "../Debug/Logger.h"
 #include "../Wow5875/Client.h"
@@ -8,6 +12,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iomanip>
@@ -110,7 +115,10 @@ namespace Bot
         static bool ExecuteLuaReadback(
             const char* script,
             const char* operationName,
-            std::string& result)
+            std::string& result,
+            const Objects::WorldState* combatWorld = nullptr,
+            std::uint64_t expectedTarget = 0,
+            float meleeEnvelope = 0.0f)
         {
             if (script == nullptr || *script == '\0')
                 return false;
@@ -147,6 +155,33 @@ namespace Bot
                     {
                         onGameThread =
                             GameThreadDispatcher::IsGameThread();
+
+                        if (combatWorld)
+                        {
+                            std::uint64_t selected=0;
+                            std::uint32_t flags=0, health=0;
+                            if (!CombatClientEvidence5875::Selection(*combatWorld,selected) ||
+                                selected!=expectedTarget || !expectedTarget ||
+                                !Core::Memory::Read(combatWorld->player.descriptors+0x2f8,flags) || (flags&0x10u) ||
+                                !Core::Memory::Read(combatWorld->player.descriptors+0x58,health) || !health)
+                                return;
+                            const Objects::UnitState* target=nullptr;
+                            for (const auto& unit:combatWorld->units)
+                                if (unit.guid==expectedTarget) { target=&unit; break; }
+                            Objects::PlayerState freshPlayer{};
+                            Objects::UnitState freshTarget{};
+                            if (!target || !Objects::PlayerSnapshot::Read(combatWorld->player.address,freshPlayer) ||
+                                !Objects::UnitSnapshot::Read(target->address,freshTarget) ||
+                                freshTarget.guid!=expectedTarget || !freshTarget.health)
+                                return;
+                            const float dx=freshTarget.x-freshPlayer.x, dy=freshTarget.y-freshPlayer.y,
+                                dz=freshTarget.z-freshPlayer.z;
+                            const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+                            const float angle=std::fabs(std::remainder(std::atan2(dy,dx)-freshPlayer.rotation,
+                                6.2831853071795864769f));
+                            if (!std::isfinite(distance) || distance>meleeEnvelope ||
+                                !CombatFacingPolicy::IsAbilityFacingReady(angle)) return;
+                        }
 
                         luaExecuted =
                             doString(
@@ -475,6 +510,52 @@ namespace Bot
             bool active = false;
             int actionSlot = 0;
         };
+
+        struct CombatActionEvidence
+        {
+            bool known=false, inputSafe=false, waiting=false;
+            AttackStatus attack{};
+            std::string reason="readback_failed";
+        };
+        static CombatActionEvidence ProbeCombatAction()
+        {
+            CombatActionEvidence e{};
+            std::string result;
+            if (!ExecuteLuaReadback(CombatActionEvidenceScript,"wow-internal/CombatEvidence.lua",result)) return e;
+            e.reason=result;
+            if (result=="blocked") { e.known=true; return e; }
+            if (result=="wait") { e.known=true; e.inputSafe=true; e.waiting=true; return e; }
+            int slot=0, active=-1;
+            if (std::sscanf(result.c_str(),"%d|%d",&slot,&active)!=2 || slot<0 || slot>120 || active < -1 || active>1) return e;
+            e.known=true; e.inputSafe=true;
+            e.attack={true,slot>0,active==1,slot};
+            return e;
+        }
+        static bool RecoverCombatAction(const Objects::WorldState& world,
+            std::uint64_t guid, bool refresh, float meleeEnvelope)
+        {
+            std::string result;
+            const auto script=CombatActionScript(refresh ? "refresh" : "start");
+            return ExecuteLuaReadback(script.c_str(),"wow-internal/CombatRecovery.lua",result,&world,guid,meleeEnvelope) && result=="issued";
+        }
+        static bool RestoreCombatTarget(const Objects::WorldState& world,
+            const Objects::UnitState& target)
+        {
+            bool issued=false;
+            GameThreadDispatcher::Invoke([&]
+            {
+                if (!GameThreadDispatcher::IsGameThread()) return;
+                std::uint64_t selected=0;
+                std::uint32_t hp=0, playerHp=0, period=0;
+                const auto action=ProbeCombatAction();
+                if (!action.known || !action.inputSafe || action.waiting ||
+                    !CombatClientEvidence5875::Selection(world,selected) ||
+                    !CombatClientEvidence5875::FreshHealth(world,target,hp,playerHp,period) || !hp)
+                    return;
+                issued=TargetController::SetTarget(target.guid);
+            });
+            return issued; // Native return only; actual UI selection verifies later.
+        }
 
         static bool Probe(AttackStatus& status)
         {

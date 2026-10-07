@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AutoAttackController.h"
+#include "CombatLivenessPolicy.h"
 #include "ChaseController.h"
 #include "CombatFacingPolicy.h"
 #include "CombatPositioningPolicy.h"
@@ -77,8 +78,8 @@ namespace Bot
 
         /*
          * Active combat target restoration must be much faster than initial
-         * acquisition retries. A transient UNIT_FIELD_TARGET=0 snapshot must
-         * not leave the Warrior idle for up to two seconds.
+         * acquisition retries. UI selection is read from the native client
+         * selection cache, NOT UNIT_FIELD_TARGET (the server attack victim).
          */
         static constexpr std::uint64_t ActiveTargetRestoreCooldownTicks =
             1;
@@ -290,6 +291,101 @@ namespace Bot
 
         bool attackStarted_ =
             false;
+
+        CombatLivenessPolicy meleeLiveness_{};
+        CombatLivenessDecision meleeDecision_{};
+        AutoAttackController::CombatActionEvidence meleeActionEvidence_{};
+        CombatStallClass lastMeleeClassification_=CombatStallClass::UnknownOrStale;
+
+        static std::uint64_t ClientSelectedGuid(const Objects::WorldState& world)
+        {
+            std::uint64_t guid=0;
+            return CombatClientEvidence5875::Selection(world,guid) ? guid : 0;
+        }
+
+        bool ObserveMeleeLiveness(const Objects::WorldState& world,
+            const Objects::UnitState& target, std::uint64_t tick)
+        {
+            CombatLivenessSample s{};
+            s.nowMs=GetTickCount64(); s.sampleTick=tick;
+            s.targetGuid=target.guid; s.targetObject=target.address;
+            s.targetValid=target.valid; s.alive=world.player.health>0;
+            s.selectionKnown=CombatClientEvidence5875::Selection(world,s.selectedGuid);
+            s.fresh=CombatClientEvidence5875::FreshHealth(world,target,
+                s.targetHp,s.playerHp,s.attackPeriodMs);
+            // A stale object snapshot is not a stationary live target sample.
+            s.fresh=s.fresh && s.targetHp==target.health && s.playerHp==world.player.health;
+            meleeActionEvidence_=AutoAttackController::ProbeCombatAction();
+            s.fresh=s.fresh && meleeActionEvidence_.known;
+            s.inputSafe=meleeActionEvidence_.known && meleeActionEvidence_.inputSafe &&
+                !combatSeparationActive_ &&
+                (!chase_.TargetGuid() || chase_.TargetGuid()==lockedGuid_);
+            s.actionWait=meleeActionEvidence_.waiting;
+            s.melee=chase_.IsInRange() && chase_.TargetGuid()==lockedGuid_ &&
+                std::isfinite(target.distance) && target.distance<=PostChargeImmediateMeleeDistance;
+            s.facing=CombatFacingPolicy::IsAbilityFacingReady(
+                FacingController::AngularDifference(world.player.rotation,
+                    FacingController::CalculateFacing(world.player,target)));
+            s.actionKnown=meleeActionEvidence_.attack.valid && meleeActionEvidence_.attack.actionSlotFound;
+            s.attackActive=meleeActionEvidence_.attack.active;
+            meleeDecision_=meleeLiveness_.Observe(s);
+            if (meleeDecision_.classification!=lastMeleeClassification_ ||
+                meleeDecision_.action!=CombatRecoveryAction::None)
+            {
+                lastMeleeClassification_=meleeDecision_.classification;
+                Debug::Logger::Info("COMBAT LIVENESS targetGuid="+Hex64(lockedGuid_)+
+                    " uiTargetGuid="+Hex64(s.selectedGuid)+
+                    " serverVictimGuid="+Hex64(world.player.targetGuid)+
+                    " resolvedTargetGuid="+Hex64(target.guid)+
+                    " state="+StateName()+" range="+Float(target.distance)+
+                    " facing="+(s.facing ? "yes" : "no")+
+                    " autoattack="+(s.actionKnown ? (s.attackActive ? "yes" : "no") : "unknown")+
+                    " targetHp="+std::to_string(s.targetHp)+" playerHp="+std::to_string(s.playerHp)+
+                    " noDamageMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
+                    " actionEvidence="+meleeActionEvidence_.reason+
+                    " classification="+CombatStallName(meleeDecision_.classification));
+            }
+            if (meleeDecision_.verified!=CombatRecoveryAction::None)
+                Debug::Logger::Info("COMBAT RECOVERY VERIFY step="+
+                    std::string(CombatRecoveryName(meleeDecision_.verified))+" targetGuid="+Hex64(lockedGuid_)+
+                    " result=confirmed evidence="+
+                    (meleeDecision_.verified==CombatRecoveryAction::RefreshAttack ? "target_health_decreased" : "post_command_state"));
+            if (meleeDecision_.action==CombatRecoveryAction::Fail)
+            {
+                Debug::Logger::Info("COMBAT HARD STALL targetGuid="+Hex64(lockedGuid_)+
+                    " durationMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
+                    " reason=bounded_same_target_recovery_exhausted");
+                Fail("bounded same-target melee recovery exhausted without offensive progress");
+                return true;
+            }
+            // Self-owned separation / chase reconciliation must still advance
+            // their existing FSMs. They gate the new recovery input, not their
+            // own bounded cleanup. External UI/cast/world guards hold all work.
+            return !s.fresh || !s.selectionKnown || !meleeActionEvidence_.known ||
+                !meleeActionEvidence_.inputSafe || s.actionWait;
+        }
+
+        bool IssueLivenessAttack(const Objects::WorldState& world,
+            const Objects::UnitState& target, std::uint64_t tick, bool refresh)
+        {
+            if (meleeLiveness_.Pending() || meleeLiveness_.Repairs()>=CombatLivenessPolicy::MaximumRepairs)
+                return false;
+            const auto action=refresh ? CombatRecoveryAction::RefreshAttack : CombatRecoveryAction::ReengageAttack;
+            // A rejected dispatch still spends an attempt; it is not success.
+            meleeLiveness_.Dispatched(action,GetTickCount64());
+            Debug::Logger::Info("COMBAT RECOVERY step="+std::string(CombatRecoveryName(action))+
+                " attempt="+std::to_string(meleeLiveness_.Repairs())+" targetGuid="+Hex64(target.guid)+
+                " reason="+CombatStallName(meleeDecision_.classification));
+            const bool issued=AutoAttackController::RecoverCombatAction(world,target.guid,refresh,
+                PostChargeImmediateMeleeDistance);
+            attackStarted_=issued;
+            autoAttackReengagePending_=false;
+            lastAutoAttackProbeTick_=tick;
+            if (issued) { ++attackCommands_; ++autoAttackLivenessRecoveries_; }
+            Debug::Logger::Info("COMBAT RECOVERY VERIFY step="+std::string(CombatRecoveryName(action))+
+                " targetGuid="+Hex64(target.guid)+" result="+(issued ? "pending" : "dispatch_failed"));
+            return issued;
+        }
 
         bool autoAttackReengagePending_ =
             false;
@@ -1316,6 +1412,10 @@ namespace Bot
 
         void ResetTargetState()
         {
+            meleeLiveness_.Reset();
+            meleeDecision_={};
+            meleeActionEvidence_={};
+            lastMeleeClassification_=CombatStallClass::UnknownOrStale;
             lockedGuid_ =
                 0;
 
@@ -1741,7 +1841,7 @@ namespace Bot
              * locking.
              */
             if (
-                world.player.targetGuid !=
+                ClientSelectedGuid(world) !=
                     target.guid)
             {
                 return false;
@@ -1884,7 +1984,7 @@ namespace Bot
                 warrior_.CanPrepareCharge(
                     world.player,
                     target,
-                    world.player.targetGuid ==
+                    ClientSelectedGuid(world) ==
                         target.guid
                 );
 
@@ -1973,7 +2073,7 @@ namespace Bot
                     world.player,
                     target,
                     tick,
-                    world.player.targetGuid ==
+                    ClientSelectedGuid(world) ==
                         target.guid,
                     chargeFacingReady
                 );
@@ -2012,21 +2112,21 @@ namespace Bot
             std::uint64_t tick)
         {
             if (
-                world.player.targetGuid ==
+                ClientSelectedGuid(world) ==
                     lockedGuid_)
             {
                 return;
             }
 
-            const bool retryReady =
-                tick >=
-                    lastTargetCommandTick_ +
-                    ActiveTargetRestoreCooldownTicks;
-
-            if (!retryReady)
+            if (meleeDecision_.action!=CombatRecoveryAction::RestoreTarget)
             {
                 return;
             }
+
+            meleeLiveness_.Dispatched(CombatRecoveryAction::RestoreTarget,GetTickCount64());
+            Debug::Logger::Info("COMBAT RECOVERY step=restore_target attempt="+
+                std::to_string(meleeLiveness_.Repairs())+" targetGuid="+Hex64(target.guid)+
+                " reason=target_selection_desync");
 
             Debug::Logger::Info(
                 "COMBAT LOOP: restoring "
@@ -2040,11 +2140,7 @@ namespace Bot
                 )
             );
 
-            if (
-                TargetController::
-                    SetTarget(
-                        target.guid
-                    ))
+            if (AutoAttackController::RestoreCombatTarget(world,target))
             {
                 lastTargetCommandTick_ =
                     tick;
@@ -2232,7 +2328,7 @@ namespace Bot
              *   snapshots before releasing autoattack/offensive abilities.
              */
             if (
-                world.player.targetGuid !=
+                ClientSelectedGuid(world) !=
                     lockedGuid_)
             {
                 facingStableSnapshots_ =
@@ -2329,7 +2425,7 @@ namespace Bot
                 lastLowHealthFinisherRepairTick_ =
                     tick;
 
-                if (AutoAttackController::Restart())
+                if (IssueLivenessAttack(world,target,tick,false))
                 {
                     attackStarted_ =
                         true;
@@ -2340,8 +2436,6 @@ namespace Bot
                     lastAutoAttackProbeTick_ =
                         tick;
 
-                    ++attackCommands_;
-                    ++autoAttackLivenessRecoveries_;
                     ++lowHealthFinisherLatchRepairs_;
 
                     Debug::Logger::Info(
@@ -2556,112 +2650,24 @@ namespace Bot
                     false;
             }
 
-            /*
-             * Phase 14G.5.2 attack liveness:
-             *
-             * 1) A mob that fled can make ChaseController leave and later
-             *    re-enter melee while the client-side swing latch has drifted
-             *    away from our C++ intent. Re-engage deterministically after
-             *    facing is safe.
-             * 2) When the Attack action exists on a bar, periodically compare
-             *    IsCurrentAction with attackStarted_. If the client says melee
-             *    is actually off, repair the latch immediately.
-             */
-            if (autoAttackReengagePending_)
+            // Attack intent is not evidence. An observed current Attack action
+            // verifies the structural latch; only damage re-arms the budget.
+            if (meleeActionEvidence_.attack.actionSlotFound && meleeActionEvidence_.attack.active)
             {
-                if (AutoAttackController::Restart())
-                {
-                    attackStarted_ = true;
-                    autoAttackReengagePending_ = false;
-                    lastAutoAttackProbeTick_ = tick;
-                    ++attackCommands_;
-                    ++autoAttackLivenessRecoveries_;
-
-                    Debug::Logger::Info(
-                        "AUTOATTACK 14G.5.2: RE-ENGAGED after chase return to melee."
-                    );
-                }
-                else
-                {
-                    attackStarted_ = false;
-                    return false;
-                }
+                attackStarted_=true;
+                autoAttackReengagePending_=false;
             }
-
-            if (
-                attackStarted_ &&
-                (lastAutoAttackProbeTick_ == 0 ||
-                 tick >= lastAutoAttackProbeTick_ + AutoAttackProbeCooldownTicks))
+            if (meleeDecision_.action==CombatRecoveryAction::RefreshAttack ||
+                meleeDecision_.action==CombatRecoveryAction::ReengageAttack)
             {
-                AutoAttackController::AttackStatus status{};
-                lastAutoAttackProbeTick_ = tick;
-
-                if (AutoAttackController::Probe(status))
-                {
-                    if (status.actionSlotFound)
-                    {
-                        autoAttackNoSlotLogged_ = false;
-
-                        if (!status.active)
-                        {
-                            attackStarted_ = false;
-                            ++autoAttackLivenessRecoveries_;
-
-                            Debug::Logger::Info(
-                                "AUTOATTACK 14G.5.2: CLIENT LATCH DESYNC detected; Attack action is not current while combat expects melee. Re-engaging."
-                            );
-                        }
-                    }
-                    else if (!autoAttackNoSlotLogged_)
-                    {
-                        autoAttackNoSlotLogged_ = true;
-                        Debug::Logger::Info(
-                            "AUTOATTACK 14G.5.2: Attack action is not on bars; using deterministic no-slot start/stop fallback."
-                        );
-                    }
-                }
+                IssueLivenessAttack(world,target,tick,
+                    meleeDecision_.action==CombatRecoveryAction::RefreshAttack);
             }
-
-            if (!attackStarted_)
+            else if (!attackStarted_ && !meleeLiveness_.Pending() && meleeLiveness_.Repairs()==0)
             {
-                Debug::Logger::Info(
-                    "================================"
-                );
-
-                Debug::Logger::Info(
-                    "COMBAT LOOP: starting autoattack after facing confirmation."
-                );
-
-                Debug::Logger::Info(
-                    "Locked GUID: " +
-                    Hex64(
-                        lockedGuid_
-                    )
-                );
-
-                if (
-                    AutoAttackController::
-                        Start())
-                {
-                    attackStarted_ =
-                        true;
-
-                    ++attackCommands_;
-
-                    Debug::Logger::Info(
-                        "Autoattack started."
-                    );
-                }
-                else
-                {
-                    Debug::Logger::Info(
-                        "Autoattack start failed."
-                    );
-                }
-
-                Debug::Logger::Info(
-                    "================================"
-                );
+                // Initial no-slot bootstrap: unknown latch is not active/false
+                // evidence. One start is permitted; verification stays pending.
+                IssueLivenessAttack(world,target,tick,false);
             }
 
             return true;
@@ -2766,6 +2772,11 @@ namespace Bot
             {
                 return;
             }
+
+            if (!world.valid || !world.player.valid)
+                return; // Unknown world is never permission to dispatch recovery.
+            if (world.player.playerFlagsKnown && (world.player.playerFlagsRaw&0x10u))
+                return; // DeathRecovery owns ghost actions; no combat input.
 
             if (grindModeActive_)
                 ObserveAggressors(world, tick);
@@ -3401,7 +3412,7 @@ namespace Bot
                             aggressor->entryId,
                             "Defensive multi-aggro");
 
-                        if (world.player.targetGuid == aggressor->guid)
+                        if (ClientSelectedGuid(world) == aggressor->guid)
                             StartLockedTarget(world, *aggressor, tick);
                         else
                             IssueTargetSelection(*aggressor, tick);
@@ -3634,13 +3645,13 @@ namespace Bot
                  * Prefer a valid already-selected target.
                  */
                 if (
-                    world.player.targetGuid != 0)
+                    ClientSelectedGuid(world) != 0)
                 {
                     const auto* uiTarget =
                         TargetSelector::
                             FindByGuid(
                                 world,
-                                world.player.targetGuid
+                                ClientSelectedGuid(world)
                             );
 
                     if (
@@ -3716,7 +3727,7 @@ namespace Bot
                  * round-trip is needed.
                  */
                 if (
-                    world.player.targetGuid ==
+                    ClientSelectedGuid(world) ==
                         candidate.unit.guid)
                 {
                     if (!ValidateSelectedGrindTarget(
@@ -3784,7 +3795,7 @@ namespace Bot
                 }
 
                 if (
-                    world.player.targetGuid ==
+                    ClientSelectedGuid(world) ==
                         pendingTargetGuid_)
                 {
                     if (!ValidateSelectedGrindTarget(world, *pending, tick))
@@ -3858,6 +3869,9 @@ namespace Bot
                 target->health == 0 ||
                 target->maxHealth == 0)
             {
+                if (target->health==0 && meleeLiveness_.Pending())
+                    Debug::Logger::Info("COMBAT RECOVERY VERIFY targetGuid="+Hex64(lockedGuid_)+
+                        " result=confirmed evidence=target_died");
                 FinishTarget(
                     world,
                     target,
@@ -3867,6 +3881,9 @@ namespace Bot
 
                 return;
             }
+
+            if (ObserveMeleeLiveness(world,*target,tick))
+                return;
 
             MaintainTargetSelection(
                 world,
@@ -3888,7 +3905,7 @@ namespace Bot
                  * snapshot. Never cast Charge against a stale UI target.
                  */
                 if (
-                    world.player.targetGuid !=
+                    ClientSelectedGuid(world) !=
                         lockedGuid_)
                 {
                     warriorChargeFacingStableSnapshots_ =
@@ -4190,7 +4207,7 @@ namespace Bot
                             tick,
                             attackStarted_,
                             true,
-                            world.player.targetGuid == lockedGuid_,
+                            ClientSelectedGuid(world) == lockedGuid_,
                             facingReady,
                             CountDirectAggressorsWithin(
                                 world,
@@ -4330,7 +4347,7 @@ namespace Bot
                     tick,
                     attackStarted_,
                     chase_.IsInRange(),
-                    world.player.targetGuid ==
+                    ClientSelectedGuid(world) ==
                         lockedGuid_,
                     facingReady,
                     CountDirectAggressorsWithin(
@@ -4424,6 +4441,16 @@ namespace Bot
                 BeginAcquire(tick + 1);
                 ++autonomyCombatRecoveries_;
                 return true;
+            }
+
+            // The same-target damage watchdog owns stationary melee repair.
+            // Global displacement/churn must not reset its budget or repeat
+            // AttackStop/SetTarget/separation against a valid aligned target.
+            if (state_==CombatState::Fighting && chase_.IsInRange() &&
+                chase_.TargetGuid()==lockedGuid_)
+            {
+                Debug::Logger::Info("COMBAT LIVENESS owner=same_target_watchdog globalRecovery=deferred reason="+reason);
+                return false;
             }
 
             std::uint32_t& attempts =
@@ -4713,7 +4740,7 @@ namespace Bot
             Debug::Logger::Info(
                 "Client already selected: " +
                 std::string(
-                    world.player.targetGuid == exactGuid
+                    ClientSelectedGuid(world) == exactGuid
                         ? "yes"
                         : "no"
                 )
@@ -4722,7 +4749,7 @@ namespace Bot
                 "================================"
             );
 
-            if (world.player.targetGuid == exactGuid)
+            if (ClientSelectedGuid(world) == exactGuid)
             {
                 return StartLockedTarget(
                     world,
@@ -4742,7 +4769,7 @@ namespace Bot
             std::uint64_t tick)
         {
             const std::uint64_t selectedGuid =
-                world.player.targetGuid;
+                ClientSelectedGuid(world);
 
             const auto* selected =
                 TargetSelector::FindByGuid(

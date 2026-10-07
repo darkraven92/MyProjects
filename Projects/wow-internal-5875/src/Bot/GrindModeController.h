@@ -36,7 +36,8 @@ namespace Bot
         ApproachingTarget,
         Roaming,
         Vendoring,
-        Failed
+        Failed,
+        WaitingForManualVendor
     };
 
     class GrindModeController
@@ -156,6 +157,7 @@ namespace Bot
                 case GrindModeState::ApproachingTarget: return "ApproachingTarget";
                 case GrindModeState::Roaming: return "Roaming";
                 case GrindModeState::Vendoring: return "Vendoring";
+                case GrindModeState::WaitingForManualVendor: return "WaitingForManualVendor";
                 case GrindModeState::Failed: return "Failed";
                 default: return "Unknown";
             }
