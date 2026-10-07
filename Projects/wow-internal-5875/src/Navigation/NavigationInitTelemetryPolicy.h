@@ -30,7 +30,8 @@ namespace Navigation
         DestinationProjectionFailed,
         AvoidanceProjectionUnresolved,
         PersistentHazardRejected,
-        BoundedLocalRecoveryUnavailable
+        BoundedLocalRecoveryUnavailable,
+        MeshCacheInvalidated
     };
 
     // Snapshot of actual incremental work, not a route generation or CTM
@@ -71,6 +72,8 @@ namespace Navigation
                 return NavigationPlanFailure::AvoidanceProjectionUnresolved;
             if (error == "Persistent navigation hazard memory rejected every safe corridor.")
                 return NavigationPlanFailure::PersistentHazardRejected;
+            if (error == "Navmesh cache generation invalidated.")
+                return NavigationPlanFailure::MeshCacheInvalidated;
             return error == "Detour could not build a polygon path."
                 ? NavigationPlanFailure::NoPath : NavigationPlanFailure::OtherUnknown;
         }
@@ -121,6 +124,7 @@ namespace Navigation
                 case NavigationPlanFailure::AvoidanceProjectionUnresolved: return "avoidance_projection_unresolved";
                 case NavigationPlanFailure::PersistentHazardRejected: return "persistent_hazard_rejected";
                 case NavigationPlanFailure::BoundedLocalRecoveryUnavailable: return "bounded_local_recovery_unavailable";
+                case NavigationPlanFailure::MeshCacheInvalidated: return "mesh_cache_invalidated";
                 default: return "other_unknown";
             }
         }

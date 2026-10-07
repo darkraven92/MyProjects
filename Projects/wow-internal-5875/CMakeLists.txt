@@ -109,4 +109,10 @@ endif()
 file(GLOB PHASE10A_DETOUR_SOURCES CONFIGURE_DEPENDS "${DETOUR_ROOT}/Source/*.cpp")
 target_sources(wow_internal PRIVATE ${PHASE10A_DETOUR_SOURCES})
 target_include_directories(wow_internal PRIVATE "${DETOUR_ROOT}/Include")
+add_executable(navmesh_cache_probe EXCLUDE_FROM_ALL tools/navmesh_cache_probe.cpp)
+target_sources(navmesh_cache_probe PRIVATE ${PHASE10A_DETOUR_SOURCES})
+target_include_directories(navmesh_cache_probe PRIVATE "${DETOUR_ROOT}/Include")
+set_source_files_properties(tools/navmesh_cache_probe.cpp PROPERTIES
+    COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+target_link_options(navmesh_cache_probe PRIVATE -static)
 # END PHASE10A DETOUR

@@ -123,6 +123,14 @@ namespace Bot
     public:
         static void Run()
         {
+            struct NavMeshSessionLifetime
+            {
+                ~NavMeshSessionLifetime()
+                {
+                    Navigation::DetourNavigationProvider::InvalidateSessionCache(
+                        "session_teardown");
+                }
+            } navMeshSessionLifetime;
             Debug::Logger::Info(
                 "=== WorldMonitor started ==="
             );
@@ -573,6 +581,9 @@ namespace Bot
 
                 if (!snapshotValid)
                 {
+                    if (consecutiveWorldFailures == 0)
+                        Navigation::DetourNavigationProvider::InvalidateSessionCache(
+                            "world_unload_or_snapshot_gap");
                     ++consecutiveWorldFailures;
                     sharedAfk.Reset();
 

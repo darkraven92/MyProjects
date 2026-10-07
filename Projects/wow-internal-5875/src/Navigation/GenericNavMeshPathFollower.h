@@ -52,6 +52,7 @@ namespace Navigation
         // Start still clears every other follower state and 13D.4 performs
         // the actual alternative query; this is not a global blacklist.
         DirectedPolyTransition initialAvoidedTransition{};
+        std::uint64_t initialTransitionMeshGeneration = 0;
     };
 
     struct NavigationFailureEvidence
@@ -69,6 +70,7 @@ namespace Navigation
         DirectedPolyTransition failedTransition{};
         DirectedPolyTransition learnedTransition{};
         std::uint64_t corridorFingerprint = 0;
+        std::uint64_t meshGeneration = 0;
     };
 
     class GenericNavMeshPathFollower
@@ -896,8 +898,10 @@ namespace Navigation
             const std::source_location origin = std::source_location::current())
         {
             IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);
-            if (!Bot::ClickToMoveController::MoveTo(player,target.x,target.y,
-                    target.z,precision,origin))
+            if (!provider_.WithCurrentTopology([&] {
+                    return Bot::ClickToMoveController::MoveTo(player,target.x,target.y,
+                        target.z,precision,origin);
+                }))
                 return false;
             const auto& dispatched=Bot::ClickToMoveController::LastCommand();
             if (dispatched.writer!=origin.function_name() ||
@@ -6449,8 +6453,6 @@ namespace Navigation
             pathEndPoly_ = 0;
             blockedTransitions_.clear();
             badVerticalTransitions_.Reset();
-            if (options.initialAvoidedTransition.Valid())
-                badVerticalTransitions_.Learn(options.initialAvoidedTransition);
             verticalTransitionAvoidancePending_ = false;
             boundaryVerticalAvoidanceAttempted_ = false;
             escapeProbeActive_ = false;
@@ -6530,8 +6532,41 @@ namespace Navigation
             // Active followers retain their existing hold-on-start behavior.
             // Planning-only probes never issue a movement command.
             StopAtCurrentPosition(player);
-            return BeginInitializationTier(
+            const bool began = BeginInitializationTier(
                 player, NavigationInitTier::Route, error);
+            if (began && options.initialAvoidedTransition.Valid())
+            {
+                if (SameNavMeshGeneration(options.initialTransitionMeshGeneration,
+                        provider_.CacheStats().generation))
+                    badVerticalTransitions_.Learn(options.initialAvoidedTransition);
+                else
+                    Debug::Logger::Info(
+                        "NAV CACHE EDGE REJECT reason=stale_or_unknown_generation");
+            }
+            return began;
+        }
+
+        bool RejectInvalidatedTopology()
+        {
+            if (provider_.CacheGenerationCurrent()) return false;
+            // A world/map generation change never reinterprets old poly refs
+            // against a new mesh or dispatches CTM from a stale corridor.
+            initializationPending_ = false;
+            pausedForCombat_ = false;
+            retainIntentForInitialFallback_ = false;
+            lastPlanFailure_ = NavigationPlanFailure::MeshCacheInvalidated;
+            points_.clear();
+            corridorPolys_.clear();
+            pointPolyRefs_.clear();
+            pathStartPoly_ = pathEndPoly_ = 0;
+            lastSafeNav_ = LastSafeNavState{};
+            lastSafeCandidate_ = LastSafeNavState{};
+            blockedTransitions_.clear();
+            badVerticalTransitions_.Reset();
+            IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);
+            SetState(GenericNavMeshFollowState::Failed);
+            provider_.Shutdown();
+            return true;
         }
 
         void Update(
@@ -6540,6 +6575,10 @@ namespace Navigation
         {
             intentTick_=tick;
             intentPosition_={player.x,player.y,player.z};
+            if ((initializationPending_ || pausedForCombat_ ||
+                 state_ == GenericNavMeshFollowState::Moving ||
+                 state_ == GenericNavMeshFollowState::Planned) &&
+                RejectInvalidatedTopology()) return;
             const Objects::PlayerState& effectivePlayer =
                 startOptions_.planningOnly ? planningOriginPlayer_ : player;
             RememberPlayerPosition(effectivePlayer);
@@ -7241,6 +7280,7 @@ namespace Navigation
             const Objects::PlayerState& player,
             std::uint64_t tick)
         {
+            if (pausedForCombat_ && RejectInvalidatedTopology()) return false;
             if (!pausedForCombat_)
             {
                 Debug::Logger::Info(
@@ -7430,6 +7470,7 @@ namespace Navigation
             evidence.lastSafePosition = lastSafeNav_.position;
             evidence.lastSafePositionKnown = lastSafeNav_.valid;
             evidence.corridorFingerprint = lastPathFingerprint_;
+            evidence.meshGeneration = provider_.CacheStats().generation;
             if (failedCorridor_.transitionKnown)
                 evidence.failedTransition = {
                     failedCorridor_.failedFromPoly,

@@ -8,6 +8,7 @@
 #include "DetourNavMeshQuery.h"
 #include "DetourStatus.h"
 #include "IncrementalTileInitializationPolicy.h"
+#include "MapNavMeshSessionCache.h"
 #include "TerrainTransitionPolicy.h"
 
 #include <windows.h>
@@ -55,6 +56,7 @@ namespace Navigation
         std::uint64_t startPoly = 0;
         std::uint64_t endPoly = 0;
         std::uint64_t lastPoly = 0;
+        std::uint64_t meshGeneration = 0;
 
         std::uint32_t findPathStatus = 0;
         std::uint32_t findStraightPathStatus = 0;
@@ -173,6 +175,30 @@ namespace Navigation
             "Unexpected MmapTileHeader layout."
         );
 
+        struct CachedTopology
+        {
+            dtNavMesh* mesh = nullptr;
+            ~CachedTopology() { if (mesh) dtFreeNavMesh(mesh); }
+        };
+        using SessionCache = MapNavMeshSessionCache<CachedTopology>;
+        SessionCache::Handle session_;
+        static SessionCache& Cache()
+        {
+            static SessionCache cache;
+            return cache;
+        }
+        bool CurrentTopology() const { return Cache().IsCurrent(session_); }
+        static bool FileIdentity(const std::string& path, NavMeshTileIdentity& identity)
+        {
+            WIN32_FILE_ATTRIBUTE_DATA data{};
+            if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &data) ||
+                (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return false;
+            identity.stamp = (static_cast<std::uint64_t>(data.ftLastWriteTime.dwHighDateTime) << 32) |
+                data.ftLastWriteTime.dwLowDateTime;
+            identity.size = (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+            return true;
+        }
+
         dtNavMesh* mesh_ =
             nullptr;
 
@@ -195,6 +221,8 @@ namespace Navigation
         ProfileClock::time_point incrementalStarted_{};
         double incrementalWorkMs_ = 0.0;
         bool incrementalActive_ = false;
+        std::size_t requestedTiles_ = 0;
+        std::size_t reusedTiles_ = 0;
         std::size_t incrementalFinalTotal_ = 0;
         std::size_t incrementalFinalProcessed_ = 0;
         double incrementalFinalElapsedMs_ = 0.0;
@@ -205,11 +233,14 @@ namespace Navigation
             int tilesOpened = 0;
             int tilesLoaded = 0;
             int tilesFailed = 0;
+            int cacheHits = 0;
+            int addTileCalls = 0;
             double enumerationMs = 0.0;
             double tileReadMs = 0.0;
             double addTileMs = 0.0;
             double queryInitMs = 0.0;
             double mapHeaderMs = 0.0;
+            double cacheLookupMs = 0.0;
             double slowestTileMs = 0.0;
             std::string slowestTileName;
         } initProfile_{};
@@ -228,7 +259,8 @@ namespace Navigation
                 workMs = totalMs;
             const double accounted = initProfile_.enumerationMs +
                 initProfile_.tileReadMs + initProfile_.addTileMs +
-                initProfile_.queryInitMs + initProfile_.mapHeaderMs;
+                initProfile_.queryInitMs + initProfile_.mapHeaderMs +
+                initProfile_.cacheLookupMs;
             std::ostringstream stream;
             stream << std::fixed << std::setprecision(3)
                 << "NAV 14N.3 INIT PROFILE: mode=" << mode
@@ -237,11 +269,16 @@ namespace Navigation
                 << " tilesOpened=" << initProfile_.tilesOpened
                 << " tilesLoaded=" << initProfile_.tilesLoaded
                 << " tilesFailed=" << initProfile_.tilesFailed
+                << " diskLoads=" << initProfile_.tilesOpened
+                << " cacheHits=" << initProfile_.cacheHits
+                << " addTileCalls=" << initProfile_.addTileCalls
+                << " reusedTiles=" << initProfile_.cacheHits
                 << " enumerationMs=" << initProfile_.enumerationMs
                 << " tileReadMs=" << initProfile_.tileReadMs
                 << " addTileMs=" << initProfile_.addTileMs
                 << " queryInitMs=" << initProfile_.queryInitMs
                 << " mapHeaderMs=" << initProfile_.mapHeaderMs
+                << " cacheLookupMs=" << initProfile_.cacheLookupMs
                 << " otherMs=" << std::max(0.0, workMs - accounted)
                 << " workMs=" << workMs
                 << " totalMs=" << totalMs
@@ -652,6 +689,24 @@ namespace Navigation
             const std::string& path,
             std::string& error)
         {
+            if (!CurrentTopology()) { error = "Navmesh cache generation invalidated."; return false; }
+            NavMeshTileIdentity identity{};
+            if (!FileIdentity(path, identity)) { error = "Could not inspect tile: " + path; return false; }
+            const auto cached = session_->tiles.find(path);
+            if (cached != session_->tiles.end())
+            {
+                if (cached->second.identity != identity ||
+                    !mesh_->getTileByRef(static_cast<dtTileRef>(cached->second.reference)))
+                {
+                    InvalidateSessionCache("tile_metadata_or_reference_changed");
+                    error = "Cached tile metadata/reference changed: " + path;
+                    return false;
+                }
+                ++initProfile_.cacheHits;
+                ++session_->cacheHits;
+                loadedTiles_ = static_cast<int>(session_->tiles.size());
+                return true;
+            }
             TileProfileScope tileProfile{*this, path};
             const auto openStarted = ProfileClock::now();
             std::ifstream input(
@@ -785,6 +840,7 @@ namespace Navigation
                 0;
 
             const auto addTileStarted = ProfileClock::now();
+            ++initProfile_.addTileCalls;
             const dtStatus status =
                 mesh_->addTile(
                     data,
@@ -814,7 +870,10 @@ namespace Navigation
                 return false;
             }
 
-            ++loadedTiles_;
+            session_->tiles.emplace(path, SessionCache::Tile{
+                identity, static_cast<std::uint64_t>(tileReference)});
+            ++session_->coldTileLoads;
+            loadedTiles_ = static_cast<int>(session_->tiles.size());
             ++initProfile_.tilesLoaded;
             tileProfile.success = true;
 
@@ -938,8 +997,26 @@ namespace Navigation
             const dtNavMeshParams& parameters,
             std::string& error)
         {
+            NavMeshTileIdentity metadata{};
+            if (!FileIdentity(mmapPath, metadata))
+            { error = "Could not inspect mmap metadata: " + mmapPath; return false; }
+            const NavMeshCacheIdentity identity{mapId_, directory_,
+                std::string(reinterpret_cast<const char*>(&parameters), sizeof(parameters)),
+                metadata.stamp, metadata.size};
+            const auto current = Cache().Current();
+            if (current && current->identity != identity)
+                InvalidateSessionCache(current->identity.map != mapId_
+                    ? "map_changed" : "incompatible_mesh_metadata");
+            session_ = Cache().Acquire(identity);
+            if (session_->topology.mesh)
+            {
+                mesh_ = session_->topology.mesh;
+                loadedTiles_ = static_cast<int>(session_->tiles.size());
+                return true;
+            }
             mesh_ =
                 dtAllocNavMesh();
+            session_->topology.mesh = mesh_;
 
             if (
                 mesh_ == nullptr ||
@@ -952,7 +1029,7 @@ namespace Navigation
                 error =
                     "Could not initialize Detour navmesh from " +
                     mmapPath;
-
+                InvalidateSessionCache("mesh_initialization_failed");
                 return false;
             }
 
@@ -961,6 +1038,9 @@ namespace Navigation
 
         bool InitializeQuery(std::string& error)
         {
+            if (!CurrentTopology()) { error = "Navmesh cache generation invalidated."; return false; }
+            // Node pools and mutable query state are private to this provider.
+            if (query_) { dtFreeNavMeshQuery(query_); query_ = nullptr; }
             query_ =
                 dtAllocNavMeshQuery();
 
@@ -1005,11 +1085,20 @@ namespace Navigation
         {
             if (!incrementalActive_)
                 return;
-            incrementalFinalTotal_ = incrementalCursor_.Total();
-            incrementalFinalProcessed_ = incrementalCursor_.Processed();
+            incrementalFinalTotal_ = requestedTiles_;
+            incrementalFinalProcessed_ = reusedTiles_ + incrementalCursor_.Processed();
             incrementalFinalElapsedMs_ = ProfileMs(incrementalStarted_);
             LogInitProfile(incrementalMode_.c_str(), incrementalStarted_,
                            success, incrementalWorkMs_);
+            Debug::Logger::Info("NAV CACHE READY map=" + std::to_string(mapId_) +
+                " generation=" + std::to_string(session_ ? session_->generation : 0) +
+                " mode=" + incrementalMode_ +
+                " loadedTotal=" + std::to_string(LoadedTiles()) +
+                " newLoads=" + std::to_string(initProfile_.tilesLoaded) +
+                " reused=" + std::to_string(initProfile_.cacheHits) +
+                " elapsedMs=" + std::to_string(incrementalFinalElapsedMs_) +
+                " workMs=" + std::to_string(incrementalWorkMs_) +
+                " success=" + (success ? "yes" : "no"));
             incrementalActive_ = false;
             if (cancelled)
                 incrementalCursor_.Cancel();
@@ -1032,14 +1121,25 @@ namespace Navigation
             incrementalFinalProcessed_ = 0;
             incrementalFinalElapsedMs_ = 0.0;
             incrementalMode_ = mode;
+            incrementalCursor_ = IncrementalTileInitializationPolicy{};
+            incrementalTiles_.clear();
+            requestedTiles_ = reusedTiles_ = 0;
             incrementalActive_ = true;
             directory_ = NormalizeWinePath(directory);
             mapId_ = mapId;
+            // Revoke the previous world even if the new map's metadata is
+            // absent. A failed map switch must not leave old refs usable.
+            const auto previous = Cache().Current();
+            if (previous && (previous->identity.map != mapId_ ||
+                             previous->identity.directory != directory_))
+                InvalidateSessionCache(previous->identity.map != mapId_
+                    ? "map_changed" : "incompatible_mesh_directory");
             const std::string mmapPath = JoinPath(directory_, MapName(mapId_, ".mmap"));
             dtNavMeshParams parameters{};
             const auto headerStarted = ProfileClock::now();
             const bool headerOk = ReadMapParameters(mmapPath, parameters, error);
             initProfile_.mapHeaderMs += ProfileMs(headerStarted);
+            if (!headerOk) InvalidateSessionCache("mesh_metadata_unavailable");
             if (!headerOk || !InitializeMeshAndQuery(mmapPath, parameters, error))
             {
                 incrementalWorkMs_ += ProfileMs(incrementalStarted_);
@@ -1047,6 +1147,49 @@ namespace Navigation
                 Shutdown();
                 return false;
             }
+            return true;
+        }
+
+        bool PrepareIncrementalCache(std::string& error)
+        {
+            struct LookupProfile
+            {
+                DetourNavigationProvider& provider;
+                ProfileClock::time_point started = ProfileClock::now();
+                ~LookupProfile()
+                {
+                    const double elapsed = ProfileMs(started);
+                    provider.initProfile_.cacheLookupMs += elapsed;
+                    provider.incrementalWorkMs_ += elapsed;
+                }
+            } lookupProfile{*this};
+            requestedTiles_ = incrementalTiles_.size();
+            std::vector<std::string> missing;
+            for (const auto& path : incrementalTiles_)
+            {
+                const auto existing = session_->tiles.find(path);
+                if (existing == session_->tiles.end()) { missing.push_back(path); continue; }
+                NavMeshTileIdentity identity{};
+                if (!FileIdentity(path, identity) || existing->second.identity != identity ||
+                    !mesh_->getTileByRef(static_cast<dtTileRef>(existing->second.reference)))
+                {
+                    InvalidateSessionCache("tile_metadata_or_reference_changed");
+                    error = "Cached tile metadata/reference changed: " + path;
+                    return false;
+                }
+                ++reusedTiles_;
+            }
+            initProfile_.cacheHits = static_cast<int>(reusedTiles_);
+            session_->cacheHits += reusedTiles_;
+            incrementalTiles_ = std::move(missing);
+            incrementalCursor_.Begin(incrementalTiles_.size());
+            Debug::Logger::Info("NAV CACHE map=" + std::to_string(mapId_) +
+                " generation=" + std::to_string(session_->generation) +
+                " requestedTiles=" + std::to_string(requestedTiles_) +
+                " alreadyLoaded=" + std::to_string(reusedTiles_) +
+                " newLoads=" + std::to_string(incrementalTiles_.size()) +
+                " cacheHitPercent=" + std::to_string(requestedTiles_ ? 100.0 * reusedTiles_ / requestedTiles_ : 0.0) +
+                " mode=" + incrementalMode_);
             return true;
         }
 
@@ -1138,6 +1281,43 @@ namespace Navigation
         }
 
     public:
+        static void InvalidateSessionCache(const char* reason)
+        {
+            std::lock_guard lock(Cache().Mutex());
+            const auto current = Cache().Current();
+            if (current)
+                Debug::Logger::Info("NAV CACHE INVALIDATE map=" + std::to_string(current->identity.map) +
+                    " generation=" + std::to_string(current->generation) + " reason=" + reason);
+            Cache().Invalidate();
+        }
+        bool CacheGenerationCurrent() const
+        {
+            std::lock_guard lock(Cache().Mutex());
+            return CurrentTopology();
+        }
+        struct CacheStatistics
+        {
+            std::uint64_t generation = 0;
+            int loadedTotal = 0;
+            int diskLoads = 0;
+            int cacheHits = 0;
+            int addTileCalls = 0;
+        };
+        CacheStatistics CacheStats() const
+        {
+            std::lock_guard lock(Cache().Mutex());
+            return {CurrentTopology() ? session_->generation : 0,
+                    LoadedTiles(), initProfile_.tilesOpened,
+                    initProfile_.cacheHits, initProfile_.addTileCalls};
+        }
+        // Keep a command-time validity check atomic with dispatch. It does
+        // not transfer movement ownership or share route state.
+        template<class Command>
+        bool WithCurrentTopology(Command&& command) const
+        {
+            std::lock_guard lock(Cache().Mutex());
+            return CurrentTopology() && command();
+        }
         enum class IncrementalStatus { Pending, Ready, Failed };
 
         struct IncrementalProgress
@@ -1152,9 +1332,10 @@ namespace Navigation
 
         IncrementalProgress InitializationProgress() const
         {
-            return {incrementalActive_ ? incrementalCursor_.Total() : incrementalFinalTotal_,
-                    incrementalActive_ ? incrementalCursor_.Processed() : incrementalFinalProcessed_,
-                    initProfile_.tilesLoaded, initProfile_.tilesFailed,
+            std::lock_guard lock(Cache().Mutex());
+            return {incrementalActive_ ? requestedTiles_ : incrementalFinalTotal_,
+                    incrementalActive_ ? reusedTiles_ + incrementalCursor_.Processed() : incrementalFinalProcessed_,
+                    initProfile_.tilesLoaded + initProfile_.cacheHits, initProfile_.tilesFailed,
                     incrementalActive_ ? ProfileMs(incrementalStarted_) : incrementalFinalElapsedMs_,
                     incrementalWorkMs_};
         }
@@ -1166,6 +1347,7 @@ namespace Navigation
                                       int marginTiles, std::string& error,
                                       const char* mode = "route")
         {
+            std::lock_guard lock(Cache().Mutex());
             if (!BeginIncrementalCommon(directory, mapId, mode, error))
                 return false;
             const bool found = CollectIncrementalRouteTiles(
@@ -1177,7 +1359,8 @@ namespace Navigation
                 Shutdown();
                 return false;
             }
-            incrementalCursor_.Begin(incrementalTiles_.size());
+            if (!PrepareIncrementalCache(error))
+            { FinishIncremental(false); Shutdown(); return false; }
             error.clear();
             return true;
         }
@@ -1185,6 +1368,7 @@ namespace Navigation
         bool BeginIncrementalFullMap(const std::string& directory,
                                      std::uint32_t mapId, std::string& error)
         {
+            std::lock_guard lock(Cache().Mutex());
             if (!BeginIncrementalCommon(directory, mapId, "full_map", error))
                 return false;
             const bool found = CollectIncrementalFullMapTiles(error);
@@ -1195,13 +1379,22 @@ namespace Navigation
                 Shutdown();
                 return false;
             }
-            incrementalCursor_.Begin(incrementalTiles_.size());
+            if (!PrepareIncrementalCache(error))
+            { FinishIncremental(false); Shutdown(); return false; }
             error.clear();
             return true;
         }
 
         IncrementalStatus StepIncremental(std::string& error)
         {
+            std::lock_guard lock(Cache().Mutex());
+            if (!CurrentTopology())
+            {
+                error = "Navmesh cache generation invalidated.";
+                FinishIncremental(false);
+                Shutdown();
+                return IncrementalStatus::Failed;
+            }
             if (!incrementalActive_)
             {
                 error = "No incremental navmesh initialization is pending.";
@@ -1283,9 +1476,10 @@ namespace Navigation
             float horizontalExtent = 3.0f,
             float verticalExtent = 5.0f) const
         {
+            std::lock_guard lock(Cache().Mutex());
             projected = point;
             polyRef = 0;
-            if (query_ == nullptr || horizontalExtent <= 0.0f ||
+            if (!CurrentTopology() || query_ == nullptr || horizontalExtent <= 0.0f ||
                 verticalExtent <= 0.0f)
             {
                 return false;
@@ -1325,73 +1519,13 @@ namespace Navigation
             std::string& error,
             const char* profileMode = "route")
         {
-            InitProfileScope profileScope{*this, profileMode};
-            Shutdown();
-            initProfile_ = InitProfile{};
-
-            directory_ =
-                NormalizeWinePath(
-                    directory
-                );
-
-            mapId_ = mapId;
-
-            dtNavMeshParams parameters{};
-
-            const std::string mmapPath =
-                JoinPath(
-                    directory_,
-                    MapName(
-                        mapId_,
-                        ".mmap"
-                    )
-                );
-
-            const auto mapHeaderStarted = ProfileClock::now();
-            const bool mapHeaderRead = ReadMapParameters(
-                    mmapPath,
-                    parameters,
-                    error);
-            initProfile_.mapHeaderMs += ProfileMs(mapHeaderStarted);
-            if (!mapHeaderRead)
-            {
-                Shutdown();
-                return false;
-            }
-
-            if (!InitializeMeshAndQuery(
-                    mmapPath,
-                    parameters,
-                    error
-                ))
-            {
-                Shutdown();
-                return false;
-            }
-
-            if (!LoadRouteTiles(
-                    start,
-                    destination,
-                    marginTiles,
-                    error
-                ))
-            {
-                Shutdown();
-                return false;
-            }
-
-            const auto queryInitStarted = ProfileClock::now();
-            const bool queryInitialized = InitializeQuery(error);
-            initProfile_.queryInitMs += ProfileMs(queryInitStarted);
-            if (!queryInitialized)
-            {
-                Shutdown();
-                return false;
-            }
-
-            error.clear();
-            profileScope.success = true;
-            return true;
+            // Each bounded step locks independently; a blocking/offline
+            // caller must not monopolize topology across the whole load.
+            if (!BeginIncrementalForRoute(directory, mapId, start, destination,
+                    marginTiles, error, profileMode)) return false;
+            IncrementalStatus status;
+            do { status = StepIncremental(error); } while (status == IncrementalStatus::Pending);
+            return status == IncrementalStatus::Ready;
         }
 
         bool Initialize(
@@ -1399,125 +1533,15 @@ namespace Navigation
             std::uint32_t mapId,
             std::string& error)
         {
-            InitProfileScope profileScope{*this, "full_map"};
-            Shutdown();
-            initProfile_ = InitProfile{};
-
-            directory_ =
-                NormalizeWinePath(
-                    directory
-                );
-
-            mapId_ =
-                mapId;
-
-            dtNavMeshParams parameters{};
-
-            const std::string mmapPath =
-                JoinPath(
-                    directory_,
-                    MapName(
-                        mapId_,
-                        ".mmap"
-                    )
-                );
-
-            const auto mapHeaderStarted = ProfileClock::now();
-            const bool mapHeaderRead = ReadMapParameters(
-                    mmapPath,
-                    parameters,
-                    error);
-            initProfile_.mapHeaderMs += ProfileMs(mapHeaderStarted);
-            if (!mapHeaderRead)
-            {
-                Shutdown();
-
-                return false;
-            }
-
-            mesh_ =
-                dtAllocNavMesh();
-
-            if (
-                mesh_ == nullptr ||
-                dtStatusFailed(
-                    mesh_->init(
-                        &parameters
-                    )
-                ))
-            {
-                error =
-                    "Could not initialize Detour navmesh from " +
-                    mmapPath;
-
-                Shutdown();
-
-                return false;
-            }
-
-            if (!LoadTiles(
-                    error))
-            {
-                Shutdown();
-
-                return false;
-            }
-
-            const auto queryInitStarted = ProfileClock::now();
-            query_ =
-                dtAllocNavMeshQuery();
-
-            if (query_ == nullptr)
-            {
-                initProfile_.queryInitMs += ProfileMs(queryInitStarted);
-                error =
-                    "Could not allocate Detour navmesh query.";
-
-                Shutdown();
-
-                return false;
-            }
-
-            const dtStatus queryStatus =
-                query_->init(
-                    mesh_,
-                    QueryNodePoolSize
-                );
-            initProfile_.queryInitMs += ProfileMs(queryInitStarted);
-
-            if (
-                dtStatusFailed(
-                    queryStatus
-                ))
-            {
-                std::ostringstream message;
-
-                message
-                    << "Could not initialize Detour query: status=0x"
-                    << std::hex
-                    << static_cast<unsigned int>(
-                        queryStatus
-                    )
-                    << std::dec
-                    << ", nodes="
-                    << QueryNodePoolSize;
-
-                error =
-                    message.str();
-
-                Shutdown();
-
-                return false;
-            }
-
-            error.clear();
-            profileScope.success = true;
-
-            return true;
+            if (!BeginIncrementalFullMap(directory, mapId, error)) return false;
+            IncrementalStatus status;
+            do { status = StepIncremental(error); } while (status == IncrementalStatus::Pending);
+            return status == IncrementalStatus::Ready;
         }
 
         void Shutdown()
         {
+            std::lock_guard lock(Cache().Mutex());
             if (incrementalActive_)
                 FinishIncremental(false, true);
             if (query_ != nullptr)
@@ -1530,15 +1554,10 @@ namespace Navigation
                     nullptr;
             }
 
-            if (mesh_ != nullptr)
-            {
-                dtFreeNavMesh(
-                    mesh_
-                );
-
-                mesh_ =
-                    nullptr;
-            }
+            // Detach route-local query/work only. Compatible topology and
+            // completed tiles remain owned by the world-session cache.
+            mesh_ = nullptr;
+            session_.reset();
 
             loadedTiles_ =
                 0;
@@ -1551,8 +1570,8 @@ namespace Navigation
 
         int LoadedTiles() const
         {
-            return
-                loadedTiles_;
+            std::lock_guard lock(Cache().Mutex());
+            return CurrentTopology() ? static_cast<int>(session_->tiles.size()) : 0;
         }
 
         // Phase 12B.10 helper for bounded local recovery. This deliberately
@@ -1566,10 +1585,11 @@ namespace Navigation
             float verticalExtent,
             NavPoint& projected) const
         {
+            std::lock_guard lock(Cache().Mutex());
             projected = NavPoint{};
 
             if (
-                query_ == nullptr ||
+                !CurrentTopology() || query_ == nullptr ||
                 horizontalExtent <= 0.0f ||
                 verticalExtent <= 0.0f)
             {
@@ -1630,10 +1650,11 @@ namespace Navigation
             float& wallDistance,
             NavPoint& wallPoint) const
         {
+            std::lock_guard lock(Cache().Mutex());
             wallDistance = maximumRadius;
             wallPoint = point;
 
-            if (query_ == nullptr || maximumRadius <= 0.0f)
+            if (!CurrentTopology() || query_ == nullptr || maximumRadius <= 0.0f)
                 return false;
 
             float detourPoint[3]{};
@@ -1681,8 +1702,9 @@ namespace Navigation
         bool GetDirectedPortal(std::uint64_t fromRef,
             std::uint64_t toRef, NavPoint& a, NavPoint& b) const
         {
+            std::lock_guard lock(Cache().Mutex());
             a={}; b={};
-            if (!mesh_ || !fromRef || !toRef || fromRef==toRef) return false;
+            if (!CurrentTopology() || !mesh_ || !fromRef || !toRef || fromRef==toRef) return false;
             const dtMeshTile* tile=nullptr;
             const dtPoly* poly=nullptr;
             if (dtStatusFailed(mesh_->getTileAndPolyByRef(
@@ -1730,11 +1752,12 @@ namespace Navigation
             NavPoint& reachablePoint,
             NavSurfaceRayTrace* trace = nullptr) const
         {
+            std::lock_guard lock(Cache().Mutex());
             reachableFraction = 0.0f;
             reachablePoint = start;
             if (trace) *trace = {};
 
-            if (query_ == nullptr)
+            if (!CurrentTopology() || query_ == nullptr)
                 return false;
 
             float startPosition[3]{};
@@ -1812,9 +1835,10 @@ namespace Navigation
             const NavPoint& desiredDestination,
             NavPoint& reached) const
         {
+            std::lock_guard lock(Cache().Mutex());
             reached = start;
 
-            if (query_ == nullptr)
+            if (!CurrentTopology() || query_ == nullptr)
                 return false;
 
             float startPosition[3]{};
@@ -1876,6 +1900,7 @@ namespace Navigation
             const std::vector<std::uint64_t>& blockedPolygons,
             NavPathResult& result)
         {
+            std::lock_guard lock(Cache().Mutex());
             if (blockedPolygons.empty())
                 return FindPath(start, destination, result);
 
@@ -1884,9 +1909,11 @@ namespace Navigation
             result.avoidanceRequestedCount =
                 static_cast<int>(blockedPolygons.size());
 
-            if (mesh_ == nullptr || query_ == nullptr)
+            if (!CurrentTopology() || mesh_ == nullptr || query_ == nullptr)
             {
-                result.error = "Detour provider is not initialized.";
+                result.error = session_ && !CurrentTopology()
+                    ? "Navmesh cache generation invalidated."
+                    : "Detour provider is not initialized.";
                 return false;
             }
 
@@ -1926,6 +1953,22 @@ namespace Navigation
 
             std::vector<SavedFlags> saved;
             saved.reserve(blockedPolygons.size());
+            // The mesh outlives the query. Restore masks even on an exception;
+            // the surrounding cache lock excludes every other query/addTile.
+            struct FlagRestoration
+            {
+                dtNavMesh* mesh;
+                const std::vector<SavedFlags>& saved;
+                bool restored = false;
+                void Restore()
+                {
+                    if (restored) return;
+                    for (auto it = saved.rbegin(); it != saved.rend(); ++it)
+                        mesh->setPolyFlags(it->ref, it->flags);
+                    restored = true;
+                }
+                ~FlagRestoration() { Restore(); }
+            } restoration{mesh_, saved};
 
             for (const std::uint64_t rawRef : blockedPolygons)
             {
@@ -1962,8 +2005,7 @@ namespace Navigation
 
             const bool ok = FindPath(start, destination, result);
 
-            for (auto it = saved.rbegin(); it != saved.rend(); ++it)
-                mesh_->setPolyFlags(it->ref, it->flags);
+            restoration.Restore();
 
             result.avoidanceActive = true;
             result.avoidanceRequestedCount =
@@ -1986,6 +2028,7 @@ namespace Navigation
             unsigned short includeFlags,
             unsigned short excludeFlags)
         {
+            std::lock_guard lock(Cache().Mutex());
             result =
                 NavPathResult{};
 
@@ -1999,7 +2042,8 @@ namespace Navigation
                 (includeFlags & NavWater) != 0;
 
             result.loadedTiles =
-                loadedTiles_;
+                LoadedTiles();
+            result.meshGeneration = session_ ? session_->generation : 0;
 
             result.queryNodePoolSize =
                 QueryNodePoolSize;
@@ -2011,11 +2055,13 @@ namespace Navigation
                 MaximumStraightPoints;
 
             if (
-                mesh_ == nullptr ||
+                !CurrentTopology() || mesh_ == nullptr ||
                 query_ == nullptr)
             {
                 result.error =
-                    "Detour provider is not initialized.";
+                    session_ && !CurrentTopology()
+                        ? "Navmesh cache generation invalidated."
+                        : "Detour provider is not initialized.";
 
                 return false;
             }
@@ -2369,8 +2415,10 @@ namespace Navigation
         NavTerrainValidation ValidateTerrainRoute(
             const NavPoint& start, const NavPathResult& path) const
         {
+            std::lock_guard lock(Cache().Mutex());
             NavTerrainValidation result{};
-            if (mesh_ == nullptr || path.points.size() < 2 ||
+            if (!CurrentTopology() || mesh_ == nullptr ||
+                path.meshGeneration != session_->generation || path.points.size() < 2 ||
                 path.pointPolys.size() != path.points.size() ||
                 path.corridorPolys.empty())
             {
@@ -2562,7 +2610,9 @@ namespace Navigation
             unsigned short includeFlags,
             const NavPathResult& preferred) const
         {
-            if (!query_ || preferred.startPoly == 0 ||
+            std::lock_guard lock(Cache().Mutex());
+            if (!CurrentTopology() || !query_ ||
+                preferred.meshGeneration != session_->generation || preferred.startPoly == 0 ||
                 preferred.endPoly == 0)
                 return false;
             const float extents[3] = {5.0f, 10.0f, 5.0f};
@@ -2594,6 +2644,7 @@ namespace Navigation
             const NavPoint& destination,
             NavPathResult& result)
         {
+            std::lock_guard lock(Cache().Mutex());
             NavPathResult preferredGround{};
             const bool preferredGroundOk = FindPathWithFlags(
                 start, destination, preferredGround, NavGround,

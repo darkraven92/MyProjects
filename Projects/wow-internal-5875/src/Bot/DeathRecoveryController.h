@@ -221,8 +221,10 @@ namespace Bot
             // A later failed query may have no learned edge of its own. Keep
             // the last *proven* edge, never an arbitrary failed transition.
             const auto priorLearned = lastRouteEvidence_.learnedTransition;
+            const auto priorGeneration = lastRouteEvidence_.meshGeneration;
             lastRouteEvidence_ = evidence;
-            if (!lastRouteEvidence_.learnedTransition.Valid())
+            if (!lastRouteEvidence_.learnedTransition.Valid() &&
+                Navigation::SameNavMeshGeneration(priorGeneration, evidence.meshGeneration))
                 lastRouteEvidence_.learnedTransition = priorLearned;
         }
 
@@ -659,7 +661,8 @@ namespace Bot
             const bool started = navigator.Start(
                 player, tick, destination, mapId_, arrival, label, false,
                 Navigation::GenericNavMeshStartOptions{
-                    allowFullMapFallback, false, avoidedTransition});
+                    allowFullMapFallback, false, avoidedTransition,
+                    lastRouteEvidence_.meshGeneration});
             if (navigator.FullMapFallbackAttempted())
             {
                 ++fullMapFallbackAttempts_;

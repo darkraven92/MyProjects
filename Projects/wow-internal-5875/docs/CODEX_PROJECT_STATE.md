@@ -9,9 +9,72 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.3.1 Acquisition liveness ownership / navigation terminal attribution**. Preserve verified combat, AFK and
+- Current phase: V6 **P0.3.2 NavMesh session cache / incremental tile reuse**. Preserve verified combat, AFK and
   DeathRecovery behavior and mixed-state fail-closed design. No swimming,
   trainer/talent/GUI/Questing-architecture work in this checkpoint.
+
+## Current P0.3.2 topology reuse checkpoint (2026-10-07)
+
+P0.3 and P0.3.1 RUNTIME PASS in the newest full capture, preserved as
+`/tmp/wow-p032-baseline.3WXFZs/wow-internal.log`, session
+1792.134358658215650330.128405269.32,14,852 lines,29.6273min. Exact final
+counters: movementRecoveries0/runtimeRecoveries1/runtimeIdleDeadlocks0/
+runtimeStrategic1/runtimeEscalations0. No false navigation-handoff acquisition
+deadlocks. Strategic outcome semantics remain unchanged. Prior sections below
+retain historical source checkpoints/gates, not current runtime status.
+
+Dominant latency: nine completed704-tile full-map rebuilds at123–129 seconds
+each,1118.984s total; tenth cancelled652tiles/120.125s. All init profiles opened
+8330tiles. New read-only `tools/navmesh_cache_audit.py` reports full-log counts,
+warm latencies and exact counters; absent baseline cache metrics remain unknown.
+
+SOURCE VERIFIED: each follower owned a mesh; every init tier and new intent
+freed/reallocated/reloaded it. Now one compatible world/map topology cache
+retains completed tiles across intents/tier failures; only missing tile files
+are queued. Identity: map/directory/params/mmap metadata; cached requested tile
+metadata/reference checked. Query/node pool and corridor/recovery/provenance
+remain private. All mesh operations serialized; temporary hazard flags restored
+under lock with RAII. Hazards/terrain validation still apply to each query.
+
+Invalidate on map/directory switch (even unavailable new metadata), world gap,
+incompatibility or session teardown. Stale generation fails with typed
+mesh_cache_invalidated, clears old corridor refs and releases intent; command-
+time generation check rejects stale CTM. No raw-pointer lifetime shortcut.
+No optional/mandatory fallback change without endpoint-coverage proof; no GUI
+redesign. Existing typed initialization observations now include verified reuse.
+Full details/evidence: `docs/NAVMESH_CACHE_AUDIT.md`.
+
+Real-provider offline Wine integration TEST PASS:30coldroute ->60newexpanded
+->614newfullmap =704. Warm route2.215–2.877ms, expanded3.626ms, full27.493ms;
+zero warm disk reads/addTile calls, unchanged existing poly ref, concurrent
+hazard masks restored, terrain outcome retained, stale world/map references
+and command callbacks rejected. Temporary probe capture
+`/tmp/wow-p032-final-probe.Rxh40f/wow-internal.log`. These are OFFLINE timings,
+not WoW performance qualification; cold live loading retains the2tile/tick cap.
+
+TEST PASS:91 strict C++ tests plus nine navigation/cache Python tests,13 local
+QuestDB Python tests, SQL and eight Lua fixtures in full validation
+`/tmp/wow-validation-in9p4f8p/results.json`. BUILD/DIFF CHECK PASS in full
+validation and separate final commands. Isolated intended staged source tree
+PASS:42 published strict C++ tests, nine navigation/cache Python tests, SQL and
+three Lua fixtures, complete DLL/GUI/loader/testhost build; artifacts
+`/tmp/wow-validation-2yk04h_a/results.json`, tree `/tmp/wow-p032-published.IkP9Qz`.
+The explicit strict real-Detour probe also built/runs without dirty dependencies;
+published-provider capture `/tmp/wow-p032-published-probe.MQUqJc/wow-internal.log`
+shows warm route1.581–1.726ms/expanded2.739ms/full14.285ms, zero warm additions.
+AFK, combat, acquisition/strategic policies untouched. DeathRecovery's existing
+learned-edge handoff carries generation metadata and refuses unknown/stale refs;
+its routing/reclaim/budget policy is unchanged. WorldMonitor only adds isolated
+mesh lifetime hooks. Budgets2000/4/2 and coldstep2
+unchanged. All unrelated dirty work preserved; no new unpublished dependency.
+
+P0.3.2 RUNTIME PENDING: no live WoW process available for the new >=20min normal
+Grinding performance gate. Require compatible warm requests without tile
+reloads; warm route preferably<5s end-to-end; cold loads/cache hits/misses,
+latencies/invalidation reasons; near-zero genuine movement recoveries, zero
+false idle debt, AFK prevention/combat stable, natural death regression if it
+occurs. Preserve full log and run the cache audit. No swimming or later phase.
+Checkpoint commit/push authorized; verify local/remote HEAD after scoped review.
 
 ## Current P0.3.1 navigation handoff checkpoint (2026-10-07)
 

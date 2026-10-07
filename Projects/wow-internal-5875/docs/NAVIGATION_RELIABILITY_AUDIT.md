@@ -1,8 +1,38 @@
 # P0.3 navigation reliability audit
 
-Updated 2026-10-07. Current phase P0.3.1: acquisition ownership and terminal
-attribution. SOURCE VERIFIED; TEST/BUILD/DIFF PASS; RUNTIME PENDING.
-Older P0.3 loader/posture fixes have runtime evidence; preserve their behavior.
+Updated 2026-10-07. Current phase P0.3.2: session topology reuse. P0.3 and
+P0.3.1 baseline RUNTIME PASS; new cache performance RUNTIME PENDING.
+Historical checkpoint sections below retain their original evidence.
+
+## P0.3.2 current baseline and cache
+
+Latest full capture `/tmp/wow-p032-baseline.3WXFZs/wow-internal.log`,14,852lines,
+29.6273min. Exact final counters movement0/runtime1/idleDeadlocks0/strategic1/
+escalations0. This closes the P0.3.1 false-acquisition runtime gate. No watchdog
+threshold/counter/outcome semantic change is made here.
+
+Nine separate successful704-tile full-map loads each took123–129s; total
+1118.984s. A tenth cancelled after652tiles/120125ms. This is duplicate topology
+cost, not renewed movement-stall evidence. Every init freed its private mesh;
+compatible same-map routes could not reuse previously loaded tiles.
+
+New cache owns one current world/map topology with checked identity/generation;
+route -> expanded -> full-map retains loaded tiles, queues only missing files.
+Private queries/corridors, query-time hazards/filters, RAII temporary-mask
+restoration, stale-generation rejection, map/world/session invalidation preserve
+safety. Two cold tiles per update remains unchanged. No Roam-specific fallback
+shortcut without endpoint-coverage proof and no GUI redesign.
+
+Real Detour/Wine OFFLINE probe PASS:30 +60 +614 =704 actual cold additions.
+Warm route2–3ms, expanded4ms, full27ms with ZERO disk reads/addTile calls;
+existing refs stable and concurrent hazard masks restored. This is not a live
+performance PASS. Complete audit, tests and >=20min runtime gate are in
+`docs/NAVMESH_CACHE_AUDIT.md`; reproduce full-log metrics with
+`python3 tools/navmesh_cache_audit.py /path/to/preserved-full.log`.
+
+Unchanged:2000/4/2 budgets, terrain/hazard safety, progressing-initializer
+liveness, acquisition ownership, strategic outcome policy, combat/AFK/death.
+New source performance RUNTIME PENDING until warm topology is exercised in WoW.
 
 ## P0.3.1 authoritative full-log audit
 
