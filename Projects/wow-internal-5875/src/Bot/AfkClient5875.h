@@ -4,6 +4,7 @@
 #include "AfkQualificationHold.h"
 #include "AfkClientFlag5875Policy.h"
 #include "AfkSafeInputScript.h"
+#include "AfkDeadGhostPolicy.h"
 #include "GameThreadDispatcher.h"
 #include "../Core/Memory.h"
 #include "../Objects/PlayerSnapshot.h"
@@ -18,6 +19,8 @@ namespace Bot
     struct AfkDispatchResult
     {
         bool issued=false, releaseDelivered=false, blocked=true, sceneVerified=false;
+        bool lifeVerified=false;
+        AfkLifeState lifeBefore=AfkLifeState::Unknown;
         std::string reason="dispatch_unavailable";
         AfkObservation before{};
         AfkCandidateScene sceneBefore{};
@@ -110,6 +113,17 @@ namespace Bot
             }
         };
     public:
+        static AfkLifeState ReadLife(const Objects::PlayerState& player)
+        {
+            std::uint32_t flags=0,health=0;
+            if (!player.valid || !player.descriptors ||
+                !Core::Memory::Read(player.descriptors+0x2f8,flags) ||
+                !Core::Memory::Read(player.descriptors+0x58,health)) return AfkLifeState::Unknown;
+            if (flags&0x10u) return AfkLifeState::Ghost;
+            if (health==0) return AfkLifeState::Dead;
+            // HP=1 without a ghost flag can be a transition, not proof of death.
+            return health>1 ? AfkLifeState::Alive : AfkLifeState::Unknown;
+        }
         static AfkAutoClearSetting ReadAutoClearSetting()
         {
             if (!AutoClearSupported()) return AfkAutoClearSetting::Unknown;
@@ -149,7 +163,7 @@ namespace Bot
             return invoked ? reason : "guard_dispatch_failed";
         }
         static const char* StationarySafetyReason(const Objects::PlayerState& player,
-            bool ordinaryLandMovement=false)
+            bool ordinaryLandMovement=false, bool deadGhostPulse=false)
         {
             std::uint32_t movement=0,unitFlags=0,playerFlags=0,health=0;
             if (!player.valid || !player.movement || !player.descriptors) return "player_unavailable";
@@ -157,7 +171,11 @@ namespace Bot
                 !Core::Memory::Read(player.descriptors+0xb8,unitFlags) ||
                 !Core::Memory::Read(player.descriptors+0x2f8,playerFlags) ||
                 !Core::Memory::Read(player.descriptors+0x58,health)) return "native_safety_unknown";
-            if (health<=1 || (playerFlags&0x10u)) return "death_or_ghost";
+            if (deadGhostPulse)
+            {
+                if (!AfkDeadGhostPolicy::DeadOrGhost(ReadLife(player))) return "death_state_changed";
+            }
+            else if (health<=1 || (playerFlags&0x10u)) return "death_or_ghost";
             if (unitFlags&0x80000u) return "native_combat_flag";
             if (movement&0x00200000u) return "swimming";
             // VMaNGOS 1.12.1 MOVEFLAG_FORWARD/BACKWARD/STRAFE/TURN plus WALK.
@@ -192,7 +210,8 @@ namespace Bot
             return o;
         }
         static AfkDispatchResult Dispatch(const Objects::PlayerState& player,
-            AfkAction action, const AfkObservation& expected, bool ordinaryLandMovement=false)
+            AfkAction action, const AfkObservation& expected, bool ordinaryLandMovement=false,
+            bool deadGhostPulse=false)
         {
             AfkDispatchResult result;
             if (!Supported()) { result.reason="client_signature_mismatch"; return result; }
@@ -203,7 +222,12 @@ namespace Bot
                 if (!AfkProtectionPolicy::Valid(result.before) ||
                     result.before.lastInput!=expected.lastInput)
                 { result.reason="input_or_world_changed"; return; }
-                if (StationarySafetyReason(player,ordinaryLandMovement))
+                // This exception is input-only, never a dead-state AFK clear.
+                if (deadGhostPulse && (action!=AfkAction::InputPulse ||
+                    result.before.clientAfk || result.before.serverAfk ||
+                    std::uint32_t(result.before.clientNow-result.before.lastInput)>=result.before.thresholdMs))
+                { result.reason="dead_ghost_prevention_only"; return; }
+                if (StationarySafetyReason(player,ordinaryLandMovement,deadGhostPulse))
                 { result.reason="movement_water_or_unknown"; return; }
                 // Do not overlap ANY held user/explicit keyboard or mouse input.
                 for (int key=1; key<256; ++key)
@@ -214,7 +238,8 @@ namespace Bot
                 const auto base=Wow5875::Client::Base();
                 const auto run=reinterpret_cast<DoString>(base+0x304cd0);
                 const auto text=reinterpret_cast<GetText>(base+0x303bf0);
-                if (!run(AfkSafeInputScript,"wow-internal/AfkSafeInput.lua")) return;
+                const auto guardScript=AfkInputGuardScript(deadGhostPulse);
+                if (!run(guardScript.c_str(),"wow-internal/AfkSafeInput.lua")) return;
                 const char* guard=text(const_cast<char*>("WOW_INTERNAL_AFK_INPUT"),0xffffffffu,0);
                 if (!guard || std::strcmp(guard,"ready")!=0)
                 { result.reason=guard ? guard : "guard_unavailable"; return; }
@@ -252,6 +277,7 @@ namespace Bot
                 EnumWindows(FindWindow,reinterpret_cast<LPARAM>(&search));
                 if (!search.window) { result.reason="wow_window_unavailable"; return; }
                 KeyDriver driver{search.window,false};
+                result.lifeBefore=ReadLife(player);
                 result.sceneBefore=ReadScene(player);
                 if (!result.sceneBefore.known) { result.reason="candidate_scene_unavailable"; return; }
                 // Fresh authoritative sample immediately before dispatch, AFTER
@@ -259,6 +285,10 @@ namespace Bot
                 result.before=Read(player);
                 if (!AfkProtectionPolicy::Valid(result.before) || result.before.lastInput!=expected.lastInput)
                 { result.reason="input_changed_before_pulse"; return; }
+                if (deadGhostPulse && (!AfkDeadGhostPolicy::DeadOrGhost(result.lifeBefore) ||
+                    result.before.clientAfk || result.before.serverAfk ||
+                    std::uint32_t(result.before.clientNow-result.before.lastInput)>=result.before.thresholdMs))
+                { result.reason="dead_ghost_prevention_window_closed"; return; }
                 result.blocked=false;
                 result.issued=AfkInputPulse(driver);
                 result.releaseDelivered=driver.released;
@@ -266,7 +296,8 @@ namespace Bot
                 // Synchronous same-game-thread bracket, before gameplay's next
                 // update. Normal navigation between ticks is NOT a key effect.
                 const auto afterScene=ReadScene(player);
-                const bool uiRead=run(AfkSafeInputScript,"wow-internal/AfkPostInput.lua");
+                result.lifeVerified=ReadLife(player)==result.lifeBefore;
+                const bool uiRead=run(guardScript.c_str(),"wow-internal/AfkPostInput.lua");
                 const char* afterUi=uiRead ? text(const_cast<char*>("WOW_INTERNAL_AFK_INPUT"),0xffffffffu,0) : nullptr;
                 result.sceneVerified=AfkCandidateScene::Unchanged(result.sceneBefore,afterScene) &&
                     afterUi && std::strcmp(afterUi,"ready")==0;

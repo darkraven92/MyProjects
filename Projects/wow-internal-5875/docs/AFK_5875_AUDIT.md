@@ -1,6 +1,88 @@
 # P0.0 shared AFK protection audit
 
-## P0.0.6 production status (current)
+## P0.0.7 death/ghost prevention (current)
+
+Newest production capture (`build/wow-internal.log`, 2026-10-07) confirms
+P0.0.6 urgency/sticky deferral: lines 543-545 due/deferred at 240131 ms,
+588 overdue at 270185, 633-637 threshold at 300018 followed by client-only
+then both-active AFK. Blocker was `death_or_ghost`; no F12 was attempted.
+The flag 0x12 and HP=1 show a ghost. This is NOT a failed ghost F12 experiment.
+Lines 182-183 separately report `missing_corpse_anchor`; recovery stays Failed
+and retains death ownership. Audit that autonomy blocker in the next bounded
+death-recovery phase; this checkpoint does not restart or rewrite recovery.
+
+SOURCE VERIFIED: re-audited local 5875 binary with the hash below. Dispatcher
+0x765F10..0x765FC1 writes the clock at 0x765F34 before calling registered
+consumers at vtable+0x60. Release 0x765FD0..0x76606D writes at 0x765FEC,
+calls the key consumer at +0x64, then clears consumer bookkeeping. Neither
+dispatcher tests player health, ghost flags, or a death-recovery state.
+This establishes no death-specific branch in THIS dispatcher, not a proof
+that every registered consumer/addon is harmless. Live unbound-F12 and visible
+keyboard/UI guards plus the bounded scene test remain mandatory. The audit
+tool signatures still pass. No new API, OS-global key, memory write, packet,
+movement command, native clear permission, or timer threshold was introduced.
+
+New AfkDeadGhostPolicy is prevention-only and session-local. At source-derived
+due time, a natural dead/ghost state can try ONE paired candidate in a safe
+command gap. Dead and ghost qualify independently; delivery, matching release,
+scene/UI/target/facing/movement integrity, unchanged native life state and
+unchanged recovery state must pass, then fresh native clock advancement and
+both clear AFK flags must be observed within the existing 3000-ms deadline.
+Failure disables attempts for the session; stop/world loss discards evidence.
+The next eligible due pulse uses the same guards and verification, even after
+qualification. No cross-tick held key exists. No artificial death is requested.
+
+Command safety: WorldMonitor invokes AFK after DeathRecovery::Update and all
+other owners. Recovery commands use synchronous GameThreadDispatcher::Invoke;
+they have returned before this point. ReleasingSpirit, WaitingForGhost and
+WaitingForAlive remain blocked (including asynchronous release/reclaim
+confirmation). Idle, RoutingToCorpse, WaitingForReclaim and Failed can be
+eligible, NOT automatically safe. Combat, independent recovery, transactions,
+faults, held keys/buttons, visible dialogs, loading/invalid world and unsafe
+movement flags still block. Ordinary ghost land movement uses the unchanged
+land mask; swim/fall/transport remain blocked. HP=1 with ghost flag is not
+misclassified as living low-health recovery. HP=1 without that flag is unknown.
+Lua checks UnitIsDeadOrGhost again; all four StaticPopup frames are blocked.
+
+The paired-message scene comparison is synchronous on the game thread.
+Monitor recovery state is compared after dispatch, before its next update;
+normal ghost route progress on subsequent ticks is not labelled a key effect.
+Sparse `AFK DEAD/GHOST STATUS`, `QUALIFICATION`, `ACTION`, `VERIFY` include
+pre-pulse clock/scene/recovery state and separate delivery verification.
+P0.0.6 240000/270000/300000 bands and native-clock-only scheduling are unchanged.
+Full stationary qualify mode stays separate and still rejects death.
+
+AFK already active or threshold crossed while dead/ghost is explicitly blocked
+as `dead_ghost_afk_recovery_not_qualified`. This checkpoint does NOT grant native
+auto-clear in death states or solve mixed flags. Both-active alive recovery
+and the documented mixed-state protocol blocker remain unchanged.
+
+Status: previous qualification RUNTIME PASS (user-reported), prior normal
+cycle 1 RUNTIME PASS, prior long-run RUNTIME FAIL. New death/ghost behavior
+RUNTIME PENDING; normal two-cycle production gate remains pending. No WoW
+process was running during this audit. Run normal mode (no qualify environment):
+
+```fish
+wine ./build/wow_gui.exe
+# In another terminal, before Start Bot:
+tail -n 0 -F build/wow-internal.log | rg --line-buffered 'AFK '
+```
+
+Do not intentionally die. Require two natural normal-work prevention cycles
+without AFK. If natural death lasts until due, require DEAD/GHOST QUALIFICATION
+-> VERIFY advanced=yes sceneUnchanged=yes recoveryStateUnchangedOrValid=yes
+result=pass -> PRODUCTION VERIFY confirmed, before 300000 ms, both flags clear,
+no manual input/held key/side effect, recovery continuing independently.
+No death during the run means that gate stays pending, not failed or passed.
+
+Validation: TEST PASS, 79 strict C++20/Wall/extra/Werror tests, 13 Python tests
+plus QuestDB SQL fixture, seven Lua fixtures / 138 checks. BUILD PASS and
+DIFF CHECK PASS. Final full artifact: `/tmp/wow-validation-loia88my/results.json`.
+New focused test first failed before the policy existed. Existing qualification,
+production, navigation and death-recovery regressions pass unchanged. Validation
+uses the current dirty worktree, not a clean remote checkout or a live WoW run.
+
+## P0.0.6 production status (historical checkpoint)
 
 Qualification: **RUNTIME PASS, user-reported** in the P0.0.6 request; its full
 two-window capture is not retained in the current log. Production Grinding

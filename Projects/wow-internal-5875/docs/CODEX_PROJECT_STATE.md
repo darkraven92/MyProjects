@@ -416,6 +416,11 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Runtime pending
 
+- **P0.0.7 AFK death/ghost:** normal mode opportunistic prevention at the first
+  safe command gap when due; new code RUNTIME PENDING. Need one natural death/
+  ghost pulse with clock advance, unchanged scene/UI/recovery state and no AFK
+  threshold crossing. Never intentionally kill the player. Alive two-cycle
+  production gate and mixed-state reconciliation remain separate/open.
 - **AFK first:** P0.0.6 normal-mode >=20-minute Grinding gate, two pre-threshold
   qualified pulses during real benign work, DEFER/RESUME across legitimate
   combat blocks, and recovery verification. Qualification already passed per
@@ -451,6 +456,11 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Known blockers
 
+0. Newest production log: death/ghost deferral reaches 240131/270185/300018 ms
+   correctly but no prevention pulse. Recovery is Failed/owned with HP=1 and
+   ghost flag; `DEATH RECOVERY TERMINAL reason=missing_corpse_anchor` at line183.
+   P0.0.7 isolates the AFK command-gap exception; the next bounded death phase
+   must audit missing-anchor/Failed liveness. No death-recovery rewrite here.
 1. Post-P0.1.1 vendor capture proves exact hard-stall attribution and same-edge
    suppression, but a different local route also stalls and the owner fails
    boundedly. Offline inspection at the live hard-stall position projected
@@ -492,13 +502,32 @@ Previous `f5d04e5` checkpoint changes were diagnostic/tooling only:
 
 # Current phase
 
-**P0.0.6 AFK FIRST:** production due/defer and recovery. SOURCE VERIFIED;
+**P0.0.7 AFK FIRST:** natural dead/ghost prevention qualification. SOURCE VERIFIED;
 qualification RUNTIME PASS per user, production long-run RUNTIME FAIL.
 New implementation RUNTIME PENDING. Mixed-state clear needs new safe-path evidence. Do not advance to
 swimming before this external gate is exercised or explicitly retained as a
 blocker. The runbook supplies an opt-in bounded controlled-idle test; ordinary
 default protection cannot interfere with active gameplay owners. Candidate
 input alone advances the clock but does NOT clear AFK. No GUI/profile/talent expansion.
+
+## P0.0.7 bounded death/ghost checkpoint
+
+AfkDeadGhostPolicy maintains separate dead and ghost session qualifications,
+one pending prevention pulse, existing 3000-ms verification and session-latched
+failure. Shared controller/adapter retain binding, held-input, frame, land,
+fault and transaction gates; production-only death exception requires an
+explicit command gap after synchronous recovery update. Release-spirit and
+reclaim confirmation states remain blocked. Failed recovery alone no longer
+blocks the prevention candidate. Native and Lua death evidence must agree;
+health=1 alone is unknown. No AFK clear permission is added for dead/ghost.
+Scene and recovery-state proof brackets paired input; later ordinary ghost
+movement cannot counterfeit native input-clock verification.
+
+Files: AfkDeadGhostPolicy, SharedAfkController, AfkClient5875, AfkSafeInputScript,
+isolated WorldMonitor AFK block, C++/Lua regression, validation fixture mapping,
+both continuity documents. Qualify mode, production scheduler, navigation and
+death-controller code/budgets are unchanged. Full audit/runbook:
+`docs/AFK_5875_AUDIT.md`, P0.0.7. Runtime remains pending, AFK remains first.
 
 ## P0.0.6 bounded production checkpoint
 
@@ -622,6 +651,13 @@ override their location. It writes reports only, never controls WoW.
 
 # Git state
 
+- P0.0.7 base: `66de9bb614561941829776d02b1d9636fbf0ea31`.
+  TEST PASS: 79 strict C++ tests, 13 Python tests plus QuestDB SQL fixture,
+  seven Lua fixtures / 138 checks. BUILD PASS; DIFF CHECK PASS.
+  Final artifact: `/tmp/wow-validation-loia88my/results.json`.
+  Death/ghost qualification and normal two-cycle production are RUNTIME PENDING.
+  Validate the entire dirty worktree but stage ONLY reviewed AFK files and the
+  isolated WorldMonitor hunk. Never publish unrelated existing runtime work.
 - P0.0.6 base: `5f91e854cfbfa27923dd8ff88bbca77faccfaeae`.
   TEST PASS: 78 strict C++20/Wall/extra/Werror tests; 13 Python tests plus
   QuestDB SQL fixture; six Lua fixtures / 113 checks. BUILD PASS and
@@ -717,9 +753,12 @@ override their location. It writes reports only, never controls WoW.
 # Next steps
 
 1. **AFK first:** normal-mode >=20-minute Grinding prevention/defer/resume gate;
+   additionally qualify prevention during a natural dead/ghost safe gap.
    retain qualification pass separately. Resolve mixed-state client/server
    protocol blocker before claiming production recovery complete. Neither
    flag may be fabricated; no blind toggle, CVar change or W loop.
+   Follow with a bounded P0 DeathRecovery Failed / missing_corpse_anchor audit,
+   not a broad rewrite. AFK prevention does not imply corpse recovery succeeded.
 2. Capture/reconstruct the failing live cave transition with current recovery
    telemetry; use the expanded offline report. Apply only a proved shared-layer
    correction, then regression/build/diff and runtime qualification.

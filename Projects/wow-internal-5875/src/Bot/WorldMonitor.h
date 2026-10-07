@@ -2239,14 +2239,35 @@ namespace Bot
                 afkSafety.healthyIdle=TemporaryGrindModeEnabled
                     ? grindMode.State()==GrindModeState::Grinding && !grindMode.FirstAidActive()
                     : questPlannerRuntime.SafeIdleForAfk();
-                if (RecoveryController::HealthPercent(world.player)<RecoveryController::ExitThresholdPercent())
+                // HP=1 is normal for a ghost, not a living health-recovery
+                // request. All independent recovery/input owners still block.
+                const auto afkLife=AfkClient5875::ReadLife(world.player);
+                if (!AfkDeadGhostPolicy::DeadOrGhost(afkLife) &&
+                    RecoveryController::HealthPercent(world.player)<RecoveryController::ExitThresholdPercent())
                     afkSafety.recovery=true;
+                const auto afkDeathState=deathRecovery.State();
+                AfkDeathGap afkDeathGap=AfkDeathGap::Unknown;
+                // This runs AFTER synchronous DeathRecovery::Update. The three
+                // command/confirmation states remain closed across ticks.
+                switch (afkDeathState)
+                {
+                case DeathRecoveryState::Idle: afkDeathGap=AfkDeathGap::Idle; break;
+                case DeathRecoveryState::RoutingToCorpse: afkDeathGap=AfkDeathGap::RoutingToCorpse; break;
+                case DeathRecoveryState::WaitingForReclaim: afkDeathGap=AfkDeathGap::WaitingForReclaim; break;
+                case DeathRecoveryState::Failed: afkDeathGap=AfkDeathGap::Failed; break;
+                case DeathRecoveryState::ReleasingSpirit:
+                case DeathRecoveryState::WaitingForGhost:
+                case DeathRecoveryState::WaitingForAlive: afkDeathGap=AfkDeathGap::CommandInFlight; break;
+                default: break;
+                }
                 sharedAfk.Update(world.player,world.activePlayerGuid,afkSafety,nowMs,
                     TemporaryGrindModeEnabled ? "Grinding" : "Questing",
                     TemporaryGrindModeEnabled &&
                         (grindMode.State()==GrindModeState::Grinding ||
                          grindMode.State()==GrindModeState::ApproachingTarget ||
-                         grindMode.State()==GrindModeState::Roaming));
+                         grindMode.State()==GrindModeState::Roaming),
+                    afkDeathGap,deathRecovery.StateName(),
+                    [&deathRecovery,afkDeathState] { return deathRecovery.State()==afkDeathState; });
 
                 ++tick;
 

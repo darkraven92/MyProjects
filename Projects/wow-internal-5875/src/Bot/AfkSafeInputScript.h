@@ -1,18 +1,22 @@
 #pragma once
+#include <string>
 namespace Bot
 {
     inline constexpr const char* AfkSafeInputScript = R"lua(
 WOW_INTERNAL_AFK_INPUT='unknown'
+local allowDead=false
 local function gate()
  if not UnitAffectingCombat or not UnitIsDeadOrGhost or not GetBindingAction or
     not EnumerateFrames or not UIParent or not UIParent.IsVisible then return 'api_missing' end
- if not UIParent:IsVisible() or UnitIsDeadOrGhost('player') or
+ if not UIParent:IsVisible() or (not allowDead and UnitIsDeadOrGhost('player')) or
     UnitAffectingCombat('player') then return 'world_dead_or_combat' end
+ if allowDead and not UnitIsDeadOrGhost('player') then return 'death_state_changed' end
  local binding=GetBindingAction('F12')
  if binding==nil then return 'binding_unknown' end
  if binding~='' then return 'key_bound' end
  local names={'GossipFrame','QuestFrame','MerchantFrame','ClassTrainerFrame','LootFrame',
-  'TalentFrame','TradeFrame','MailFrame','ItemTextFrame','TaxiFrame','GameMenuFrame','StaticPopup1'}
+  'TalentFrame','TradeFrame','MailFrame','ItemTextFrame','TaxiFrame','GameMenuFrame',
+  'StaticPopup1','StaticPopup2','StaticPopup3','StaticPopup4'}
  for _,name in ipairs(names) do
   local f=getglobal(name)
   if f and (not f.IsVisible or f:IsVisible()) then return 'dialog_visible' end
@@ -35,4 +39,14 @@ end
 local ok,result=pcall(gate)
 WOW_INTERNAL_AFK_INPUT=ok and result or 'guard_error'
 )lua";
+    inline std::string AfkInputGuardScript(bool deadGhostPulse)
+    {
+        std::string script=AfkSafeInputScript;
+        if (deadGhostPulse)
+        {
+            const std::string marker="local allowDead=false";
+            script.replace(script.find(marker),marker.size(),"local allowDead=true");
+        }
+        return script;
+    }
 }
