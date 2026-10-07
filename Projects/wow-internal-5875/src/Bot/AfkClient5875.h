@@ -24,6 +24,7 @@ namespace Bot
         std::string reason="dispatch_unavailable";
         AfkObservation before{};
         AfkCandidateScene sceneBefore{};
+        AfkMovementEvidence movementEvidence{};
     };
 
     // Read-only client observations, plus normal game-thread input/API calls.
@@ -163,7 +164,8 @@ namespace Bot
             return invoked ? reason : "guard_dispatch_failed";
         }
         static const char* StationarySafetyReason(const Objects::PlayerState& player,
-            bool ordinaryLandMovement=false, bool deadGhostPulse=false)
+            bool ordinaryLandMovement=false, bool deadGhostPulse=false,
+            AfkMovementEvidence* movementEvidence=nullptr)
         {
             std::uint32_t movement=0,unitFlags=0,playerFlags=0,health=0;
             if (!player.valid || !player.movement || !player.descriptors) return "player_unavailable";
@@ -171,6 +173,8 @@ namespace Bot
                 !Core::Memory::Read(player.descriptors+0xb8,unitFlags) ||
                 !Core::Memory::Read(player.descriptors+0x2f8,playerFlags) ||
                 !Core::Memory::Read(player.descriptors+0x58,health)) return "native_safety_unknown";
+            if (movementEvidence)
+                *movementEvidence=AfkWorkloadSafetyPolicy::MovementEvidence(movement,ordinaryLandMovement);
             if (deadGhostPulse)
             {
                 if (!AfkDeadGhostPolicy::DeadOrGhost(ReadLife(player))) return "death_state_changed";
@@ -227,8 +231,9 @@ namespace Bot
                     result.before.clientAfk || result.before.serverAfk ||
                     std::uint32_t(result.before.clientNow-result.before.lastInput)>=result.before.thresholdMs))
                 { result.reason="dead_ghost_prevention_only"; return; }
-                if (StationarySafetyReason(player,ordinaryLandMovement,deadGhostPulse))
-                { result.reason="movement_water_or_unknown"; return; }
+                if (const auto safetyReason=StationarySafetyReason(player,ordinaryLandMovement,deadGhostPulse,
+                    &result.movementEvidence))
+                { result.reason=safetyReason; return; }
                 // Do not overlap ANY held user/explicit keyboard or mouse input.
                 for (int key=1; key<256; ++key)
                     if ((GetAsyncKeyState(key)&0x8000)!=0)

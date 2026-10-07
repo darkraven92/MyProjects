@@ -1,5 +1,85 @@
 # P0.0 shared AFK protection audit
 
+## P0.0.9 early life-state qualification and movement evidence (current)
+
+Newest inspected production log is `build/wow-internal.log`, session
+`1676.134358382414341480.100842662.1712`, ending at GUI unload on 2026-10-07.
+Normal Grinding prevention is RUNTIME PASS: four paired F12 pulses at native
+input ages 240131/240217/240142/240245 ms; each has release delivery, unchanged
+scene/UI, fresh clock advancement, both AFK flags clear and confirmed action.
+Recovery-debt separation is directly RUNTIME PASS with debt 25/51/75/101.
+Cycles 3/4 also prove navigation-planning coexistence (Roaming/AcquiringTarget,
+navigationPlanning=yes). Qualification remains RUNTIME PASS per user report.
+This supersedes P0.0.8's pending alive-production gate; historical failures below
+remain failures of their earlier implementations.
+
+Fifth cycle: due 240225 ms and overdue 270121 ms legitimately blocked by native
+combat; loot/combat ownership continued. Natural death at 280643 ms entered
+WaitingForGhost; ghost RoutingToCorpse at 282718 ms was then blocked by
+`movement_or_transport_flags`. No dead/ghost pulse was dispatched. Both AFK
+flags were active at 300229 ms, after which prevention-only qualification was
+correctly forbidden. The exact rejected movement word is absent from this
+capture. This is a dead/ghost gate RUNTIME FAIL, not a harmful-F12 experiment.
+
+SOURCE VERIFIED scheduling gap: `AfkDeadGhostPolicy` tracked per-life evidence,
+but its first pulse could only be selected by the production timer's ordinary
+due gate. Natural life-state entry now requests an early qualification through
+the same scheduler and safety/dispatch/verification path. Dead and Ghost each
+need one successful pulse per session. Requests wait through genuine command,
+UI/input, combat and transaction blocks, then become eligible on the first safe
+update, independently of input age. A request does not set the timer's due bit;
+only native input evidence changes future scheduling. No pulse while pending;
+failure remains session-latched. Startup qualify mode and alive prevention are
+unchanged. AFK-active/threshold-crossed death states still cannot qualify, and
+no native-clear permission is added. The original 3000-ms deadline remains.
+
+Verification now additionally requires the issued life state on the later
+clock-verification snapshot. The existing game-thread scene/UI/release bracket
+and synchronous DeathRecovery-state comparison remain. Telemetry distinguishes
+`QUALIFICATION DUE/DEFER/RESUME`, action reason `first_safe_dead_gap` or
+`first_safe_ghost_gap`, and verify purpose `life_state_qualification` versus
+`prevention`. No death is induced; corpse routing is not changed.
+
+### Ghost movement audit: exact live bits still required
+
+The land masks are still 0x0000013f (ordinary movement) and 0x00000100
+(stationary qualification). `AFK DEAD/GHOST MOVEMENT BLOCK` now records the
+freshly read word, mask and exact unsupported bits, together with life and
+DeathRecovery state, at blocker changes and command-time rejection. It does
+not guess the old log's flags or grant unknown bits.
+
+Read-only local VMaNGOS 1.12.1 sources: `Objects/MovementInfo.h:30-67` names
+pitch 0x40/0x80, levitation 0x400, fixed-Z 0x800, root 0x1000, jumping 0x2000,
+far falling 0x4000, swimming 0x00200000, spline 0x00400000, transport
+0x02000000, water-walking 0x10000000, safe-fall 0x20000000 and hover 0x40000000.
+These are distinct from forward/strafe/turn/walk flags. `Player.cpp:4561-4568`
+ApplyGhostForm calls SetWaterWalking(true); BuildPlayerRepop uses that path,
+sets HP=1 and unroots the player. `Unit.cpp:7224-7245` queues the water-walk
+movement change for a player-controlled unit and sets/removes that bit.
+Water-walking is therefore a plausible explanation for the ghost rejection,
+but no current raw client word proves it. Do not expand the mask on that guess.
+Unknown, swim, jump/fall, pitch and transport modes remain rejected. No WoW
+process was running to obtain a fresh read during this checkpoint.
+
+New implementation RUNTIME PENDING: normal mode, natural death only. Require
+one early DEAD/GHOST qualification verify with advanced clock, unchanged
+scene/UI/recovery state and same life, before threshold crossing. If movement
+blocks, retain the exact MOVEMENT BLOCK event for the next targeted audit.
+This is an explicit external-evidence blocker; it does not reopen already
+passed alive Grinding gates. Mixed-state reconciliation remains OPEN.
+
+Separate death-autonomy evidence: newest terminal event is
+`strategic_route_failed`, navFailure=path_validation_failed, strategies exhausted
+(line 22000). The earlier `missing_corpse_anchor` failure remains queued too;
+neither is fixed by AFK qualification.
+
+TEST PASS: new strict early-qualification regression and full validation,
+81 C++ tests (C++20, Wall/extra/Werror), 13 Python tests plus QuestDB fixture,
+seven Lua fixtures / 138 checks. BUILD PASS, including the explicit separate
+build; DIFF CHECK PASS. Artifact: `/tmp/wow-validation-u3bdm23x/results.json`.
+The read-only 5875 binary signature audit also passed. New dead/ghost runtime
+verification and exact rejected bits remain pending.
+
 ## P0.0.8 recovery debt versus AFK input safety (2026-10-07)
 
 SOURCE VERIFIED: newest normal Grinding log reached `AFK PRODUCTION DUE`
@@ -30,14 +110,13 @@ the typed assessment existed, then passed. It covers recovery debt 0/1/22
 with benign navigation, terminal failure classification, hard blockers,
 due/overdue/threshold bands and the live WorldMonitor wiring. The full suite
 and build results are recorded with this checkpoint in project state.
-RUNTIME PENDING for the new code: repeat normal Grinding for at least two
-unassisted prevention cycles. At each due point capture
-`recoveriesWithoutProgress`, F12 delivery, unchanged scene/UI, both AFK flags
-clear and no threshold crossing. A cycle with debt >0 and a verified pulse
-directly demonstrates the false coupling has been removed. The earlier
-threshold-crossing run remains RUNTIME FAIL; do not re-label it.
+RUNTIME PASS for normal Grinding prevention/recovery-debt separation in the
+newest capture: four confirmed pulses with debt 25/51/75/101, including two
+with navigationPlanning=yes. See P0.0.9 above for exact evidence and the
+separate dead/ghost failure. The earlier threshold-crossing run remains
+historical RUNTIME FAIL; do not re-label it.
 
-## P0.0.7 death/ghost prevention (current)
+## P0.0.7 death/ghost prevention (historical checkpoint)
 
 Newest production capture (`build/wow-internal.log`, 2026-10-07) confirms
 P0.0.6 urgency/sticky deferral: lines 543-545 due/deferred at 240131 ms,

@@ -71,7 +71,8 @@ namespace Bot
                 phase_==AfkProductionPhase::VerifyingClear ? AfkAction::NativeAutoClear : AfkAction::None;
         }
         AfkDecision Update(const AfkObservation& o,const AfkSafety& s,std::uint64_t now,
-            bool observeOnly=false,bool benign=false,AfkAutoClearSetting setting=AfkAutoClearSetting::Unknown)
+            bool observeOnly=false,bool benign=false,AfkAutoClearSetting setting=AfkAutoClearSetting::Unknown,
+            bool lifeQualificationRequested=false)
         {
             if (phase_==AfkProductionPhase::Faulted) return Fail(failure_);
             const bool pending=phase_==AfkProductionPhase::VerifyingInput ||
@@ -118,7 +119,10 @@ namespace Bot
             if (haveClock_ && observedClock_!=o.lastInput) due_=false;
             observedClock_=o.lastInput; haveClock_=true;
             due_=due_ || Band(o)!=AfkProductionBand::Recent;
-            if (!due_ && !active)
+            // A natural unqualified life state requests a single early pulse
+            // through the same safety/delivery path. This does not set due_:
+            // only native input age/change determines production scheduling.
+            if (!due_ && !active && !lifeQualificationRequested)
             {
                 phase_=AfkProductionPhase::Recent;
                 return {AfkStatus::Active,AfkAction::None,AfkResult::None,"input_clock_recent"};
@@ -130,7 +134,8 @@ namespace Bot
             }
             phase_=AfkProductionPhase::Due;
             return {AfkStatus::ApproachingThreshold,AfkAction::InputPulse,AfkResult::None,
-                active ? "production_afk_recovery_due" : "client_input_age_due"};
+                active ? "production_afk_recovery_due" : lifeQualificationRequested ?
+                    "life_state_qualification_due" : "client_input_age_due"};
         }
         void Issued(AfkAction action,const AfkObservation& o,std::uint64_t now)
         {

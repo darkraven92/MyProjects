@@ -26,6 +26,8 @@ namespace Bot
         AfkProductionPolicy policy_{};
         AfkDeadGhostPolicy deadGhost_{};
         std::string lastDeathStatus_{};
+        std::string lastDeathMovementBlock_{};
+        bool deadQualificationAnnounced_=false,ghostQualificationAnnounced_=false;
         AfkProductionBand productionBand_=AfkProductionBand::Recent;
         bool productionDeferred_=false;
         std::string productionBlock_{};
@@ -52,6 +54,15 @@ namespace Bot
             lastDecision_=key;
             Debug::Logger::Info("AFK PROTECTION state="+std::to_string(static_cast<int>(d.status))+
                 " owner="+owner+" reason="+d.reason);
+        }
+        void LogDeadMovementBlock(AfkLifeState life,const char* deathState,
+            const AfkMovementEvidence& evidence)
+        {
+            const std::string key=std::string("life=")+AfkDeadGhostPolicy::LifeName(life)+
+                " deathRecoveryState="+deathState+" "+evidence.Fields();
+            if (key!=lastDeathMovementBlock_)
+                Debug::Logger::Info("AFK DEAD/GHOST MOVEMENT BLOCK "+key);
+            lastDeathMovementBlock_=key;
         }
     public:
         SharedAfkController()
@@ -116,6 +127,8 @@ namespace Bot
                 Debug::Logger::Info("AFK SESSION RESET reason=world_gap_or_stop pendingEvidence=discarded");
             policy_.Reset(); status_={}; previous_={}; playerGuid_=0;
             deadGhost_={}; lastDeathStatus_.clear();
+            lastDeathMovementBlock_.clear();
+            deadQualificationAnnounced_=ghostQualificationAnnounced_=false;
             havePrevious_=false; safeBaseline_=false;
             qualificationStart_=0; qualificationFlow_=AfkQualificationPolicy(true);
             previousAutoClear_=AfkAutoClearSetting::Unknown;
@@ -191,6 +204,7 @@ namespace Bot
             const bool deadContext=!qualifying && !observeOnly_ && AfkDeadGhostPolicy::DeadOrGhost(life);
             const auto deathBlock=deadContext ? deadGhost_.Blocker(life,deathGap,o) : nullptr;
             const bool deadPermit=deadContext && !deathBlock && bool(recoveryUnchanged);
+            const bool lifeQualificationRequested=deadContext && deadGhost_.NeedsQualification(life);
             // Only the death-owner gate is specialized. Combat, transactions,
             // input faults, water, and independent recovery remain hard gates.
             if (deadPermit) checkedSafety.death=false;
@@ -204,9 +218,23 @@ namespace Bot
                         std::string(deadGhost_.Qualified(life) ? "yes" : "no")+
                         " state="+AfkDeadGhostPolicy::LifeName(life)+" deathRecoveryState="+deathState);
                 lastDeathStatus_=key;
+                bool& announced=life==AfkLifeState::Dead ? deadQualificationAnnounced_ : ghostQualificationAnnounced_;
+                if (lifeQualificationRequested && !announced)
+                {
+                    announced=true;
+                    nextDispatchProbe_=0;
+                    Debug::Logger::Info("AFK DEAD/GHOST QUALIFICATION DUE reason=natural_life_state_observed state="+
+                        std::string(AfkDeadGhostPolicy::LifeName(life))+" inputAge="+
+                        std::to_string(status_.inputAgeMs)+" deathRecoveryState="+deathState);
+                }
             }
             const bool benign=!qualifying && AfkProductionPolicy::ImplementationQualified && (benignWorkEvidence || deadPermit);
-            const auto nativeBlock=AfkClient5875::StationarySafetyReason(player,benign,deadPermit);
+            AfkMovementEvidence movementEvidence;
+            const auto nativeBlock=AfkClient5875::StationarySafetyReason(player,benign,deadPermit,&movementEvidence);
+            if (deadContext && nativeBlock && std::strcmp(nativeBlock,"movement_or_transport_flags")==0)
+                LogDeadMovementBlock(life,deathState,movementEvidence);
+            else
+                lastDeathMovementBlock_.clear();
             if (nativeBlock) checkedSafety.water=true;
             const auto beforePhase=qualificationFlow_.Phase();
             const bool hadBaseline=qualificationFlow_.BaselineCaptured();
@@ -229,20 +257,26 @@ namespace Bot
             const auto priorProductionPhase=policy_.Phase();
             if (!qualifying && deadGhost_.Pending())
             {
-                const auto result=deadGhost_.Verify(o,now);
+                const bool qualifyingLife=!deadGhost_.Qualified(deadGhost_.IssuedLife());
+                const bool lifeSame=life==deadGhost_.IssuedLife();
+                const auto result=deadGhost_.Verify(o,now,life);
                 if (result!=AfkResult::Pending)
                 {
                     Debug::Logger::Info("AFK DEAD/GHOST VERIFY inputClockBefore="+std::to_string(candidateInputBefore_)+
                         " inputClockAfter="+std::to_string(o.lastInput)+
                         " advanced="+(valid && o.lastInput!=candidateInputBefore_ ? "yes" : "no")+
+                        " lifeStateUnchanged="+(lifeSame ? "yes" : "no")+
                         " sceneUnchanged=yes recoveryStateUnchangedOrValid=yes result="+
-                        (result==AfkResult::Confirmed ? "pass" : "fail"));
+                        (result==AfkResult::Confirmed ? "pass" : "fail")+
+                        " purpose="+(qualifyingLife ? "life_state_qualification" : "prevention"));
                     if (result==AfkResult::Failed) policy_.DispatchFailed();
                     else Debug::Logger::Info("AFK PRODUCTION VERIFY advanced=yes sceneUnchanged=yes result=confirmed context=dead_ghost");
                 }
             }
             auto decision=qualifying ? qualificationFlow_.Update(o,checkedSafety.Safe(),sceneSame,now,autoClear) :
-                policy_.Update(o,checkedSafety,now,observeOnly_,benign,autoClear);
+                policy_.Update(o,checkedSafety,now,observeOnly_,benign,autoClear,lifeQualificationRequested);
+            if (lifeQualificationRequested && decision.action==AfkAction::InputPulse)
+                decision.reason=life==AfkLifeState::Dead ? "first_safe_dead_gap" : "first_safe_ghost_gap";
             // Production scene/UI proof brackets the synchronous messages.
             // Combat or a legitimate dialog beginning on the NEXT gameplay
             // tick blocks further actions; it is not proof of a key side effect.
@@ -258,11 +292,15 @@ namespace Bot
                 productionBand_=band;
                 const bool blocked=decision.status==AfkStatus::Blocked;
                 if (blocked && (!productionDeferred_ || productionBlock_!=decision.reason))
-                    Debug::Logger::Info("AFK PRODUCTION DEFER inputAge="+std::to_string(status_.inputAgeMs)+
+                    Debug::Logger::Info(std::string(lifeQualificationRequested ?
+                        "AFK DEAD/GHOST QUALIFICATION DEFER inputAge=" : "AFK PRODUCTION DEFER inputAge=")+
+                        std::to_string(status_.inputAgeMs)+
                         " owner="+owner+" reason="+decision.reason);
                 if (productionDeferred_ && decision.action==AfkAction::InputPulse)
                 {
-                    Debug::Logger::Info("AFK PRODUCTION RESUME inputAge="+std::to_string(status_.inputAgeMs)+" owner="+owner+
+                    Debug::Logger::Info(std::string(lifeQualificationRequested ?
+                        "AFK DEAD/GHOST QUALIFICATION RESUME inputAge=" : "AFK PRODUCTION RESUME inputAge=")+
+                        std::to_string(status_.inputAgeMs)+" owner="+owner+
                         (deadPermit ? " reason=death_recovery_safe_gap" : " reason=eligible_workload"));
                     nextDispatchProbe_=0; // first eligible opportunity, no stale UI backoff
                 }
@@ -392,7 +430,7 @@ namespace Bot
                         // DeathRecovery runs on this monitor thread. Its update
                         // is complete before this synchronous game-thread pulse;
                         // compare its state again before any next owner update.
-                        const bool recoverySame=recoveryUnchanged && recoveryUnchanged() && dispatch.lifeVerified;
+                        const bool recoverySame=recoveryUnchanged && recoveryUnchanged() && dispatch.lifeVerified && pulseLife==life;
                         deadGhost_.Issued(pulseLife,dispatch.before,now,dispatch.releaseDelivered,
                             dispatch.sceneVerified,recoverySame);
                         if (deadGhost_.Failed())
@@ -448,6 +486,8 @@ namespace Bot
                 }
                 else
                 {
+                    if (deadContext && dispatch.reason=="movement_or_transport_flags")
+                        LogDeadMovementBlock(life,deathState,dispatch.movementEvidence);
                     const std::string key="dispatch:"+dispatch.reason;
                     if (lastDispatchBlock_!=key)
                         Debug::Logger::Info("AFK ACTION BLOCKED owner="+std::string(owner)+" reason="+dispatch.reason);

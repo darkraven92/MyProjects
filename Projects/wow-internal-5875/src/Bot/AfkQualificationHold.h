@@ -2,6 +2,8 @@
 #include "AfkProtectionPolicy.h"
 #include <string>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 
 namespace Bot
 {
@@ -54,12 +56,31 @@ namespace Bot
     };
 
     enum class AfkWorkloadSafety { SafeIdle, BenignWork, Unsafe };
+    struct AfkMovementEvidence
+    {
+        bool known=false;
+        std::uint32_t flags=0,allowedMask=0,unsupportedBits=0;
+        std::string Fields() const
+        {
+            if (!known) return "movementKnown=no";
+            std::ostringstream text;
+            text<<"movementFlags=0x"<<std::hex<<std::setfill('0')<<std::setw(8)<<flags
+                <<" allowedMask=0x"<<std::setw(8)<<allowedMask
+                <<" unsupportedBits=0x"<<std::setw(8)<<unsupportedBits;
+            return text.str();
+        }
+    };
     struct AfkWorkloadSafetyPolicy
     {
+        static AfkMovementEvidence MovementEvidence(std::uint32_t flags,bool ordinaryLandMovement)
+        {
+            const auto mask=ordinaryLandMovement ? 0x13fu : 0x100u;
+            return {true,flags,mask,flags & ~mask};
+        }
         static bool LandMovementAllowed(std::uint32_t flags,bool ordinaryLandMovement)
         {
             // 1.12.1 forward/backward/strafe/turn and walk preference only.
-            return (flags & ~(ordinaryLandMovement ? 0x13fu : 0x100u))==0;
+            return MovementEvidence(flags,ordinaryLandMovement).unsupportedBits==0;
         }
         // Classification is separate from implementation qualification and each
         // action's native/UI/input/scene guards. An owner name is not evidence.

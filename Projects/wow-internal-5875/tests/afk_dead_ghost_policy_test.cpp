@@ -24,9 +24,9 @@ int main(int argc,char** argv)
     assert(p.Blocker(AfkLifeState::Ghost,AfkDeathGap::Unknown,o));
     p.Issued(AfkLifeState::Ghost,o,10,true,true,true);
     assert(!p.Qualified(AfkLifeState::Ghost));
-    assert(p.Verify(o,11)==AfkResult::Pending);
+    assert(p.Verify(o,11,AfkLifeState::Ghost)==AfkResult::Pending);
     o.lastInput=240001; o.clientNow=240002;
-    assert(p.Verify(o,12)==AfkResult::Confirmed);
+    assert(p.Verify(o,12,AfkLifeState::Ghost)==AfkResult::Confirmed);
     assert(p.Qualified(AfkLifeState::Ghost));
     assert(!p.Qualified(AfkLifeState::Dead));
     for (int missing=0; missing<3; ++missing)
@@ -38,7 +38,7 @@ int main(int argc,char** argv)
     }
     AfkDeadGhostPolicy timeout;
     timeout.Issued(AfkLifeState::Ghost,o,0,true,true,true);
-    assert(timeout.Verify(o,3000)==AfkResult::Failed);
+    assert(timeout.Verify(o,3000,AfkLifeState::Ghost)==AfkResult::Failed);
     for (int flags=1; flags<4; ++flags)
     {
         auto active=o; active.clientAfk=(flags&1)!=0; active.serverAfk=(flags&2)!=0;
@@ -73,15 +73,15 @@ int main(int argc,char** argv)
     trial.Issued(AfkLifeState::Ghost,o,3,true,true,true);
     assert(trial.Pending());
     assert(scheduler.Update(o,gap,4,false,true).action==AfkAction::None);
-    assert(trial.Verify(o,4)==AfkResult::Pending);
+    assert(trial.Verify(o,4,AfkLifeState::Ghost)==AfkResult::Pending);
     o.lastInput=270001; o.clientNow=270002;
-    assert(trial.Verify(o,5)==AfkResult::Confirmed);
+    assert(trial.Verify(o,5,AfkLifeState::Ghost)==AfkResult::Confirmed);
     assert(scheduler.Update(o,gap,5,false,true).result==AfkResult::Confirmed);
     assert(!scheduler.Due());
     assert(scheduler.Update(o,gap,6,false,true).action==AfkAction::None);
     trial={}; assert(!trial.Qualified(AfkLifeState::Ghost)); // session reset
     trial.Issued(AfkLifeState::Ghost,o,7,true,true,true);
-    assert(trial.Verify({},8)==AfkResult::Failed); // world loss cannot qualify
+    assert(trial.Verify({},8,AfkLifeState::Ghost)==AfkResult::Failed); // world loss cannot qualify
     for (bool press : {false,true})
     {
         struct Driver { bool press; int released=0;
