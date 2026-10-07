@@ -1,5 +1,88 @@
 # P0.4 water / swimming / drowning source gate
 
+## P0.4.1 observe-only live evidence checkpoint (2026-10-07)
+
+Starting HEAD `9107b2c93d661218c5b8902c42a9e16d63e9ab36` on
+`codex/wow-internal-continuation`. This checkpoint adds a read-only
+`WaterEvidence5875` adapter and a separate `WOW_INTERNAL_WATER_MODE=observe`
+monitor loop. It branches **before** `CombatController::Start`, quest/grind
+updates or any gameplay owner. The loop only samples the existing validated
+world snapshot and signature-matched native movement word. It never targets,
+moves, invokes Jump, installs a packet/UI hook or runs Lua. Stop/unload writes
+only the ordinary runtime-control status; it issues no movement-stop command.
+The default mode is unchanged. An unrecognized nonempty water mode fails
+closed without starting gameplay.
+
+Current live observation capacity is deliberately narrow:
+
+| Signal | Static status | Live adapter status |
+| --- | --- | --- |
+| swimming | SOURCE VERIFIED, client `0x60E0D4` player+`0x118`, movement+`0x40` mask `0x00200000`; runtime signature checked | IMPLEMENTED read-only; RUNTIME PENDING |
+| breath timer current/max/scale/pause, fatigue | SOURCE VERIFIED **packet/event** layout only | SOURCE NOT VERIFIED as a fresh live reader; all fields unknown |
+| submerged, surface, waterline/liquid type | SOURCE NOT VERIFIED coherent player evidence | unknown; not inferred from swimming/NavMesh |
+| positive ground contact / water exit | SOURCE NOT VERIFIED | `DryOrNonSwimming` only, never `DryGround` |
+| ascent start and matching release | SOURCE VERIFIED paired Jump **binding callbacks**, but swim-specific semantics SOURCE NOT VERIFIED | no command path implemented or invoked |
+
+Mirror packet `0x1D9` START at `0x5E7A25..0x5E7A9A` reads type/current/max/
+signed scale/paused/spell and forwards `MIRROR_TIMER_START` Lua event. `0x1DA`
+PAUSE reads type/paused and forwards event `0x16B`; `0x1DB` STOP reads type
+and forwards `0x16C`. `0x5E7B10` is **not** a timer getter: it resolves a spell
+icon from a global spell table for the START event's spell argument. No
+signature-validated native per-player timer store or polled Lua getter was
+found. The preserved FrameXML MirrorTimer frames interpolate received events,
+can be hidden/reset on world entry and are not verified as a fresh bootstrap
+snapshot in the running client. A read-only parser (`MirrorTimerProtocol5875`)
+decodes offline event bytes for tests only; no live packet interception exists.
+Server-side scale `-1` drains underwater and `+10` refills at the surface, but
+an event may be stale and breathing effects can suppress the timer. Therefore
+neither active breath nor an old draining event is a current submersion proof.
+
+Binary audit rechecked exact Jump registration pair at `0x8500B8`:
+`Jump` start `0x513BD0` calls `0x60DEA0` -> `0x617930` queued event 7;
+`Jump` stop `0x513D50` calls `0x60E080` -> `0x60E060` -> `0x617DE0`,
+which queues event 0xE or 0xF depending on player+`0x9E8` bit `0x100`.
+Those are source-backed callback/call/queue relationships, **not** a proven
+hold-to-ascend / stop-to-release swimming contract. Start/stop remain
+SOURCE NOT VERIFIED for *safe sustained ascent*, and no function is called.
+No verified current-player liquid surface Z or positive ground-contact source
+was found; swimming=false could mean falling, shallow water or transport.
+
+The typed observer reports `Unknown`, `DryOrNonSwimming`, or
+`SwimmingStateUnknown`; it requires two consecutive known movement samples
+to promote a swim/non-swim transition and returns to Unknown immediately on
+world/signature/read loss. This confirmation is diagnostic hysteresis, not a
+new game-state claim. `WATER EVIDENCE` logs changes or every 30 seconds, with
+raw flags and all unsupported fields explicitly `unknown`. The audit tool
+separates source-verified, runtime-observed and inferred counts, and cannot
+turn a mere swim-bit observation into surface/submerged/drowning PASS.
+
+Latest existing full log was checked with `tools/water_log_audit.py`: zero water
+events/encounters, final movement/runtime/idle/escalation/death counters all
+zero. No WoW process was available for a new safe manual shoreline run, so
+all **new** water signals remain RUNTIME PENDING. To qualify the observer,
+launch a fresh GUI/client with `env WOW_INTERNAL_WATER_MODE=observe wine
+./build/wow_gui.exe`, Start WoW, log in, then Start Bot; use only USER-MANUAL
+movement at a safe shallow shoreline, then Stop Bot. Inspect `WATER OBSERVE`
+and `WATER EVIDENCE` in the preserved full log. The bot supplies no movement,
+no target, no input and no drowning test. A known swim transition would verify
+the adapter at runtime, **not** surface, submersion, breath or ground exit.
+
+P0.4.2 autonomous water behavior is not started; the source gaps are a safety
+gate. The existing AFK, DeathRecovery, combat, navigation/cache and 2000/4/2
+budgets are untouched.
+
+Validation of this bounded checkpoint: TEST PASS, full dirty worktree 92
+strict C++ tests, 26 audit Python tests, 13 QuestDB Python tests, SQL fixture
+and eight Lua fixtures; results
+`/tmp/wow-validation-0vostnxd/results.json`. BUILD PASS with both validator
+and explicit `cmake --build build`; DIFF CHECK PASS. The staged-only exported
+tree independently passed 43 published C++ tests, the same 26 audit Python
+tests, SQL fixture, three published Lua fixtures and full MinGW DLL/GUI/loader
+build; results `/tmp/wow-validation-vhvuu2a7/results.json`, tree
+`/tmp/wow-p041-isolated.eZwvle`. The 13 local QuestDB Python tests belong to
+unrelated unpublished work, so they are absent in that isolated tree; SQL
+remains present and passed. Neither build constitutes a live water observation.
+
 2026-10-07. **Incomplete implementation checkpoint: SOURCE GAP.** The user's
 sections31/48 stop gate applies. No production water movement, state reader,
 owner, input, filter or watchdog change is enabled. Drowning prevention is NOT

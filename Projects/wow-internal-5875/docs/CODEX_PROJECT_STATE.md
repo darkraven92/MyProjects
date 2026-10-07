@@ -9,9 +9,51 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.4 water safety SOURCE GAP / behavior not enabled**.
+- Current phase: V6 **P0.4.1 observe-only water evidence / behavior not enabled**.
   Preserve verified navigation/cache, combat, AFK, DeathRecovery and mixed-state
   fail-closed behavior. No trainer/talent/GUI/Questing-architecture expansion.
+
+## P0.4.1 observe-only evidence checkpoint (2026-10-07)
+
+Starting HEAD `9107b2c93d661218c5b8902c42a9e16d63e9ab36`, correct branch.
+P0.4's SOURCE GAP remains for submersion, breathable surface, waterline,
+positive dry-ground contact, fresh live breath and safe ascent/release.
+The P0.4.1 implementation adds a signature-guarded read-only movement-word
+adapter and `WOW_INTERNAL_WATER_MODE=observe`. This diagnostic branches before
+Combat/Quest/Grind controller startup. It only reads the world/player movement
+word and emits sparse `WATER EVIDENCE`; it never moves, targets, sends input,
+hooks mirror packets, invokes Jump or writes gameplay state. Normal mode is
+unchanged. Source loss is Unknown; `!swimming` is `DryOrNonSwimming`, NOT dry
+ground. Live breath/fatigue/submerged/surface/contact fields remain unknown.
+Two consecutive known samples confirm a diagnostic swim/non-swim transition.
+
+Binary audit now proves paired Jump *binding callbacks* (`0x513BD0` start,
+`0x513D50` stop), but not a safe swim-ascent/held-release contract. Mirror
+START/PAUSE/STOP are decoded in offline tests; their handler forwards Lua
+events and does not expose a validated native timer cache. The `0x5E7B10`
+helper is a spell-icon lookup, not a breath getter. The audit tool distinguishes
+source-verified, runtime-observed and inferred counts; no breath event reader
+is claimed. Exact details and safe manual runbook are in
+`docs/WATER_SWIMMING_DROWNING_AUDIT.md`.
+
+Latest existing full log still has ZERO water encounter events. No WoW process
+was running during implementation; new swim reader, breath, surface,
+submersion and ground exit are RUNTIME PENDING. P0.4.2 autonomous swimming,
+surfacing, shoreline exit, water combat and loot are NOT IMPLEMENTED. A later
+user-manual shallow-shoreline observation can qualify only the signals actually
+observed. Do not label P0.4 RUNTIME PASS from the current test/build results.
+All navigation/cache 2000/4/2 safety budgets and AFK/DeathRecovery/combat
+behavior remain unchanged.
+
+Validation: TEST PASS full dirty worktree 92 strict C++ tests, 26 audit Python
+tests, 13 local QuestDB Python tests, SQL and eight Lua fixtures; results
+`/tmp/wow-validation-0vostnxd/results.json`. BUILD PASS with explicit
+`cmake --build build`; DIFF CHECK PASS. Isolated staged-only export
+`/tmp/wow-p041-isolated.eZwvle`: TEST PASS 43 published C++ tests, 26 audit
+Python tests, SQL, three published Lua fixtures and full DLL/GUI/loader build;
+results `/tmp/wow-validation-vhvuu2a7/results.json`. The 13 local QuestDB
+Python tests are unpublished unrelated work and absent from the isolated tree.
+No live WoW observation occurred; all new runtime water gates PENDING.
 
 ## P0.4 source gate (2026-10-07; authoritative current status)
 

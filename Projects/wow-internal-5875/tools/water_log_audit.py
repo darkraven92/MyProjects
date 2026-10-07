@@ -16,6 +16,10 @@ EVENT_COUNTS = (
     "surfaceRecoveries", "shoreExits", "waterRecoveryFailures",
     "waterEmergencyEvents", "breathEvents", "waterInputCommands",
     "waterInputReleases", "staleWaterEvidence", "waterObjectiveAbandons",
+    "waterEvidenceSnapshots", "swimmingTransitions", "submergedTransitions",
+    "surfaceTransitions", "breathStartEvents", "breathStopEvents",
+    "breathDrainObservations", "breathRefillObservations", "fatigueEvents",
+    "unknownWaterStates", "groundExitEvidence",
 )
 EXISTING_COUNTERS = ("movementRecoveries", "runtimeRecoveries",
                      "runtimeIdleDeadlocks", "runtimeEscalations", "deaths")
@@ -27,6 +31,8 @@ def audit(lines):
     current = {"session": "unknown", "counters": dict.fromkeys(EXISTING_COUNTERS)}
     events = []
     encounters = 0
+    provenance = {"sourceVerified": 0, "runtimeObserved": 0, "inferred": 0}
+    previous = {"swimming": None, "submerged": None, "surface": None}
     for number, line in enumerate(lines, 1):
         f = fields(line)
         if "BOT SESSION START " in line:
@@ -34,6 +40,7 @@ def audit(lines):
                 sessions.append(current)
             current = {"session": f.get("session", "unknown"),
                        "counters": dict.fromkeys(EXISTING_COUNTERS)}
+            previous = {"swimming": None, "submerged": None, "surface": None}
         if "Autonomy14G4:" in line or "deaths=" in line:
             for key in EXISTING_COUNTERS:
                 value = f.get(key, "")
@@ -45,7 +52,44 @@ def audit(lines):
             continue
         event = line[marker:].strip()
         events.append({"line": number, "session": current["session"], "event": event})
-        if event.startswith("WATER STATE "):
+        if event.startswith("WATER EVIDENCE "):
+            counts["waterEvidenceSnapshots"] += 1
+            for key in provenance:
+                provenance[key] += f.get(key) == "yes"
+            state = f.get("classification", "Unknown")
+            counts["unknownWaterStates"] += state in ("Unknown", "SwimmingStateUnknown")
+            for signal, known_field, value_field, counter in (
+                ("swimming", "swimmingKnown", "swimming", "swimmingTransitions"),
+                ("submerged", "submergedKnown", "submerged", "submergedTransitions"),
+                ("surface", "surfaceKnown", "surface", "surfaceTransitions"),
+            ):
+                value = f.get(value_field) if f.get(known_field) == "yes" else None
+                if value not in ("yes", "no"):
+                    previous[signal] = None
+                    continue
+                if previous[signal] is not None and previous[signal] != value:
+                    counts[counter] += 1
+                previous[signal] = value
+                if signal == "swimming" and value == "yes" and f.get("runtimeObserved") == "yes":
+                    encounters += 1
+            counts["groundExitEvidence"] += (f.get("groundContactKnown") == "yes" and
+                                              f.get("groundContact") == "yes" and
+                                              f.get("runtimeObserved") == "yes")
+            if f.get("breathKnown") == "yes" and f.get("runtimeObserved") == "yes":
+                try:
+                    scale = int(f.get("breathScale", ""))
+                except ValueError:
+                    scale = 0
+                counts["breathDrainObservations"] += scale < 0
+                counts["breathRefillObservations"] += scale > 0
+            counts["fatigueEvents"] += f.get("fatigueKnown") == "yes" and f.get("runtimeObserved") == "yes"
+        elif event.startswith("WATER MIRROR TIMER "):
+            if f.get("timer") == "BREATH":
+                counts["breathStartEvents"] += f.get("event") == "start"
+                counts["breathStopEvents"] += f.get("event") == "stop"
+            if f.get("timer") == "EXHAUSTION":
+                counts["fatigueEvents"] += 1
+        elif event.startswith("WATER STATE "):
             before, after = f.get("from"), f.get("to")
             if before and after and before != after:
                 counts["waterTransitions"] += 1
@@ -75,6 +119,7 @@ def audit(lines):
                 waterEncounterObserved=encounters > 0,
                 waterRuntimeQualified=False,
                 qualificationReason="manual_evidence_review_required" if encounters else "no_verified_water_encounter",
+                evidenceProvenance=provenance,
                 events=events)
 
 

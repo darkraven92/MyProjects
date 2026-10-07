@@ -79,6 +79,56 @@ class WaterLogAuditTest(unittest.TestCase):
         self.assertIsNone(result["counters"]["runtimeRecoveries"])
         self.assertIsNone(result["counters"]["deaths"])
 
+    def test_observe_only_swimming_is_runtime_evidence_not_surface(self):
+        result = audit([
+            "WATER EVIDENCE swimmingKnown=yes swimming=no classification=DryOrNonSwimming runtimeObserved=yes inferred=no",
+            "WATER EVIDENCE swimmingKnown=yes swimming=yes classification=SwimmingStateUnknown runtimeObserved=yes inferred=no",
+            "WATER EVIDENCE swimmingKnown=yes swimming=no classification=DryOrNonSwimming runtimeObserved=yes inferred=no",
+        ])
+        self.assertEqual(result["waterEvidenceSnapshots"], 3)
+        self.assertEqual(result["swimmingTransitions"], 2)
+        self.assertEqual(result["surfaceTransitions"], 0)
+        self.assertEqual(result["submergedTransitions"], 0)
+        self.assertEqual(result["groundExitEvidence"], 0)
+        self.assertEqual(result["evidenceProvenance"]["runtimeObserved"], 3)
+        self.assertTrue(result["waterEncounterObserved"])
+        self.assertFalse(result["waterRuntimeQualified"])
+
+    def test_source_claim_and_inference_do_not_invent_runtime_water(self):
+        result = audit([
+            "WATER EVIDENCE swimmingKnown=yes swimming=yes classification=SwimmingStateUnknown sourceVerified=yes runtimeObserved=no inferred=no",
+            "WATER EVIDENCE swimmingKnown=no swimming=unknown classification=Unknown sourceVerified=no runtimeObserved=yes inferred=no",
+            "WATER EVIDENCE swimmingKnown=no swimming=unknown classification=SurfaceSwimming sourceVerified=no runtimeObserved=no inferred=yes",
+        ])
+        self.assertFalse(result["waterEncounterObserved"])
+        self.assertEqual(result["evidenceProvenance"],
+                         {"sourceVerified": 1, "runtimeObserved": 1, "inferred": 1})
+        self.assertEqual(result["unknownWaterStates"], 2)
+
+    def test_breath_direction_needs_live_known_sample(self):
+        result = audit([
+            "WATER MIRROR TIMER event=start timer=BREATH",
+            "WATER MIRROR TIMER event=stop timer=BREATH",
+            "WATER MIRROR TIMER event=start timer=EXHAUSTION",
+            "WATER EVIDENCE breathKnown=no breathScale=-1 runtimeObserved=yes classification=Unknown",
+            "WATER EVIDENCE breathKnown=yes breathScale=-1 runtimeObserved=yes classification=SwimmingStateUnknown",
+            "WATER EVIDENCE breathKnown=yes breathScale=10 runtimeObserved=yes classification=SwimmingStateUnknown",
+        ])
+        self.assertEqual(result["breathStartEvents"], 1)
+        self.assertEqual(result["breathStopEvents"], 1)
+        self.assertEqual(result["fatigueEvents"], 1)
+        self.assertEqual(result["breathDrainObservations"], 1)
+        self.assertEqual(result["breathRefillObservations"], 1)
+        self.assertEqual(result["submergedTransitions"], 0)
+
+    def test_world_gap_breaks_transition_chain(self):
+        result = audit([
+            "WATER EVIDENCE swimmingKnown=yes swimming=no runtimeObserved=yes classification=DryOrNonSwimming",
+            "WATER EVIDENCE swimmingKnown=no swimming=unknown runtimeObserved=yes classification=Unknown",
+            "WATER EVIDENCE swimmingKnown=yes swimming=yes runtimeObserved=yes classification=SwimmingStateUnknown",
+        ])
+        self.assertEqual(result["swimmingTransitions"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

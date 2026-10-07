@@ -7,6 +7,7 @@
 #include "AutonomySupervisor.h"
 #include "ActiveBotAfkSafeguard.h"
 #include "SharedAfkController.h"
+#include "WaterEvidenceObserve5875.h"
 #include "AfkDiagnosticTracker.h"
 #include "DisconnectDiagnosticPolicy.h"
 #include "RuntimeRobustnessSupervisor.h"
@@ -29,6 +30,8 @@
 
 #include <cstdint>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -155,6 +158,20 @@ namespace Bot
 
             if (runtimeControl.IsOpen())
                 runtimeControl.MarkRuntimeAttached(activeGuiMode);
+
+            // P0.4.1 is a separate read-only diagnostic session. Branch before
+            // combat/controller Start and before any workload can acquire input.
+            const char* waterMode=std::getenv("WOW_INTERNAL_WATER_MODE");
+            if (waterMode && *waterMode)
+            {
+                if (std::strcmp(waterMode,"observe")!=0 || !runtimeControl.IsOpen())
+                {
+                    Debug::Logger::Info("WATER OBSERVE CONFIG result=blocked reason=invalid_mode_or_control");
+                    return;
+                }
+                WaterEvidenceObserve5875::Run(runtimeControl,activeGuiMode);
+                return;
+            }
 
             Debug::Logger::Info(
                 std::string("GUI CONTROL 14H.2: startup mode=") +

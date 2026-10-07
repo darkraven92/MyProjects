@@ -16,6 +16,8 @@ SIGNATURES = {
     0x60E0D4: "8b8e18010000f7414000002000",
     # Mirror packet switch: 0x1D9 start / 0x1DA pause / 0x1DB stop.
     0x5E7996: "81ead9010000560f84820000004a743a4a",
+    0x5E79AD: "8b4d0c8d450c50e87714e3ff",
+    0x5E79E0: "8b750c8d4dfc518bcee84214e3ff",
     # Start: type/current/max/scale(uint32,int32)/paused(byte)/spell(uint32).
     0x5E7A25: "8b750c8d4dfc518bcee8fd13e3ff",
     0x5E7A33: "8d55ec528bcee8f213e3ff",
@@ -29,12 +31,15 @@ SIGNATURES = {
     0x5E7AE0: "83e900741849740f497406b844808300c3",
     0x5E7AF1: "b834058600c3b82c058600c3b820058600c3",
     0x51B3DD: "c7054017be0094268500c7054417be0080268500c7054817be006c268500",
-    # Jump registration/call chain is NOT sufficient ascent-release proof.
-    0x8500B8: "3cfa8400d03b5100",
+    # Paired Jump binding callbacks; their swim-ascent semantics remain open.
+    0x8500B8: "3cfa8400d03b510034038500503d5100",
     0x513D3B: "578bcee85da10f00",
+    0x513D50: "33c9e8f90cf8ff85c0747e",
     0x60DF52: "8b4508508d8ea8090000e8cf990000",
+    0x60E080: "558bec8b81e80900008b550825000100005052e8c8ffffff",
     0x617943: "6a016a0752",
     0x61795D: "e80efcffff",
+    0x617DE0: "558bec83ec0c8b550c6a006a00",
 }
 
 
@@ -97,7 +102,8 @@ def audit(data):
         "SOURCE VERIFIED native movement+0x40 swimming-bit consumer (player+0x118)",
         "SOURCE VERIFIED mirror packet dispatcher 0x5e7990 opcodes 0x1d9/0x1da/0x1db",
         "SOURCE VERIFIED start payload -> event0x16a; BREATH type1; EXHAUSTION type0",
-        "SOURCE VERIFIED Jump ->0x60dea0 ->0x617930 -> queued movement event7",
+        "SOURCE VERIFIED Jump binding callbacks 0x513bd0/0x513d50; start event7, stop via 0x60e080/0x617de0",
+        "SOURCE NOT VERIFIED event7/stop as safe sustained swim ascend/release; no command invoked",
         "SOURCE NOT VERIFIED live submersion/surface-height snapshot; ascent/release adapter",
         "Breath events are not a polled native timer cache. No modern Lua getter assumed.",
         "No commands enabled. Water runtime: RUNTIME PENDING.",
