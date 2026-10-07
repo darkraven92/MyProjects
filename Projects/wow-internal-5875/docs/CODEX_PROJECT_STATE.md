@@ -597,8 +597,10 @@ override their location. It writes reports only, never controls WoW.
   QuestDB SQL self-test, six Lua fixtures / 113 checks. Artifact:
   `/tmp/wow-validation-h993csap/results.json` (validation includes build/diff).
   BUILD PASS; DIFF CHECK PASS. Runtime composite/two windows remain pending.
-  Scoped commit/push verification follows final diff review; resolve the
-  checkpoint by `git log -1 --format='%H %s' -- src/Bot/AfkClient5875.h`.
+  Validated scoped checkpoint: `61f18c358d8e97584fb198b85a935e26d56c1c64`
+  (`afk: qualify native client-server clear after verified input`). Pushed to
+  origin; independent `git ls-remote` matched that local HEAD before this
+  documentation follow-up. Resolve later HEADs using the commands below.
   Remaining dirty project work is not included or claimed published.
 - P0.0.3 base: `543447e8f0d2b60a4c2b786f5f57b15d093723b4`.
   Validated scoped checkpoint: `f04ac4c89d4189b23d0e43b4fa9f31b847a59bfa`
