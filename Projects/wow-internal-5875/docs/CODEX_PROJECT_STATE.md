@@ -9,10 +9,43 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.8 DeathRecovery long-route transition avoidance**. P0.4 autonomous
+- Current phase: **P0.5.3 post-containment release runtime requalification prep**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.3 release requalification prep (2026-10-08)
+
+Starting published HEAD `a8edf42252dd06be098d4e69b58996823f03bca8`.
+The user-reported preserved `wow-p058-runtime-success.log` qualifies P0.5.8
+overall **RUNTIME PASS**: natural death, ghost confirmation, a learned unsafe
+directed edge retained across later corpse-route variants, inherited
+`directed_links` constraints, reclaim at 6.301 yd, two fresh alive probes,
+resurrection, and automatic Combat/Grind resume. ReleaseSpirit, rejected-edge
+episode memory, variant inheritance, RetrieveCorpse and alive verification
+are each RUNTIME PASS. Route→expanded→full-map inheritance remains static/
+deterministic-qualified, not individually exercised in that successful run.
+P0.5.7 partial-stage episode reset remains RUNTIME PENDING. Do not reopen
+P0.5.8 absent new contradictory evidence.
+
+P0.5.5 normal offensive bootstrap is RUNTIME PASS. P0.5.3 selection-only
+post-containment release remains **RUNTIME PENDING**. Source audit found that
+the old `episodeAttackOwnershipEstablished` flag could be set by observing an
+already-active Attack action before this bot issued any offensive command;
+the containment entry also called Stop unconditionally. This checkpoint
+restricts post-containment Attack-stop eligibility to a bot-issued same-GUID
+Attack command plus fresh active evidence, preserves the guarded
+selection-only fallback for unknown Attack without bot command provenance,
+and logs dispatch result separately from pre-command intent. It does not
+increase the 30-second containment or release-verification bounds. A future
+natural containment/disengagement must still prove actual selection clear,
+replicated victim clear, no hostile engagement, and Combat→AcquiringTarget.
+P0.6 remains STATIC PASS / RUNTIME PENDING; P0.7 is planned, not started.
+P0.5.3 preparation is **SOURCE VERIFIED / TEST PASS / BUILD PASS /
+DIFF CHECK PASS** in both the full worktree (101 C++ tests, 26 audit
+Python tests, 13 QuestDB Python tests) and isolated staged tree (52 C++
+tests, 26 audit Python tests). Its release branch is still **RUNTIME
+PENDING**; no WoW/GUI was launched.
 
 ## P0.5.8 long DeathRecovery route (2026-10-08)
 
@@ -36,7 +69,7 @@ Episode-local rejected edges cross route/expanded/full-map and bounded corpse
 variants only for the same NavMesh generation. Terrain validation, ghost
 Ground|Water policy, living water avoidance, hazard memory and 2000/4/2 budgets
 remain authoritative. This is search-quality work, not proof of a safe route.
-P0.5.8 runtime is **PENDING**; no WoW/GUI launched in this checkpoint. P0.6
+P0.5.8 runtime was **PENDING at publication**; no WoW/GUI launched in that coding checkpoint. P0.6
 remains **STATIC PASS / RUNTIME PENDING**; P0.4 remains PAUSED.
 P0.5.8 static is **TEST PASS / BUILD PASS / DIFF CHECK PASS**: final full
 worktree validation passed 101 C++ tests, 26 audit Python tests, 13 QuestDB

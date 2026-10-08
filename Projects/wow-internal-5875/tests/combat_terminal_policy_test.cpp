@@ -12,6 +12,10 @@ static CombatTerminalSample Sample(std::uint64_t now=1)
 }
 int main()
 {
+    static_assert(CombatAttackOwnershipPolicy::MayStopOwnAttack(true,true,true));
+    static_assert(!CombatAttackOwnershipPolicy::MayStopOwnAttack(false,true,true));
+    static_assert(!CombatAttackOwnershipPolicy::MayStopOwnAttack(true,false,true));
+    static_assert(!CombatAttackOwnershipPolicy::MayStopOwnAttack(true,true,false));
     CombatTerminalPolicy p;
     assert(p.Observe(Sample()).action==CombatTerminalAction::Observe);
     auto s=Sample(1001);
@@ -90,6 +94,8 @@ int main()
     s=Sample(1500); s.attackKnown=s.inputSafe=false;
     assert(p.Observe(s).action==CombatTerminalAction::Observe);
     s=Sample(2001);
+    assert(p.Observe(s).action==CombatTerminalAction::Observe); // observed active is not provenance
+    s.episodeAttackOwnershipEstablished=true; // same-GUID bot offense was issued
     assert(p.Observe(s).action==CombatTerminalAction::StopAndClearOwnTarget);
     p.Dispatched(2001);
     s=Sample(2001); s.selectedGuid=s.serverVictimGuid=0; s.attackActive=false;
@@ -114,6 +120,7 @@ int main()
 
     p.BeginPostContainment(1000,7,100);
     s=Sample(2001); s.optionalGrind=false; s.mandatoryObjective=true;
+    s.episodeAttackOwnershipEstablished=true;
     assert(p.Observe(s).action==CombatTerminalAction::StopAndClearOwnTarget);
     p.Dispatched(s.nowMs);
     s=Sample(2251); s.optionalGrind=false; s.mandatoryObjective=true;
@@ -179,4 +186,36 @@ int main()
     assert(p.Observe(s).action==CombatTerminalAction::Observe);
     s.nowMs=5000;
     assert(std::string(p.Observe(s).reason)=="post_containment_release_timeout");
+
+    // A pre-existing active Attack action is not bot command provenance.
+    // Never toggle it or clear its selected target from release.
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.episodeAttackOwnershipEstablished=false;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    assert(std::string(p.Observe(s).reason)=="unowned_attack_active");
+
+    // A bot-issued command with unknown current Attack readback also cannot
+    // authorize StopAttack. The existing timeout remains authoritative.
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.episodeAttackOwnershipEstablished=true;
+    s.attackKnown=false; s.inputSafe=false; s.selectionInputSafe=true;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    assert(std::string(p.Observe(s).reason)=="awaiting_owned_attack_readback");
+
+    // Fresh Attack-off is a selection-only release even if this episode
+    // previously issued offense; no redundant Attack stop is dispatched.
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.episodeAttackOwnershipEstablished=true;
+    s.attackActive=false; s.inputSafe=false; s.selectionInputSafe=true;
+    assert(p.Observe(s).action==CombatTerminalAction::ClearOwnSelection);
+
+    // No selected GUID, no replicated victim and no bot-owned Attack need
+    // any release command after the structural verification window.
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.selectedGuid=s.serverVictimGuid=0;
+    s.attackKnown=s.inputSafe=false; s.selectionInputSafe=true;
+    assert(p.Observe(s).action==CombatTerminalAction::Abandoned);
+
+    static_assert(CombatTerminalPolicy::PostContainmentReleaseMs==
+        CombatTerminalPolicy::VerificationMs*4);
 }

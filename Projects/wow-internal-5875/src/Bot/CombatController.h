@@ -401,16 +401,16 @@ namespace Bot
                 e.targetVictim==world.activePlayerGuid ||
                 (!e.aggressorsKnown && FindBestDirectAggressor(world)!=nullptr);
             terminal.attackKnown=s.actionKnown; terminal.attackActive=s.attackActive;
+            std::string selectionInputReason="not_in_release";
             if (postContainmentRelease_)
             {
                 const auto selectionInput=AutoAttackController::ProbeSelectionReleaseInput();
                 terminal.selectionInputSafe=selectionInput.known && selectionInput.inputSafe;
+                selectionInputReason=selectionInput.reason;
                 terminal.hostileEngaged=terminal.hostileEngaged || e.TargetCombat();
             }
             terminal.episodeAttackOwnershipEstablished=episodeAttackGuid_==lockedGuid_ &&
                 episodeAttackOwnershipEstablished_;
-            if (terminal.attackKnown && terminal.attackActive)
-                episodeAttackOwnershipEstablished_=true;
             if ((terminal.hostileEngaged || !terminal.known) && !defensiveContainmentUsed_ &&
                 !meleeTerminal_.Issued())
             {
@@ -423,6 +423,32 @@ namespace Bot
                 lastMeleeTerminalReason_=d.reason;
                 if (postContainmentRelease_)
                 {
+                    const char* attackOwnership=
+                        terminal.episodeAttackOwnershipEstablished &&
+                        terminal.attackKnown && terminal.attackActive
+                            ? "owned" : terminal.attackKnown && !terminal.attackActive
+                                ? "not_owned" : "unknown";
+                    Debug::Logger::Info("COMBAT CONTAINMENT RELEASE state=eligibility targetGuid="+
+                        Hex64(lockedGuid_)+" directAggressors="+
+                        (e.aggressorsKnown ? std::to_string(e.aggressorCount) : "unknown")+
+                        " attackOwnership="+attackOwnership+
+                        " episodeCommandIssued="+
+                        (terminal.episodeAttackOwnershipEstablished ? "yes" : "no")+
+                        " selectedGuid="+Hex64(terminal.selectedGuid)+
+                        " selectionProbe="+selectionInputReason+
+                        " decision="+(d.action==CombatTerminalAction::ClearOwnSelection ? "clear_selection" :
+                            d.action==CombatTerminalAction::StopAndClearOwnTarget ? "stop_attack" :
+                            d.action==CombatTerminalAction::Abandoned ||
+                            d.action==CombatTerminalAction::OwnerFailure ? "release" : "wait")+
+                        " reason="+d.reason);
+                    Debug::Logger::Info("COMBAT CONTAINMENT RELEASE VERIFY previousTarget="+
+                        Hex64(lockedGuid_)+" currentTarget="+Hex64(terminal.selectedGuid)+
+                        " attackOwnership="+attackOwnership+
+                        " containmentOwner=Combat result="+
+                        (d.action==CombatTerminalAction::Abandoned ||
+                         d.action==CombatTerminalAction::OwnerFailure ? "confirmed" :
+                         d.action==CombatTerminalAction::SystemFail ? "failed" : "pending")+
+                        " reason="+d.reason);
                     Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=eligibility guid="+
                         Hex64(lockedGuid_)+" selectedGuid="+Hex64(terminal.selectedGuid)+
                         " serverVictimGuid="+Hex64(terminal.serverVictimGuid)+
@@ -464,7 +490,10 @@ namespace Bot
                     Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=failed guid="+
                         Hex64(lockedGuid_)+" reason="+d.reason);
                 Fail(std::string("combat_terminal_system_failure:")+d.reason,
-                    terminal.known && terminal.inputSafe);
+                    terminal.known && terminal.inputSafe &&
+                    CombatAttackOwnershipPolicy::MayStopOwnAttack(
+                        terminal.episodeAttackOwnershipEstablished,
+                        terminal.attackKnown,terminal.attackActive));
                 return true;
             }
             if (d.action==CombatTerminalAction::HostileReturned)
@@ -484,6 +513,10 @@ namespace Bot
                 meleeTerminal_.Dispatched(s.nowMs); // one bounded dispatch, never a kill
                 const bool issued=AutoAttackController::AbandonOwnCombatTarget(world,lockedGuid_,
                     PostChargeImmediateMeleeDistance);
+                if (postContainmentRelease_)
+                    Debug::Logger::Info("COMBAT CONTAINMENT RELEASE state=command targetGuid="+
+                        Hex64(lockedGuid_)+" decision=stop_attack result="+
+                        (issued ? "dispatched" : "rejected"));
                 if (!issued) { Fail("combat_terminal_system_failure:target_abandon_dispatch_rejected",false); return true; }
                 if (chase_.TargetGuid()==lockedGuid_) chase_.Stop();
             }
@@ -492,7 +525,11 @@ namespace Bot
                 Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=command action=clear_own_selection attempt=1 guid="+
                     Hex64(lockedGuid_));
                 meleeTerminal_.Dispatched(s.nowMs,d.action);
-                if (!AutoAttackController::ClearOwnSelection(world,target,lockedGuid_))
+                const bool issued=AutoAttackController::ClearOwnSelection(world,target,lockedGuid_);
+                Debug::Logger::Info("COMBAT CONTAINMENT RELEASE state=command targetGuid="+
+                    Hex64(lockedGuid_)+" decision=clear_selection result="+
+                    (issued ? "dispatched" : "rejected"));
+                if (!issued)
                 {
                     Fail("combat_terminal_system_failure:selection_clear_dispatch_rejected",false);
                     return true;
@@ -570,15 +607,43 @@ namespace Bot
             else
             {
                 if (chase_.IsActive()) chase_.Stop();
-                if (!MovementController::HoldPosition(world.player) ||
-                    !AutoAttackController::Stop())
+                if (!MovementController::HoldPosition(world.player))
                 {
                     defensiveRouteStartFailed_=true;
                     defensiveRouteFailure_="input_neutralization_failed";
                 }
+                else if (s.actionKnown && s.attackActive)
+                {
+                    if (!CombatAttackOwnershipPolicy::MayStopOwnAttack(
+                            episodeAttackOwnershipEstablished_,s.actionKnown,
+                            s.attackActive))
+                    {
+                        defensiveRouteStartFailed_=true;
+                        defensiveRouteFailure_="unowned_attack_active";
+                    }
+                    else if (!AutoAttackController::Stop())
+                    {
+                        defensiveRouteStartFailed_=true;
+                        defensiveRouteFailure_="input_neutralization_failed";
+                    }
+                    else defensiveStopIssuedAtMs_=s.nowMs;
+                }
+                else if (!s.actionKnown && episodeAttackOwnershipEstablished_)
+                {
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="owned_attack_readback_unknown";
+                }
                 else defensiveStopIssuedAtMs_=s.nowMs;
             }
             attackStarted_=false;
+            Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=attack_neutralization guid="+
+                Hex64(lockedGuid_)+" episodeCommandIssued="+
+                (episodeAttackOwnershipEstablished_ ? "yes" : "no")+
+                " attackKnown="+(s.actionKnown ? "yes" : "no")+
+                " attackActive="+(s.actionKnown ? (s.attackActive ? "yes" : "no") : "unknown")+
+                " result="+(defensiveRouteStartFailed_ ? defensiveRouteFailure_ :
+                    s.actionKnown && s.attackActive ? "own_attack_stop_dispatched" :
+                    "no_attack_stop_needed"));
             SetState(CombatState::DefensiveContainment);
             (void)tick;
         }
@@ -591,7 +656,7 @@ namespace Bot
             {
                 Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=failed guid="+
                     Hex64(lockedGuid_)+" reason=containment_timeout");
-                Fail("defensive_containment_exhausted:containment_timeout");
+                Fail("defensive_containment_exhausted:containment_timeout",false);
                 return;
             }
             const auto* target=TargetSelector::FindByGuid(world,lockedGuid_);
@@ -612,8 +677,6 @@ namespace Bot
                 evidence.targetVictim==world.activePlayerGuid ||
                 (!evidence.aggressorsKnown && FindBestDirectAggressor(world)!=nullptr);
             const auto attack=AutoAttackController::ProbeCombatAction();
-            if (attack.attack.valid && attack.attack.actionSlotFound && attack.attack.active)
-                episodeAttackOwnershipEstablished_=true;
             if (postContainmentRelease_)
             {
                 if (!target || !known)
@@ -699,7 +762,11 @@ namespace Bot
                     " routeReason="+defensiveRouteFailure_);
                 if (defensiveRoute_) MovementController::HoldPosition(world.player);
                 defensiveRoute_.reset();
-                Fail(std::string("defensive_containment_exhausted:")+decision.reason);
+                Fail(std::string("defensive_containment_exhausted:")+decision.reason,
+                    CombatAttackOwnershipPolicy::MayStopOwnAttack(
+                        episodeAttackOwnershipEstablished_,
+                        attack.attack.valid && attack.attack.actionSlotFound,
+                        attack.attack.active));
                 return;
             }
             if (!defensiveRoute_ && !defensiveRouteStartFailed_ && hostile)
@@ -2004,6 +2071,9 @@ namespace Bot
             lockedGuid_ =
                 0;
 
+            episodeAttackGuid_ = 0;
+            episodeAttackOwnershipEstablished_ = false;
+
             pendingTargetGuid_ =
                 0;
             selectionAttemptsForGuid_ = 0;
@@ -3243,7 +3313,6 @@ namespace Bot
                         Hex64(lockedGuid_)+" selectedGuid="+Hex64(ClientSelectedGuid(world))+
                         " decision=already_active reason=observed_attack_latch");
                 attackStarted_=true;
-                episodeAttackOwnershipEstablished_=true;
                 autoAttackReengagePending_=false;
             }
             if (meleeDecision_.action==CombatRecoveryAction::RefreshAttack ||

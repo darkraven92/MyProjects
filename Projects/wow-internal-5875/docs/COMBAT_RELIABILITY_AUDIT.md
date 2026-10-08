@@ -1,5 +1,55 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5.3 post-containment release runtime requalification prep (2026-10-08)
+
+P0.5.8 is now RUNTIME PASS per the user-reported preserved
+`wow-p058-runtime-success.log`: natural death, unsafe directed edge learned
+and retained across corpse variants, ghost reclaim at 6.301 yd, two fresh
+alive probes, resurrection and autonomous Combat/Grind resume. Its full
+route→expanded→full-map inheritance remains static-qualified only. P0.5.5
+ordinary combat initiation is RUNTIME PASS. P0.5.3 release remains RUNTIME
+PENDING; no WoW/GUI is launched for this preparation checkpoint. P0.6 is
+STATIC PASS / RUNTIME PENDING; P0.7 is planned, not started.
+
+Call graph: bounded offensive/chase terminal evaluation enters
+`BeginDefensiveContainment` when engagement is active or unknown. A successful
+structural disengagement observation in `UpdateDefensiveContainment` enters
+`BeginPostContainment`, then a fresh later snapshot goes through
+`ResolveMeleeTerminal` and `CombatTerminalPolicy::Observe`. Active/renewed
+hostility returns to the same bounded containment episode; DeathRecovery
+preempts from WorldMonitor. A successful optional release blacklists the same
+GUID without kill/loot credit and calls `BeginAcquire`; mandatory release
+returns a typed owner failure. Neither route arrival nor command dispatch
+is disengagement or release proof.
+
+Source inspection found a provenance gap: the old episode Attack ownership
+flag was set by observing any active Attack action, even one selected before
+the bot's episode. The containment entry also called `Stop()` without a
+fresh active, bot-issued provenance check. Telemetry alone could not satisfy
+the requested no-unowned-StopAttack safety invariant. The flag now resets at
+each acquisition boundary and is established by a same-GUID bot-issued
+Attack command, not by observation or Charge alone. Containment stops Attack
+only with that provenance and fresh active readback; an active unowned or
+unknown owned latch fails closed. Post-containment stop/clear likewise needs
+both provenance and fresh active evidence. A known inactive latch, or unknown
+Attack with no bot-issued command, may use the existing exact-GUID guarded
+`SetTarget(0)` selection-only path after verified disengagement and the
+independent safe UI/cast probe. An active action without bot provenance cannot
+be cleared as if it were owned. The client-selected GUID and replicated
+`UNIT_FIELD_TARGET` remain separate; both must clear on a later snapshot.
+
+Sparse `COMBAT CONTAINMENT RELEASE` eligibility/verify/command events now
+include direct-aggressor count, attack-command provenance, three-state attack
+ownership, selection-probe reason, selected GUID, decision, and actual
+dispatch result. Existing post-release completion, typed failure and
+Combat state transition logs complete the future runtime chain. Broader
+legacy `AutoAttackController::Stop()` calls outside this containment/release
+branch remain outside this narrow checkpoint; no claim is made that every
+manual user Attack interaction is globally ownership-isolated.
+P0.5.3 preparation is SOURCE VERIFIED / TEST PASS / BUILD PASS /
+DIFF CHECK PASS for the full worktree and isolated intended tree; the rare
+selection-only release remains RUNTIME PENDING until naturally observed.
+
 ## P0.5.5 offensive input evidence and melee progress (2026-10-08)
 
 Starting HEAD `c59c603233f71bb7d22d67e2f40b0b61eb936665`. Latest live

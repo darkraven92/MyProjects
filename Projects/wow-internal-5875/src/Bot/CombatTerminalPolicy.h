@@ -18,6 +18,14 @@ namespace Bot
         CombatTerminalAction action=CombatTerminalAction::Observe;
         const char* reason="observing_safe_disengagement";
     };
+    struct CombatAttackOwnershipPolicy
+    {
+        static constexpr bool MayStopOwnAttack(bool episodeCommandIssued,
+            bool attackKnown, bool attackActive)
+        {
+            return episodeCommandIssued && attackKnown && attackActive;
+        }
+    };
     // This is terminal verification, NOT another attack repair or a kill.
     // Unknown/combat/transaction evidence never permits optional abandonment.
     class CombatTerminalPolicy
@@ -66,8 +74,21 @@ namespace Bot
             // A target selected before this combat episode is not proof that
             // this controller ever owned Attack. The independent selection
             // probe must still prove input is safe before a guarded clear.
-            const bool attackOwned=s.episodeAttackOwnershipEstablished ||
-                (s.attackKnown && s.attackActive);
+            // An action observed active before this controller issued offense
+            // is not proof that the bot owns it. Post-containment may stop
+            // Attack only with episode-local command provenance AND a fresh
+            // active readback. Unknown owned Attack remains a bounded wait.
+            if (postContainment_ && s.attackKnown && s.attackActive &&
+                !s.episodeAttackOwnershipEstablished)
+                return {CombatTerminalAction::Observe,"unowned_attack_active"};
+            if (postContainment_ && s.episodeAttackOwnershipEstablished &&
+                !s.attackKnown)
+                return {CombatTerminalAction::Observe,"awaiting_owned_attack_readback"};
+            const bool attackOwned=postContainment_
+                ? CombatAttackOwnershipPolicy::MayStopOwnAttack(
+                    s.episodeAttackOwnershipEstablished,s.attackKnown,s.attackActive)
+                : s.episodeAttackOwnershipEstablished ||
+                    (s.attackKnown && s.attackActive);
             const bool releaseInputSafe=postContainment_ && !attackOwned
                 ? (s.selectionInputSafe || s.inputSafe) : s.inputSafe;
             if (!releaseInputSafe)
