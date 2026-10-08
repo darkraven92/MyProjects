@@ -1,5 +1,47 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5.5 offensive input evidence and melee progress (2026-10-08)
+
+Starting HEAD `c59c603233f71bb7d22d67e2f40b0b61eb936665`. Latest live
+run: P0.5.4 selection progression, Charge fallback and chase-to-melee handoff
+are RUNTIME PASS, but first offensive input is RUNTIME FAIL. At 0.388 yd the
+locked native selection and target snapshot were fresh, yet both
+`actionEvidence` and reused `alternateInput` were `unknown`; 19+ combat starts,
+zero Attack/Charge commands and zero kills. P0.5.4 overall RUNTIME FAIL.
+
+The old Lua script collapsed missing `UIParent`, life APIs, `CastingBarFrame`,
+`SpellIsTargeting`, `EnumerateFrames`, generic frame methods, action/cooldown
+APIs, frame-iteration exhaustion and pcall/readback failures into `unknown`.
+The log cannot select one cause. New typed reasons preserve UNKNOWN as
+fail-closed and log only on probe-reason change. Local build-5875 binary
+registration strings verify the API names; the preserved
+[Vanilla 1.12.1 CastingBarFrame source](https://github.com/MOUZU/Blizzard-WoW-Interface/blob/master/1.12.1/FrameXML/CastingBarFrame.lua)
+sets `casting`/`channeling` on SPELLCAST events. Those source facts do not
+prove that a particular live probe will be READY; runtime remains pending.
+
+`ProbeCombatBootstrapInput` is separate from release. It checks living player,
+visible UIParent, named Vanilla modal frames, targeting cursor and cast-bar
+state without requiring the broad `EnumerateFrames`/keyboard-handler scan or
+Attack-slot/cooldown readback. Missing evidence remains typed UNKNOWN. The
+release probe and P0.5.3 semantics remain strict. The bootstrap command
+rechecks native same-GUID selection, fresh living player/target, melee range,
+facing and pacify flag on the game thread, and its Lua command rechecks modal,
+cast and targeting evidence. The no-slot `bootstrap` command now uses
+`AttackTarget` instead of the formerly reachable `StopAttack` branch. An
+issued command spends an existing repair attempt and is not success: fresh
+active Attack or target HP decrease confirms; otherwise existing bounded
+observation/supervisor behavior remains authoritative.
+
+`CombatInitiationPolicy` now allows Fighting physical range reconciliation
+when action/bootstrap input is UNKNOWN, while forbidding offensive commands.
+The unchanged 5/6-yd hysteresis still controls Fighting-to-Chasing and
+Chasing-to-Fighting. Known cast/modal blockers continue to hold input; target
+loss/death and player death preempt via existing ownership. No Charge window,
+32-tick supervisor threshold, 160-tick owner timeout, three-repair limit,
+containment limit or navigation budget was increased. P0.5.5 static:
+TEST PASS, BUILD PASS, DIFF CHECK PASS; runtime PENDING. Separate later DeathRecovery observation:
+`route_scope_failed` / `surface_recovery_exhausted`, not changed here.
+
 ## P0.5.4 combat initiation / Charge-facing regression (2026-10-08)
 
 Starting published HEAD `e74f78679f95ca8f6d8888be3364d2c232a0ed65`.

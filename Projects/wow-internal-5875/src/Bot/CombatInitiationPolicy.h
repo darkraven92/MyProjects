@@ -56,7 +56,8 @@ namespace Bot
 
         // Melee-liveness readback is not the owner of Charge or chase. A
         // missing Attack-action readback cannot freeze their bounded FSMs.
-        // Actual offensive input still requires a positive input-safety probe.
+        // Nor can it freeze Fighting's physical range reconciliation. Actual
+        // offensive input still requires a positive input-safety probe.
         static CombatInitiationDecision Decide(CombatInitiationPhase phase,
             const CombatInitiationEvidence& e)
         {
@@ -78,7 +79,7 @@ namespace Bot
             const bool inputSafe=e.actionKnown ? e.actionInputSafe :
                 (e.alternateKnown && e.alternateInputSafe);
             if (phase==CombatInitiationPhase::Melee && !inputSafe)
-                return {false,false,CombatInitiationReason::ActionEvidenceUnknown};
+                return {true,false,CombatInitiationReason::ActionEvidenceUnknown};
             return {true,inputSafe,inputSafe ? CombatInitiationReason::Ready :
                 CombatInitiationReason::ActionEvidenceUnknown};
         }

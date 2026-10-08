@@ -12,6 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 LUA_PRODUCERS = {
     "combat_action_evidence_fixture.lua": "combat_liveness_policy_test",
+    "combat_bootstrap_input_fixture.lua": "combat_initiation_policy_test",
     "afk_dead_ghost_fixture.lua": "afk_dead_ghost_policy_test",
     "afk_safe_input_fixture.lua": "afk_protection_policy_test",
     "equipment_upgrade_fixture.lua": "equipment_upgrade_policy_test",

@@ -9,10 +9,43 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.4 combat initiation / Charge-facing regression**. P0.4 autonomous
+- Current phase: V6 **P0.5.5 offensive input evidence / melee progress**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.5 offensive input evidence and melee progress (2026-10-08)
+
+Starting published HEAD `c59c603233f71bb7d22d67e2f40b0b61eb936665`.
+The latest manual runtime proves P0.5.4 target-selection progression, bounded
+Charge-to-chase fallback and chase-to-melee handoff **RUNTIME PASS**. Its first
+offensive command remains **RUNTIME FAIL**: in Fighting, selected/locked GUID
+and fresh target matched even at 0.388 yd, but both full action and reused
+selection-release probes returned undifferentiated `unknown`; across at least
+19 combat starts there were zero Charge/Attack commands, zero kills, and
+player HP fell. P0.5.4 overall is therefore RUNTIME FAIL. The log cannot
+identify which Lua primitive/readback failed because all exits collapsed to
+`unknown`. This is not evidence that unknown input is safe.
+
+P0.5.5 adds typed fail-closed probe reasons and a dedicated initial-offense
+probe using build-5875-registered life/spell APIs plus Vanilla named modal
+frames and cast-bar state. The release probe retains its stricter generic
+frame scan. A safe probe does not itself dispatch: the game-thread command
+still verifies same native UI GUID, fresh living target/player, melee range,
+facing and non-pacified player. Attack bootstrap uses the existing bounded
+repair attempt and now correctly invokes `AttackTarget` when no Attack action
+slot exists (the previous `bootstrap` branch would invoke `StopAttack`).
+Command dispatch remains pending until fresh Attack-latch or target-damage
+evidence; no new retry budget exists. Fighting can reconcile target range to
+Chasing when input evidence is unknown, without authorizing an offensive
+command. No watchdog/navigation/water/vendor budget changed.
+
+P0.5.5 static: TEST PASS, BUILD PASS, DIFF CHECK PASS; runtime PENDING and no WoW/GUI run in
+this checkpoint. P0.5.3 remains STATIC PASS / runtime unresolved. P0.6 remains
+STATIC PASS / RUNTIME PENDING. A later death recovered once; another
+DeathRecovery reached `route_scope_failed` with
+`navFailure=surface_recovery_exhausted`. That is a separate observation, not
+modified in P0.5.5. P0.4 remains PAUSED with P0.4-TEMP preserved.
 
 ## P0.5.4 combat initiation regression (2026-10-08)
 

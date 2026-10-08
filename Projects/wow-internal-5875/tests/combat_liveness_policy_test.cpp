@@ -30,6 +30,17 @@ int main(int argc, char** argv)
     auto firstDamage = p.Observe(s);
     assert(firstDamage.action == CombatRecoveryAction::None && firstDamage.damageObserved);
     assert(p.NoDamageMs(s.nowMs) == 0);
+    // Initial Attack dispatch with unreadable latch is pending, not success.
+    p.Reset(); s=Sample(); s.actionKnown=false; s.inputSafe=false;
+    p.Observe(s);
+    p.Dispatched(CombatRecoveryAction::ReengageAttack,s.nowMs);
+    s=Sample(251); s.actionKnown=false; s.inputSafe=false;
+    assert(p.Observe(s).verified==CombatRecoveryAction::None);
+    s=Sample(501); s.actionKnown=false; s.inputSafe=false; s.targetHp=95;
+    const auto bootstrapDamage=p.Observe(s);
+    assert(bootstrapDamage.damageObserved);
+    assert(bootstrapDamage.verified==CombatRecoveryAction::ReengageAttack);
+    assert(p.NoDamageMs(s.nowMs)==0);
     // A fresh health decrease remains damage progress even while Attack
     // readback is unavailable; it must not grant unsafe recovery input.
     p.Reset(); p.Observe(Sample());

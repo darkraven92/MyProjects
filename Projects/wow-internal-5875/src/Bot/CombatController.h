@@ -330,6 +330,11 @@ namespace Bot
         CombatState lastInitGateState_=CombatState::Idle;
         CombatInitiationReason lastInitGateReason_=CombatInitiationReason::Ready;
         bool lastInitGateOffenseAllowed_=false;
+        std::string lastActionProbeReason_;
+        std::string lastBootstrapProbeReason_;
+        bool bootstrapVerificationPending_=false;
+        std::uint64_t bootstrapVerificationGuid_=0;
+        std::uint64_t bootstrapDispatchedAtMs_=0;
 
         static std::uint64_t ClientSelectedGuid(const Objects::WorldState& world)
         {
@@ -818,6 +823,32 @@ namespace Bot
             s.actionKnown=meleeActionEvidence_.attack.valid && meleeActionEvidence_.attack.actionSlotFound;
             s.attackActive=meleeActionEvidence_.attack.active;
             meleeDecision_=meleeLiveness_.Observe(s);
+            if (bootstrapVerificationPending_ && bootstrapVerificationGuid_==target.guid)
+            {
+                const bool damage=s.fresh && meleeDecision_.damageObserved;
+                const bool latch=s.fresh && s.actionKnown && s.attackActive;
+                if (damage || latch)
+                {
+                    bootstrapVerificationPending_=false;
+                    attackStarted_=true;
+                    Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
+                        Hex64(target.guid)+" attackKnown="+(s.actionKnown ? "yes" : "no")+
+                        " attackActive="+(latch ? "yes" : "no")+
+                        " targetHp="+std::to_string(s.targetHp)+
+                        " result=confirmed reason="+(damage ? "target_hp_decreased" : "attack_latch_active"));
+                }
+                else if (s.nowMs>=bootstrapDispatchedAtMs_ &&
+                    s.nowMs-bootstrapDispatchedAtMs_>=
+                        std::max<std::uint64_t>(8000,
+                            2u*std::uint64_t(s.attackPeriodMs)+1000))
+                {
+                    bootstrapVerificationPending_=false;
+                    Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
+                        Hex64(target.guid)+" attackKnown="+(s.actionKnown ? "yes" : "no")+
+                        " attackActive=no targetHp="+std::to_string(s.targetHp)+
+                        " result=failed reason=bounded_offensive_observation_no_proof");
+                }
+            }
             if (meleeDecision_.damageObserved)
             {
                 // Only real damage, never escape dispatch or a structural
@@ -889,12 +920,25 @@ namespace Bot
             Debug::Logger::Info("COMBAT RECOVERY step="+std::string(CombatRecoveryName(action))+
                 " attempt="+std::to_string(meleeLiveness_.Repairs())+" targetGuid="+Hex64(target.guid)+
                 " reason="+CombatStallName(meleeDecision_.classification));
+            std::string bootstrapOutcome;
             const bool issued=initialBootstrap
                 ? AutoAttackController::BootstrapCombatAction(world,target.guid,
-                    PostChargeImmediateMeleeDistance)
+                    PostChargeImmediateMeleeDistance,&bootstrapOutcome)
                 : AutoAttackController::RecoverCombatAction(world,target.guid,refresh,
                     PostChargeImmediateMeleeDistance);
-            attackStarted_=issued;
+            attackStarted_=issued && !initialBootstrap;
+            if (initialBootstrap)
+            {
+                bootstrapVerificationPending_=issued;
+                bootstrapVerificationGuid_=issued ? target.guid : 0;
+                bootstrapDispatchedAtMs_=issued ? GetTickCount64() : 0;
+                Debug::Logger::Info("COMBAT INIT state=attack_bootstrap guid="+
+                    Hex64(target.guid)+" action=attack result="+
+                    (issued ? "dispatched" : "rejected")+" reason="+bootstrapOutcome);
+                if (issued)
+                    Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
+                        Hex64(target.guid)+" result=pending reason=awaiting_latch_or_damage");
+            }
             if (issued && episodeAttackGuid_==target.guid)
                 episodeAttackOwnershipEstablished_=true;
             autoAttackReengagePending_=false;
@@ -1954,6 +1998,9 @@ namespace Bot
             meleeDecision_={};
             meleeActionEvidence_={};
             lastMeleeClassification_=CombatStallClass::UnknownOrStale;
+            bootstrapVerificationPending_=false;
+            bootstrapVerificationGuid_=0;
+            bootstrapDispatchedAtMs_=0;
             lockedGuid_ =
                 0;
 
@@ -4496,7 +4543,24 @@ namespace Bot
             // bounded FSMs advancing; authorize offensive input separately.
             AutoAttackController::CombatActionEvidence alternateInput{};
             if (!meleeActionEvidence_.known && lastMeleeTargetFresh_)
-                alternateInput=AutoAttackController::ProbeSelectionReleaseInput();
+                alternateInput=AutoAttackController::ProbeCombatBootstrapInput();
+            if (lockedGuid_!=lastInitGateGuid_ ||
+                meleeActionEvidence_.reason!=lastActionProbeReason_ ||
+                alternateInput.reason!=lastBootstrapProbeReason_)
+            {
+                lastActionProbeReason_=meleeActionEvidence_.reason;
+                lastBootstrapProbeReason_=alternateInput.reason;
+                Debug::Logger::Info("COMBAT INPUT PROBE mode=action result="+
+                    std::string(meleeActionEvidence_.known ?
+                        (meleeActionEvidence_.waiting ? "wait" :
+                            (meleeActionEvidence_.inputSafe ? "ready" : "blocked")) : "unknown")+
+                    " reason="+meleeActionEvidence_.reason+" guid="+Hex64(lockedGuid_));
+                if (!meleeActionEvidence_.known && lastMeleeTargetFresh_)
+                    Debug::Logger::Info("COMBAT INPUT PROBE mode=bootstrap result="+
+                        std::string(CombatInputProbePolicy::Name(
+                            CombatInputProbePolicy::Classify(alternateInput.reason)))+
+                        " reason="+alternateInput.reason+" guid="+Hex64(lockedGuid_));
+            }
             const auto initPhase=state_==CombatState::Fighting
                 ? CombatInitiationPhase::Melee : state_==CombatState::Chasing ||
                     state_==CombatState::WarriorOpening
@@ -4523,9 +4587,14 @@ namespace Bot
                     " targetFresh="+(initEvidence.targetFresh ? "yes" : "no")+
                     " alignedCount="+std::to_string(warriorChargeFacingStableSnapshots_)+
                     " actionEvidence="+meleeActionEvidence_.reason+
-                    " alternateInput="+alternateInput.reason+
+                    " bootstrapInput="+alternateInput.reason+
                     " decision="+(initGate.stateProgressAllowed ?
                         (initGate.offensiveInputAllowed ? "advance" : "advance_no_offense") : "wait")+
+                    " stateDecision="+(initGate.stateProgressAllowed ?
+                        (initPhase==CombatInitiationPhase::Melee &&
+                         CombatInitiationPolicy::ResumeChase(target->distance) ?
+                            "resume_chase" : "reconcile") : "hold")+
+                    " offenseDecision="+(initGate.offensiveInputAllowed ? "eligible" : "blocked")+
                     " reason="+CombatInitiationReasonName(initGate.reason));
             }
             MaintainTargetSelection(

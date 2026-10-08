@@ -45,17 +45,17 @@ check('issued','start'); assert(uses==2 and queued==1)
 reset(); active=true; check('issued','abandon'); assert(uses==1 and not active and clears==1)
 reset(); ClearTarget=nil; check('unsupported_release','abandon'); assert(uses==0)
 for _,mode in ipairs({'probe','start','refresh','abandon'}) do
- reset(); CastingBarFrame.casting=1; check('wait',mode); assert(uses==0 and clears==0)
- reset(); CastingBarFrame.channeling=1; check('wait',mode); assert(uses==0)
- reset(); GetActionCooldown=function() return 9,1.5 end; check('wait',mode); assert(uses==0)
- reset(); SpellIsTargeting=function() return 1 end; check('blocked',mode); assert(uses==0)
- reset(); UnitIsDeadOrGhost=function() return 1 end; check('unknown',mode); assert(uses==0)
- reset(); CastingBarFrame=nil; check('unknown',mode); assert(uses==0)
+ reset(); CastingBarFrame.casting=1; check('waiting_cast_or_gcd',mode); assert(uses==0 and clears==0)
+ reset(); CastingBarFrame.channeling=1; check('waiting_cast_or_gcd',mode); assert(uses==0)
+ reset(); GetActionCooldown=function() return 9,1.5 end; check('waiting_cast_or_gcd',mode); assert(uses==0)
+ reset(); SpellIsTargeting=function() return 1 end; check('blocked_spell_targeting',mode); assert(uses==0)
+ reset(); UnitIsDeadOrGhost=function() return 1 end; check('blocked_player_dead',mode); assert(uses==0)
+ reset(); CastingBarFrame=nil; check('unknown_casting_frame',mode); assert(uses==0)
  for _,k in ipairs({'QuestFrame','MerchantFrame','ClassTrainerFrame','LootFrame','TalentFrame','StaticPopup1'}) do
-  reset(); _G[k]={IsVisible=function() return true end}; check('blocked',mode); assert(uses==0)
+  reset(); _G[k]={IsVisible=function() return true end}; check('blocked_modal_frame',mode); assert(uses==0)
  end
 end
-reset(); UnitExists=function() return nil end; check('12|0'); check('blocked','start'); assert(uses==0)
+reset(); UnitExists=function() return nil end; check('12|0'); check('blocked_target_invalid','start'); assert(uses==0)
 reset(); IsAttackAction=function() return nil end; check('0|-1') -- unknown, not inactive
 check('issued','start'); assert(starts==1)
 check('issued','refresh'); assert(stops==1 and starts==1)
@@ -63,18 +63,41 @@ StopAttack=nil; check('unsupported_refresh','refresh'); assert(starts==1)
 reset()
 local f={IsVisible=function() return true end,GetObjectType=function() return 'EditBox' end}
 EnumerateFrames=function(prev) if not prev then return f end end
-check('blocked','start'); assert(uses==0)
-reset(); GetActionCooldown=function() error('unknown') end; check('unknown','start'); assert(uses==0)
+check('blocked_editbox','start'); assert(uses==0)
+reset(); GetActionCooldown=function() error('unknown') end; check('unknown_script_error','start'); assert(uses==0)
 reset(); IsAttackAction=nil; IsCurrentAction=nil; GetActionCooldown=nil; GetTime=nil
 check('ready','selection_probe'); assert(uses==0 and clears==0)
-reset(); CastingBarFrame.casting=1; check('wait','selection_probe'); assert(clears==0)
+reset(); CastingBarFrame.casting=1; check('waiting_cast','selection_probe'); assert(clears==0)
 reset(); _G.MerchantFrame={IsVisible=function() return true end}
-check('blocked','selection_probe'); assert(clears==0)
+check('blocked_modal_frame','selection_probe'); assert(clears==0)
 reset(); check('issued','start'); assert(uses==1 and clears==0)
 reset(); GetActionCooldown=function() error('unavailable') end
-check('unknown','start'); assert(uses==0)
+check('unknown_script_error','start'); assert(uses==0)
 check('issued','bootstrap'); assert(uses==1 and active)
 reset(); active=true; GetActionCooldown=nil; GetTime=nil
 check('issued','bootstrap'); assert(uses==0 and active) -- never toggle active Attack off
-reset(); CastingBarFrame.casting=1; check('wait','bootstrap'); assert(uses==0)
+reset(); IsAttackAction=function() return nil end
+check('issued','bootstrap'); assert(starts==1 and stops==0) -- no slot starts, never stops
+reset(); CastingBarFrame.casting=1; check('waiting_cast_or_gcd','bootstrap'); assert(uses==0)
+reset(); EnumerateFrames=nil; check('issued','bootstrap'); assert(uses==1)
+reset(); UIParent=nil; check('unknown_ui_parent','probe')
+reset(); UnitIsDeadOrGhost=nil; check('unknown_life_api','probe')
+reset(); SpellIsTargeting=nil; check('unknown_spell_targeting','probe')
+reset(); EnumerateFrames=nil; check('unknown_enumerate_frames','probe')
+reset(); IsAttackAction=nil; check('unknown_attack_action_api','probe')
+reset(); GetActionCooldown=nil; check('unknown_attack_cooldown_api','probe')
+reset(); local bad={GetObjectType=function() return 'Frame' end}
+EnumerateFrames=function(prev) if not prev then return bad end end
+check('unknown_frame_visibility_api','probe')
+bad.IsVisible=function() return true end
+bad.GetObjectType=nil; check('unknown_frame_object_type','probe')
+bad.GetObjectType=function() return 'Frame' end
+bad.IsKeyboardEnabled=nil; check('unknown_frame_keyboard_api','probe')
+bad.IsKeyboardEnabled=function() return true end
+bad.GetScript=nil; check('unknown_frame_script_api','probe')
+bad.GetScript=function() return function() end end
+check('blocked_keyboard_handler','probe')
+reset(); local loop={IsVisible=function() return false end,GetObjectType=function() return 'Frame' end}
+EnumerateFrames=function() return loop end
+check('unknown_frame_iteration_limit','probe')
 print('Combat action evidence Lua: passed')

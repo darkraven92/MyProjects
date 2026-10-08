@@ -1,10 +1,16 @@
 #include "../src/Bot/CombatInitiationPolicy.h"
+#include "../src/Bot/CombatBootstrapInputScript.h"
+#include "../src/Bot/CombatInputProbePolicy.h"
 
 #include <cassert>
+#include <iostream>
+#include <string_view>
 
-int main()
+int main(int argc, char** argv)
 {
     using namespace Bot;
+    if (argc==2 && std::string_view(argv[1])=="--lua")
+    { std::cout<<CombatBootstrapInputScript; return 0; }
     CombatInitiationEvidence e{};
     e.targetFresh=e.selectionKnown=e.selectionMatches=true;
     e.actionKnown=e.actionInputSafe=true;
@@ -31,7 +37,9 @@ int main()
     d=CombatInitiationPolicy::Decide(CombatInitiationPhase::Chase,e);
     assert(d.stateProgressAllowed && !d.offensiveInputAllowed);
     d=CombatInitiationPolicy::Decide(CombatInitiationPhase::Melee,e);
-    assert(!d.stateProgressAllowed && !d.offensiveInputAllowed);
+    assert(d.stateProgressAllowed && !d.offensiveInputAllowed);
+    assert(!CombatInitiationPolicy::ResumeChase(3.5f));
+    assert(CombatInitiationPolicy::ResumeChase(8.0f));
     e.alternateKnown=e.alternateInputSafe=true;
     d=CombatInitiationPolicy::Decide(CombatInitiationPhase::ChargeFacing,e);
     assert(d.stateProgressAllowed && d.offensiveInputAllowed);
@@ -74,4 +82,35 @@ int main()
     assert(CombatInitiationPolicy::EnterMelee(3.5f));
     assert(CombatInitiationPolicy::ResumeChase(6.5f));
     assert(!CombatInitiationPolicy::ResumeChase(5.5f));
+
+    // A point-blank target needs neither Charge nor prior damage to become
+    // eligible for one guarded melee bootstrap. Unknown input is never safe.
+    e={}; e.targetFresh=e.selectionKnown=e.selectionMatches=true;
+    d=CombatInitiationPolicy::Decide(CombatInitiationPhase::Melee,e);
+    assert(CombatInitiationPolicy::EnterMelee(0.3880f));
+    assert(d.stateProgressAllowed && !d.offensiveInputAllowed);
+    e.alternateKnown=e.alternateInputSafe=true;
+    d=CombatInitiationPolicy::Decide(CombatInitiationPhase::Melee,e);
+    assert(d.stateProgressAllowed && d.offensiveInputAllowed);
+    e.selectionMatches=false;
+    assert(!CombatInitiationPolicy::Decide(CombatInitiationPhase::Melee,e).offensiveInputAllowed);
+
+    for (const auto reason: {"unknown_ui_parent","unknown_life_api",
+        "unknown_casting_frame","unknown_spell_targeting",
+        "unknown_enumerate_frames","unknown_frame_visibility_api",
+        "unknown_frame_object_type","unknown_frame_keyboard_api",
+        "unknown_frame_script_api","unknown_frame_iteration_limit",
+        "unknown_attack_action_api","unknown_attack_cooldown_api",
+        "unknown_modal_lookup_api","unknown_readback","unknown_readback_address",
+        "unknown_readback_dispatch","unknown_readback_thread",
+        "unknown_readback_execute","unknown_readback_text",
+        "unknown_script_error"})
+        assert(CombatInputProbePolicy::Classify(reason)==CombatInputProbeState::Unknown);
+    for (const auto reason: {"blocked_modal_frame","blocked_editbox",
+        "blocked_keyboard_handler","blocked_spell_targeting",
+        "blocked_player_dead","blocked_target_invalid","blocked_execution_guard"})
+        assert(CombatInputProbePolicy::Classify(reason)==CombatInputProbeState::Blocked);
+    for (const auto reason: {"waiting_cast","waiting_cast_or_gcd"})
+        assert(CombatInputProbePolicy::Classify(reason)==CombatInputProbeState::Wait);
+    assert(CombatInputProbePolicy::Classify("ready")==CombatInputProbeState::Ready);
 }
