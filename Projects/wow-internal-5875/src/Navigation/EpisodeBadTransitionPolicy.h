@@ -125,6 +125,9 @@ namespace Navigation
                 learned_.end();
         }
 
+        const std::vector<DirectedPolyTransition>& AllLearned() const
+        { return learned_; }
+
         DirectedPolyTransition FirstMatch(
             const std::vector<std::uint64_t>& corridor) const
         {

@@ -9,6 +9,7 @@
 
 #include "../Debug/Logger.h"
 #include "../Navigation/GenericNavMeshPathFollower.h"
+#include "../Navigation/DeathRouteTransitionMemory.h"
 #include "../Objects/WorldState.h"
 #include "../Wow5875/Client.h"
 
@@ -137,6 +138,8 @@ namespace Bot
         Navigation::NavPoint strategicDestination_{};
         int lastAttemptedRouteVariant_ = -1;
         Navigation::NavigationFailureEvidence lastRouteEvidence_{};
+        Navigation::DeathRouteTransitionMemory routeTransitions_{};
+        bool routeTransitionCapacityExhausted_ = false;
         DeathRecoveryTerminalPolicy::Signature terminalSignature_{};
         bool haveTerminalSignature_ = false;
 
@@ -223,9 +226,56 @@ namespace Bot
             const auto priorLearned = lastRouteEvidence_.learnedTransition;
             const auto priorGeneration = lastRouteEvidence_.meshGeneration;
             lastRouteEvidence_ = evidence;
+            routeTransitionCapacityExhausted_ =
+                routeTransitionCapacityExhausted_ ||
+                evidence.transitionEvidenceCapacityExhausted;
             if (!lastRouteEvidence_.learnedTransition.Valid() &&
                 Navigation::SameNavMeshGeneration(priorGeneration, evidence.meshGeneration))
                 lastRouteEvidence_.learnedTransition = priorLearned;
+            const bool generationChanged =
+                routeTransitions_.ObserveGeneration(evidence.meshGeneration);
+            if (generationChanged)
+            {
+                routeTransitionCapacityExhausted_ =
+                    evidence.transitionEvidenceCapacityExhausted;
+                Debug::Logger::Info(
+                    "DEATH ROUTE CONSTRAINTS decision=clear_stale_generation generation=" +
+                    std::to_string(evidence.meshGeneration));
+            }
+            const auto& edges = evidence.learnedTransitions;
+            const std::size_t shared = routeTransitions_.SharedTransitions(edges);
+            for (const auto edge : edges)
+            {
+                const bool alreadyKnown = routeTransitions_.Contains(edge);
+                const bool learned = routeTransitions_.Learn(edge);
+                if (!learned && !alreadyKnown && edge.Valid() &&
+                    evidence.meshGeneration != 0)
+                    routeTransitionCapacityExhausted_ = true;
+                Debug::Logger::Info(
+                    "DEATH ROUTE REJECTED TRANSITION episode=" +
+                    std::to_string(recoveries_) + " generation=" +
+                    std::to_string(evidence.meshGeneration) + " fromPoly=" +
+                    std::to_string(edge.from) + " toPoly=" +
+                    std::to_string(edge.to) + " reason=unsafe_route_edge" +
+                    " alreadyKnown=" + (alreadyKnown ? "yes" : "no") +
+                    " setSize=" + std::to_string(routeTransitions_.Size()) +
+                    " decision=" + (learned ? "learned" :
+                        alreadyKnown ? "retained" : "capacity_exhausted"));
+            }
+            if (evidence.corridorFingerprint != 0)
+            {
+                const bool novel = routeTransitions_.RememberCorridor(
+                    evidence.corridorFingerprint);
+                Debug::Logger::Info(
+                    "DEATH ROUTE DIVERSITY variant=" +
+                    std::to_string(lastAttemptedRouteVariant_) +
+                    " corridorFingerprint=" +
+                    std::to_string(evidence.corridorFingerprint) +
+                    " sharedRejectedTransitionCount=" +
+                    std::to_string(shared) + " novelCorridor=" +
+                    (novel ? "yes" : "no") + " decision=" +
+                    (novel ? "record" : "retain_directed_constraints"));
+            }
         }
 
         void EnterFinalTerminal(
@@ -658,6 +708,12 @@ namespace Bot
                 (allowFullMapFallback ? std::string("yes") : std::string("no")) +
                 " attempt=" + std::to_string(routeAttempts_));
 
+            Debug::Logger::Info(
+                "DEATH ROUTE CONSTRAINTS tier=route variant=" +
+                std::to_string(variant) + " rejectedTransitions=" +
+                std::to_string(routeTransitions_.Size()) +
+                " effectiveConstraintMode=directed_links");
+
             const bool started = navigator.Start(
                 player, tick, destination, mapId_, arrival, label, false,
                 Navigation::GenericNavMeshStartOptions{
@@ -665,7 +721,8 @@ namespace Bot
                     lastRouteEvidence_.meshGeneration,
                     ghostConfirmedThisRecovery_
                         ? Navigation::WaterTraversalMode::GhostDeathRecovery
-                        : Navigation::WaterTraversalMode::AvoidUntilQualified});
+                        : Navigation::WaterTraversalMode::AvoidUntilQualified,
+                    routeTransitions_.Transitions(), variant});
             if (navigator.FullMapFallbackAttempted())
             {
                 ++fullMapFallbackAttempts_;
@@ -715,6 +772,12 @@ namespace Bot
             corpseNavigatorPrecision_ = false;
             if (!EnforceMonotonicLiveness(player, tick, true))
                 return false;
+            if (routeTransitionCapacityExhausted_)
+            {
+                EnterFinalTerminal(player, tick,
+                    "directed_transition_evidence_capacity_exhausted");
+                return false;
+            }
 
             if (strategicApproachUsed_ && !strategicApproachPending_)
             {
@@ -1139,6 +1202,8 @@ namespace Bot
             strategicDestination_ = Navigation::NavPoint{};
             lastAttemptedRouteVariant_ = -1;
             lastRouteEvidence_ = Navigation::NavigationFailureEvidence{};
+            routeTransitions_.Reset();
+            routeTransitionCapacityExhausted_ = false;
             terminalSignature_ = DeathRecoveryTerminalPolicy::Signature{};
             haveTerminalSignature_ = false;
             lastPhysicalProgressTick_ = tick;
@@ -1813,6 +1878,8 @@ namespace Bot
             strategicDestination_ = Navigation::NavPoint{};
             lastAttemptedRouteVariant_ = -1;
             lastRouteEvidence_ = Navigation::NavigationFailureEvidence{};
+            routeTransitions_.Reset();
+            routeTransitionCapacityExhausted_ = false;
             terminalSignature_ = DeathRecoveryTerminalPolicy::Signature{};
             haveTerminalSignature_ = false;
             ghostConfirmedThisRecovery_ = false;

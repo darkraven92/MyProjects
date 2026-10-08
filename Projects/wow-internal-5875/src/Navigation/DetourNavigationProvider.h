@@ -10,6 +10,8 @@
 #include "IncrementalTileInitializationPolicy.h"
 #include "MapNavMeshSessionCache.h"
 #include "LivingWaterTraversalPolicy.h"
+#include "DirectedTransitionQueryPolicy.h"
+#include "EpisodeBadTransitionPolicy.h"
 #include "TerrainTransitionPolicy.h"
 
 #include <windows.h>
@@ -96,6 +98,8 @@ namespace Navigation
         bool avoidanceActive = false;
         int avoidanceRequestedCount = 0;
         int avoidanceAppliedCount = 0;
+        int directedTransitionsRequested = 0;
+        int directedLinksMasked = 0;
         std::vector<std::uint64_t> avoidedPolygons;
 
         std::vector<NavPoint> points;
@@ -2078,6 +2082,88 @@ namespace Navigation
                 result.avoidedPolygons.push_back(
                     static_cast<std::uint64_t>(item.ref));
 
+            return ok;
+        }
+
+        // The local Detour fork has no virtual edge-aware query filter, but
+        // findPath() expands the directed dtLink chain and skips ref==0.
+        // Temporarily mask only A->B links while holding the topology lock;
+        // C->B and B->A remain queryable. All links are restored before the
+        // lock is released, including on query failure or exception.
+        bool FindPathAvoidingTransitions(
+            const NavPoint& start, const NavPoint& destination,
+            const std::vector<std::uint64_t>& blockedPolygons,
+            const std::vector<DirectedPolyTransition>& blockedTransitions,
+            NavPathResult& result)
+        {
+            std::lock_guard lock(Cache().Mutex());
+            if (blockedTransitions.empty())
+                return blockedPolygons.empty()
+                    ? FindPath(start, destination, result)
+                    : FindPathAvoidingPolygons(
+                        start, destination, blockedPolygons, result);
+
+            result = NavPathResult{};
+            result.directedTransitionsRequested =
+                static_cast<int>(blockedTransitions.size());
+            if (!CurrentTopology() || mesh_ == nullptr || query_ == nullptr)
+            {
+                result.error = "Navmesh cache generation invalidated.";
+                return false;
+            }
+
+            using SavedLink = DirectedTransitionQueryPolicy::SavedLink<dtLink>;
+            std::vector<SavedLink> saved;
+            struct LinkRestoration
+            {
+                std::vector<SavedLink>& links;
+                ~LinkRestoration()
+                { DirectedTransitionQueryPolicy::Restore(links); }
+            } restoration{saved};
+
+            for (const DirectedPolyTransition edge : blockedTransitions)
+            {
+                if (!edge.Valid())
+                {
+                    result.error = "Invalid directed transition constraint.";
+                    return false;
+                }
+                const dtMeshTile* fromTile = nullptr;
+                const dtPoly* fromPoly = nullptr;
+                const dtMeshTile* toTile = nullptr;
+                const dtPoly* toPoly = nullptr;
+                if (dtStatusFailed(mesh_->getTileAndPolyByRef(
+                        static_cast<dtPolyRef>(edge.from),
+                        &fromTile, &fromPoly)) ||
+                    dtStatusFailed(mesh_->getTileAndPolyByRef(
+                        static_cast<dtPolyRef>(edge.to),
+                        &toTile, &toPoly)) ||
+                    fromTile == nullptr || fromTile->header == nullptr ||
+                    fromTile->header->maxLinkCount <= 0)
+                {
+                    result.error = "Directed transition ref is stale or unavailable.";
+                    return false;
+                }
+                (void)toTile;
+                (void)toPoly;
+                if (!DirectedTransitionQueryPolicy::Mask(
+                        fromTile->links, fromPoly->firstLink,
+                        static_cast<unsigned int>(fromTile->header->maxLinkCount),
+                        DT_NULL_LINK, edge.to, saved))
+                {
+                    result.error = "Directed transition link is unavailable.";
+                    return false;
+                }
+            }
+
+            const int appliedLinks = static_cast<int>(saved.size());
+            const bool ok = blockedPolygons.empty()
+                ? FindPath(start, destination, result)
+                : FindPathAvoidingPolygons(
+                    start, destination, blockedPolygons, result);
+            result.directedTransitionsRequested =
+                static_cast<int>(blockedTransitions.size());
+            result.directedLinksMasked = appliedLinks;
             return ok;
         }
 

@@ -465,3 +465,33 @@ Run the audit against the preserved NEW full log. Remaining18 acquisition
 idle-deadlock resets and any actual issued-command stalls are next evidence
 targets, not silently marked resolved. No swimming or later V6 phase begins
 inside this checkpoint.
+# P0.5.8 DeathRecovery long-route transition avoidance (2026-10-08)
+
+The P0.5.7 manual run gave generated-roam preflight RUNTIME PASS (5 candidates,
+2 skipped, 3 accepted, no destination projection failures, one projected
+destination reached). Partial-stage episode reset is RUNTIME PENDING. A natural
+death then exposed unsafe vertical edges during a long corpse-route replan;
+route variants and full-map fallback did not find a safe alternative. The
+3.851/6.040 and 3.269/6.562 transitions remain unsafe and must be rejected.
+
+Source audit: `NAV 15B.1` used a proven directed pair A→B but converted it to
+temporary whole-polygon B exclusion (`requestedTargets=1`,
+`appliedPolygons=1`). This also rejects a potentially safe C→B entry. The
+local Detour `findPath` expands each polygon's directed `dtLink` chain and skips
+zero refs. A query-scoped mask of only A→B links, under the session-cache lock,
+preserves C→B and B→A. Saved link refs are restored before releasing the lock.
+The cached topology is not persistently changed. Source-validated 14O.1 terrain
+checks still run on every resulting route. A query returning an excluded edge
+fails closed. The existing route→expanded→full-map sequence and all attempt
+counts remain unchanged.
+
+One DeathRecovery episode now carries a bounded, mesh-generation-tagged set of
+proven rejected edges across its followers and corpse-anchor variants. The set
+is reset for a new death episode/resurrection or incompatible generation;
+unknown generation cannot authorize reuse. Rejected-corridor fingerprints are
+tracked for variant-diversity telemetry; no candidate is accepted solely due
+to a new offset or fingerprint. A safe route remains unproven until a manual
+natural-death runtime. P0.5.8 TEST PASS / BUILD PASS / DIFF CHECK PASS in the
+full worktree (101 C++ / 26 audit Python / 13 QuestDB Python / SQL / 10 Lua)
+and exact staged tree (52 C++ / 26 audit Python / SQL / five Lua). P0.5.8
+RUNTIME PENDING.

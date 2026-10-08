@@ -9,10 +9,40 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.7 generated-roam preflight and partial-staging scope**. P0.4 autonomous
+- Current phase: V6 **P0.5.8 DeathRecovery long-route transition avoidance**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.8 long DeathRecovery route (2026-10-08)
+
+Starting published HEAD `4123a6dbc5d6fbe026385bc2648b8509da9faade`.
+The manual P0.5.7 run proved generated-roam preflight **RUNTIME PASS**:
+five preflights, two unsafe/unresolvable skips before movement intent, three
+projected accepts, zero `destination_projection_failed`, one projected roam
+destination reached, two kills, two successful loots and +381 XP. The
+partial-stage episode branch was not exercised and remains **RUNTIME PENDING**;
+P0.5.7 overall is **PARTIAL RUNTIME PASS**.
+
+A natural death then found a 146-poly/921.723-yard corpse route but later
+replanning exposed genuinely unsafe vertical directed transitions (including
+3.851 horizontal/6.040 vertical and 3.269/6.562). Terrain rejection was
+correct; corpse-anchor variants and full-map fallback converged on the same
+route family and ended `surface_recovery_exhausted`. The prior 15B.1 alternate
+query temporarily excluded each rejected edge's destination polygon, which
+also removed potentially safe C→B entries. P0.5.8 instead masks only proven
+A→B Detour links during the locked path query and restores them immediately.
+Episode-local rejected edges cross route/expanded/full-map and bounded corpse
+variants only for the same NavMesh generation. Terrain validation, ghost
+Ground|Water policy, living water avoidance, hazard memory and 2000/4/2 budgets
+remain authoritative. This is search-quality work, not proof of a safe route.
+P0.5.8 runtime is **PENDING**; no WoW/GUI launched in this checkpoint. P0.6
+remains **STATIC PASS / RUNTIME PENDING**; P0.4 remains PAUSED.
+P0.5.8 static is **TEST PASS / BUILD PASS / DIFF CHECK PASS**: final full
+worktree validation passed 101 C++ tests, 26 audit Python tests, 13 QuestDB
+Python tests, SQL, and 10 Lua fixtures; the fresh exact staged tree passed 52
+published C++ tests, 26 audit Python tests, SQL, and five published Lua
+fixtures with the complete MinGW build. Extra local tests remain uncommitted.
 
 ## P0.5.7 generated roam targets and partial staging (2026-10-08)
 

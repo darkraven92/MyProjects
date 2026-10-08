@@ -55,6 +55,8 @@ namespace Navigation
         DirectedPolyTransition initialAvoidedTransition{};
         std::uint64_t initialTransitionMeshGeneration = 0;
         WaterTraversalMode waterTraversal = WaterTraversalMode::AvoidUntilQualified;
+        std::vector<DirectedPolyTransition> initialAvoidedTransitions{};
+        int diagnosticVariant = -1;
     };
 
     struct NavigationFailureEvidence
@@ -71,6 +73,8 @@ namespace Navigation
         bool lastSafePositionKnown = false;
         DirectedPolyTransition failedTransition{};
         DirectedPolyTransition learnedTransition{};
+        std::vector<DirectedPolyTransition> learnedTransitions{};
+        bool transitionEvidenceCapacityExhausted = false;
         std::uint64_t corridorFingerprint = 0;
         std::uint64_t meshGeneration = 0;
     };
@@ -570,6 +574,8 @@ namespace Navigation
         std::vector<NavPoint> surfaceEpisodeTargets_{};
 
         std::uint64_t lastPathFingerprint_ = 0;
+        std::uint64_t lastRejectedCorridorFingerprint_ = 0;
+        bool transitionEvidenceCapacityExhausted_ = false;
         std::uint64_t lastSteeringLogTick_ = 0;
         std::uint64_t lastSteeringLogFingerprint_ = 0;
         std::size_t lastSteeringLogCandidate_ = static_cast<std::size_t>(-1);
@@ -5330,6 +5336,22 @@ namespace Navigation
             bool terrainRejected = false;
             std::vector<std::uint64_t> effectiveBlockedPolygons =
                 blockedPolygons;
+            const auto queryWithConstraints =
+                [&](const std::vector<std::uint64_t>& polygons,
+                    NavPathResult& result)
+            {
+                return provider_.FindPathAvoidingTransitions(
+                    PlayerPoint(player), planningDestination, polygons,
+                    badVerticalTransitions_.AllLearned(), result);
+            };
+            if (destinationLabel_.find("death recovery") != std::string::npos)
+                Debug::Logger::Info(
+                    "DEATH ROUTE CONSTRAINTS tier=" +
+                    std::string(NavigationInitTelemetryPolicy::TierName(currentInitTier_)) +
+                    " variant=" + std::to_string(startOptions_.diagnosticVariant) +
+                    " rejectedTransitions=" +
+                    std::to_string(badVerticalTransitions_.AllLearned().size()) +
+                    " effectiveConstraintMode=directed_links");
             if (!blockedPolygons.empty())
             {
                 Debug::Logger::Info(
@@ -5339,11 +5361,7 @@ namespace Navigation
                     std::to_string(persistentHazardPolygons.size()) +
                     " totalAvoided=" + std::to_string(blockedPolygons.size()));
 
-                queryOk = provider_.FindPathAvoidingPolygons(
-                    PlayerPoint(player),
-                    planningDestination,
-                    blockedPolygons,
-                    path);
+                queryOk = queryWithConstraints(blockedPolygons, path);
 
                 // A temporary transition blacklist may over-constrain a route.
                 // Persistent hard cells are stronger evidence and are never
@@ -5353,11 +5371,7 @@ namespace Navigation
                     Debug::Logger::Info(
                         "NAVMESH 14I.0: combined avoidance had no corridor; "
                         "retrying with persistent hard hazards only.");
-                    queryOk = provider_.FindPathAvoidingPolygons(
-                        PlayerPoint(player),
-                        planningDestination,
-                        persistentHazardPolygons,
-                        path);
+                    queryOk = queryWithConstraints(persistentHazardPolygons, path);
                     effectiveBlockedPolygons = persistentHazardPolygons;
                 }
 
@@ -5367,10 +5381,7 @@ namespace Navigation
                         "NAVMESH 13D.4: transient avoidance produced no complete corridor; "
                         "falling back once to the unmodified mesh query while preserving "
                         "the transition failure history.");
-                    queryOk = provider_.FindPath(
-                        PlayerPoint(player),
-                        planningDestination,
-                        path);
+                    queryOk = queryWithConstraints({}, path);
                     effectiveBlockedPolygons.clear();
                 }
                 else if (!queryOk)
@@ -5384,8 +5395,7 @@ namespace Navigation
                         Debug::Logger::Info(
                             "NAV HAZARD 14I.0: no hazard-free corpse corridor exists; "
                             "using one critical recovery fallback while local stall guards remain active.");
-                        queryOk = provider_.FindPath(
-                            PlayerPoint(player), planningDestination, path);
+                        queryOk = queryWithConstraints({}, path);
                         effectiveBlockedPolygons.clear();
                     }
                     else
@@ -5401,70 +5411,32 @@ namespace Navigation
             }
             else
             {
-                queryOk = provider_.FindPath(
-                    PlayerPoint(player),
-                    planningDestination,
-                    path);
+                queryOk = queryWithConstraints({}, path);
             }
 
-            // 13D.4 can only mask a whole target polygon. Apply that
-            // approximation *after* proving that this particular route uses
-            // the learned directed edge. A reverse B->A route is untouched.
+            // An already-rejected A->B must not reappear in a constrained
+            // Detour result. Never accept it by falling back to polygon B.
             const DirectedPolyTransition matchedBadEdge = queryOk
                 ? badVerticalTransitions_.FirstMatch(path.corridorPolys)
                 : DirectedPolyTransition{};
             if (matchedBadEdge.Valid())
             {
-                const std::uint64_t candidateFingerprint =
-                    FingerprintPath(path.points);
-                std::vector<std::uint64_t> avoidancePolygons =
-                    effectiveBlockedPolygons;
-                const auto matchedTargets =
-                    badVerticalTransitions_.MatchedTargetPolygons(
-                        path.corridorPolys);
-                for (const std::uint64_t target : matchedTargets)
-                {
-                    if (std::find(avoidancePolygons.begin(),
-                                  avoidancePolygons.end(), target) ==
-                        avoidancePolygons.end())
-                        avoidancePolygons.push_back(target);
-                }
-                NavPathResult alternative{};
-                const bool alternateQueryOk = provider_.FindPathAvoidingPolygons(
-                    PlayerPoint(player), planningDestination,
-                    avoidancePolygons, alternative);
-                const auto alternativeDecision =
-                    badVerticalTransitions_.AssessAlternative(
-                        path.corridorPolys, alternateQueryOk,
-                        alternative.corridorPolys);
-                const bool alternativeAvoidsBadEdge =
-                    alternativeDecision == EpisodeBadTransitionPolicy::
-                        AlternativeDecision::UseAlternative;
                 Debug::Logger::Info(
                     "NAV 15B.1 TRANSITION AVOIDANCE fromPoly=" +
                     HexPoly(matchedBadEdge.from) + " toPoly=" +
                     HexPoly(matchedBadEdge.to) +
-                    " decision=" + (alternativeAvoidsBadEdge
-                        ? std::string("applied") : std::string("no_alternative")) +
-                    " requestedTargets=" + std::to_string(matchedTargets.size()) +
-                    " appliedPolygons=" +
-                    std::to_string(alternative.avoidanceAppliedCount) +
-                    " corridorFingerprint=" +
-                    std::to_string(candidateFingerprint));
-                if (alternativeAvoidsBadEdge)
-                    path = std::move(alternative);
-                else
-                {
-                    directedNoAlternative = true;
-                    queryOk = false;
-                    path.error =
-                        "No alternate corridor around exhausted vertical transition.";
-                }
+                    " decision=reject_constraint_violation requestedTransitions=" +
+                    std::to_string(path.directedTransitionsRequested) +
+                    " appliedLinks=" +
+                    std::to_string(path.directedLinksMasked));
+                directedNoAlternative = true;
+                queryOk = false;
+                path.error = "Constrained query returned a rejected directed transition.";
             }
 
             // A Detour link is not proof that WoW can walk its portal. Check
             // every ALL_CROSSINGS movement leg before entering Moving. Reuse
-            // the same directed episode memory/13D.4 polygon masking for a
+            // the same directed episode memory/query constraints for a
             // bounded alternate, rather than issuing a CTM toward the cliff.
             for (int terrainQuery = 0; queryOk; ++terrainQuery)
             {
@@ -5475,6 +5447,8 @@ namespace Navigation
 
                 const DirectedPolyTransition rejected{
                     terrain.fromPoly, terrain.toPoly};
+                lastRejectedCorridorFingerprint_ =
+                    FingerprintCorridor(path.corridorPolys);
                 Debug::Logger::Info(
                     "NAV 14O.1 TERRAIN REJECT fromPoly=" +
                     HexPoly(terrain.fromPoly) + " toPoly=" +
@@ -5537,21 +5511,21 @@ namespace Navigation
                     break;
                 }
 
+                if (!badVerticalTransitions_.Learned(rejected) &&
+                    badVerticalTransitions_.AllLearned().size() >=
+                        EpisodeBadTransitionPolicy::MaximumLearned &&
+                    destinationLabel_.find("death recovery") != std::string::npos)
+                {
+                    queryOk = false;
+                    terrainRejected = true;
+                    transitionEvidenceCapacityExhausted_ = true;
+                    path.error = "Directed transition evidence capacity exhausted.";
+                    break;
+                }
                 badVerticalTransitions_.Learn(rejected);
-                std::vector<std::uint64_t> avoidancePolygons =
-                    effectiveBlockedPolygons;
-                for (const std::uint64_t target :
-                     badVerticalTransitions_.MatchedTargetPolygons(
-                         path.corridorPolys))
-                    if (std::find(avoidancePolygons.begin(),
-                                  avoidancePolygons.end(), target) ==
-                        avoidancePolygons.end())
-                        avoidancePolygons.push_back(target);
-
                 NavPathResult alternative{};
-                const bool alternativeOk = provider_.FindPathAvoidingPolygons(
-                    PlayerPoint(player), planningDestination,
-                    avoidancePolygons, alternative);
+                const bool alternativeOk = queryWithConstraints(
+                    effectiveBlockedPolygons, alternative);
                 const bool useAlternative =
                     badVerticalTransitions_.AssessAlternative(
                         path.corridorPolys, alternativeOk,
@@ -5564,6 +5538,10 @@ namespace Navigation
                         ? "alternate" : "no_alternative") +
                     " fromPoly=" + HexPoly(rejected.from) +
                     " toPoly=" + HexPoly(rejected.to) +
+                    " requestedTransitions=" +
+                    std::to_string(alternative.directedTransitionsRequested) +
+                    " appliedLinks=" +
+                    std::to_string(alternative.directedLinksMasked) +
                     " attempt=" + std::to_string(terrainQuery + 1) +
                     "/" + std::to_string(MaximumTerrainAlternativeQueries));
                 if (!useAlternative)
@@ -6681,6 +6659,8 @@ namespace Navigation
             surfaceRecoveryBestTargetDistance_ = 0.0f;
             repeatedCorridorPlans_ = 0;
             lastPathFingerprint_ = 0;
+            lastRejectedCorridorFingerprint_ = 0;
+            transitionEvidenceCapacityExhausted_ = false;
             failedCorridor_ = CorridorFailureRecord{};
             issuedOrdinarySteeringTargetValid_ = false;
             partialStageActive_ = false;
@@ -6794,11 +6774,17 @@ namespace Navigation
             StopAtCurrentPosition(player);
             const bool began = BeginInitializationTier(
                 player, NavigationInitTier::Route, error);
-            if (began && options.initialAvoidedTransition.Valid())
+            if (began && (options.initialAvoidedTransition.Valid() ||
+                !options.initialAvoidedTransitions.empty()))
             {
                 if (SameNavMeshGeneration(options.initialTransitionMeshGeneration,
                         provider_.CacheStats().generation))
-                    badVerticalTransitions_.Learn(options.initialAvoidedTransition);
+                {
+                    for (const auto edge : options.initialAvoidedTransitions)
+                        badVerticalTransitions_.Learn(edge);
+                    if (options.initialAvoidedTransition.Valid())
+                        badVerticalTransitions_.Learn(options.initialAvoidedTransition);
+                }
                 else
                     Debug::Logger::Info(
                         "NAV CACHE EDGE REJECT reason=stale_or_unknown_generation");
@@ -7729,13 +7715,18 @@ namespace Navigation
             evidence.failurePositionKnown = lastObservedPlayerPositionValid_;
             evidence.lastSafePosition = lastSafeNav_.position;
             evidence.lastSafePositionKnown = lastSafeNav_.valid;
-            evidence.corridorFingerprint = lastPathFingerprint_;
+            evidence.corridorFingerprint =
+                lastRejectedCorridorFingerprint_ != 0
+                    ? lastRejectedCorridorFingerprint_ : lastPathFingerprint_;
             evidence.meshGeneration = provider_.CacheStats().generation;
             if (failedCorridor_.transitionKnown)
                 evidence.failedTransition = {
                     failedCorridor_.failedFromPoly,
                     failedCorridor_.failedToPoly};
             evidence.learnedTransition = badVerticalTransitions_.LatestLearned();
+            evidence.learnedTransitions = badVerticalTransitions_.AllLearned();
+            evidence.transitionEvidenceCapacityExhausted =
+                transitionEvidenceCapacityExhausted_;
             return evidence;
         }
 
