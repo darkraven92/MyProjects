@@ -1,6 +1,6 @@
 # Project
 
-Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
+Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 
 - Repository scope: `/home/ludvig/Programming/Projects/wow-internal-5875`.
 - Git root is `/home/ludvig/Programming`; sibling projects are OUT OF SCOPE.
@@ -9,10 +9,65 @@ Updated: 2026-10-07. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5 combat reliability closure**. P0.4 autonomous
+- Current phase: V6 **P0.5.1 active-aggressor containment**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.1 active-aggressor containment checkpoint (2026-10-08)
+
+Starting HEAD `cdaa0486a74d29a5c952acbb072a85e474f51288` verified.
+The newest ~98-minute natural Grind made 132 kills, 131 successful loots,
+one DeathRecovery, and no movement recovery/idle deadlock/escalation before
+active aggressor `0xF130000CD400514A` stalled at 80 HP. Selected GUID,
+server victim, target victim, melee range, facing and Attack were correct;
+player HP kept falling. Bounded refresh and same-target reengage restored the
+latch, then a full fresh offensive observation window still saw no damage.
+The prior terminal policy treated this live hostile as a system failure and
+stopped the entire bot. Its `repairAttempts=2` was two repair dispatches,
+not exhaustion of the three-dispatch ceiling; one hard refresh had been used.
+P0.5 normal long-run status is RUNTIME FAIL at this active-aggressor terminal
+event. P0.2.1 hard-refresh/post-reengage observation timing is RUNTIME PASS:
+the complete fresh window elapsed; the still-unproductive hostile is the
+separate P0.5.1 terminal-containment problem.
+
+P0.5.1 adds one bounded, target-bound defensive containment episode before
+that fatal branch: verify own Attack stop, plan a deterministic short dry
+Detour escape from a complete aggressor-position snapshot, preserve hostile
+identity and route/navigation ownership, and require sustained native combat-
+and-aggressor-clear evidence before optional blacklist or mandatory owner
+failure. Verified damage alone may resume the same fight with a fresh offense
+clock; route dispatch and distance are not success. DeathRecovery still
+preempts; water blocking cancels movement. Failed escape or contradictory
+evidence remains explicitly fatal. No 3-repair/1-refresh, 120-second blacklist,
+AFK, navigation 2000/4/2, or P0.4-TEMP water budget/policy changed. See
+`docs/COMBAT_RELIABILITY_AUDIT.md`. Static status: SOURCE VERIFIED, TEST PASS,
+BUILD PASS, DIFF CHECK PASS. Earlier full dirty worktree: 96 strict C++ tests, 26 audit
+Python, 13 QuestDB Python, SQL fixture, eight Lua fixtures and DLL build PASS;
+`/tmp/wow-validation-4jwcmhuh/results.json`. Isolated intended staged tree:
+47 strict C++ tests, 26 audit Python, SQL fixture, three published Lua
+fixtures, DLL/GUI/loader build PASS;
+`/tmp/wow-validation-0j4fb46l/results.json`, including the final native-health
+freshness guard. A normal GUI launch was attempted: GUI opened with WoW
+stopped, but Start WoW did not start the client or create a gameplay session.
+The launch replaced `build/wow-internal.log` (formerly ~20 MB) with a 253 KB
+startup log; no old full-log copy was found in `runtime-captures/` or `debug/`.
+The GUI opened for this attempt was closed. No new normal 30-minute Grind
+or natural active-aggressor terminal containment occurred; P0.5.1 RUNTIME
+PENDING. P0.4 remains PAUSED and P0.4-TEMP remains preserved.
+
+Final post-ownership-hunk validation: full dirty worktree TEST PASS (96 strict
+C++ tests, 26 navigation/water audit Python tests, 13 QuestDB Python tests,
+SQL fixture, eight Lua fixtures), results
+`/tmp/wow-validation-vj7xyv1l/results.json`. Fresh HEAD-plus-exact-staged
+isolated tree `/tmp/wow-p051-final.4Yrndf` TEST PASS (47 strict C++ tests,
+26 navigation/water audit Python tests, QuestDB SQL fixture, three published
+Lua fixtures) and MinGW DLL/GUI/loader BUILD PASS; results
+`/tmp/wow-validation-h2xbh6j7/results.json`. The final WorldMonitor activity
+reports Movement only while the containment follower owns planning or
+movement; arrival leaves the bounded containment policy observing hostile
+evidence rather than manufacturing movement liveness. DIFF CHECK PASS.
+Do not call the rare containment branch RUNTIME PASS without a natural episode.
 
 ## P0.5 combat closure checkpoint (2026-10-07)
 

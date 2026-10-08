@@ -15,6 +15,7 @@ namespace Bot
         struct ExecutionEvidence
         {
             bool known=false, aggressorsKnown=false, aggressor=false;
+            std::uint32_t aggressorCount=0;
             std::uint64_t selected=0, playerVictim=0, targetVictim=0;
             std::uint32_t targetHp=0, targetMaxHp=0, playerHp=0, attackPeriodMs=0;
             std::uint32_t playerFlags=0, targetFlags=0, dynamicFlags=0, faction=0;
@@ -60,7 +61,8 @@ namespace Bot
                         if (!guid || !Core::Memory::Read(current+0x08,descriptor) || !descriptor ||
                             !Core::Memory::Read(descriptor+0x58,hp) || !Core::Memory::Read(descriptor+0x40,victim)) return;
                         if (guid==world.activePlayerGuid) playerSeen=current==world.player.address;
-                        else if (hp && victim==world.activePlayerGuid) e.aggressor=true;
+                        else if (hp && victim==world.activePlayerGuid)
+                        { e.aggressor=true; ++e.aggressorCount; }
                     }
                     current=next;
                 }

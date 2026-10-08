@@ -1,5 +1,89 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5.1 active-aggressor defensive containment (2026-10-08)
+
+Starting HEAD `cdaa0486a74d29a5c952acbb072a85e474f51288` was verified.
+The newest natural ~98-minute Grind run made 132 kills and 131 successful
+loots, with one successful natural DeathRecovery, zero movement recoveries,
+zero idle deadlocks and zero runtime escalations before its terminal combat
+failure. Target `0xF130000CD400514A` was selected and was the server victim;
+the target victim was the player, both combat flags and Attack were active,
+range was ~1.68 yd and facing was valid. Target HP stopped at 80 while player
+HP fell to 405. One hard refresh stopped Attack, then a same-target reengage
+restored the structural latch. A fresh active offensive window still produced
+no damage. `bounded_same_target_recovery_exhausted` led to `system_fail`,
+CombatController Failed and a whole-bot stop. This is not a recurrence of the
+old stale post-reengage clock: the full observation window elapsed.
+P0.5 normal long-run is RUNTIME FAIL for this terminal event. The P0.2.1
+hard-refresh/post-reengage observation timing is RUNTIME PASS, while this
+new active-aggressor containment branch remains RUNTIME PENDING.
+
+The logged `repairAttempts=2` counted dispatched repair actions (hard refresh
+and reengage), not a claim that the maximum-three repair-dispatch ceiling was
+reached. The one-hard-refresh branch can terminate after a full unsuccessful
+post-reengage offensive window while only two dispatches were spent. Telemetry
+now says `repairDispatches=2 repairLimit=3 hardRefreshLimit=1`; no limit or
+observation window changed. The terminal's `terminal_owner_not_recoverable`
+attribution also came from excluding temporary Grind whenever the unrelated
+Vile Familiars quest-status flag was active. Temporary Grind ownership now
+takes precedence unless a planner quest target actually owns the episode.
+
+An exhausted active/unknown hostile enters target-bound
+`DefensiveContainment` before passive abandonment or whole-bot failure. It
+preserves the same GUID, stops own attack and CTM once, verifies Attack has
+stopped, and uses one short deterministic away-point through the existing
+Detour follower. The source-verified live object-manager aggressor count must
+match the snapshot positions used for the away vector; incomplete threat
+geometry fails closed. The follower uses the production-default living
+Ground-only/Water-excluding query and existing terrain/hazard validation;
+no water, navigation or combat budget was expanded. Navigation initialization
+and route execution own movement liveness while containment is active.
+Command dispatch, route arrival or distance alone never proves success.
+
+Authoritative disengagement requires complete native aggressor enumeration,
+no player combat flag, no live aggressor and no target victim linkage for a
+continuous structural verification window. Only then does the existing
+guarded terminal-release protocol clear/verify own Attack and selection,
+blacklist a genuinely optional GUID for the existing 120 seconds, or return
+a typed mandatory owner failure. A target already selected/victim/Attack-clear
+after escape is verified without issuing a duplicate clear. There is no kill
+credit. Verified target damage can re-enter the same fight with a fresh
+offensive observation clock; mere escape/reselection does not refund repairs
+or permit another containment episode. Natural death preempts to the existing
+DeathRecovery path without blacklisting. An unsafe/failed route, unconfirmed
+Attack stop, water block or elapsed 30-second containment bound remains an
+explicit `defensive_containment_exhausted` failure, not silent idle.
+
+This checkpoint is SOURCE VERIFIED, TEST PASS, BUILD PASS and DIFF CHECK PASS
+based on earlier validation; final validation of the last ownership hunk is
+recorded separately below.
+Full dirty-worktree validation passed 96 strict C++ tests, 26 audit Python
+tests, 13 QuestDB Python tests, SQL fixture and eight Lua fixtures; results
+`/tmp/wow-validation-4jwcmhuh/results.json`. The isolated intended staged
+tree passed 47 strict C++ tests, 26 audit Python tests, SQL fixture, three
+published Lua fixtures and complete MinGW DLL/GUI/loader build; results
+`/tmp/wow-validation-0j4fb46l/results.json`, including the final native-health
+freshness guard. A normal GUI launch attempt opened with WoW stopped; its
+Start WoW control did not start a client/gameplay session. The GUI launch
+replaced `build/wow-internal.log` (previously ~20 MB) with a 253 KB startup
+log; no copy of the former full log was found under `runtime-captures/` or
+`debug/`. The terminal episode above was inspected before that launch.
+The active-aggressor containment runtime branch is RUNTIME PENDING until a
+natural episode exercises it. P0.4 autonomous swimming remains PAUSED.
+
+Final post-ownership-hunk validation: full dirty worktree TEST PASS (96 strict
+C++ tests, 26 navigation/water audit Python tests, 13 QuestDB Python tests,
+SQL fixture, eight Lua fixtures), results
+`/tmp/wow-validation-vj7xyv1l/results.json`. Fresh HEAD-plus-exact-staged
+isolated tree `/tmp/wow-p051-final.4Yrndf` TEST PASS (47 strict C++ tests,
+26 navigation/water audit Python tests, QuestDB SQL fixture, three published
+Lua fixtures) and complete MinGW DLL/GUI/loader BUILD PASS; results
+`/tmp/wow-validation-h2xbh6j7/results.json`. Route arrival is neither
+disengagement nor failure. WorldMonitor attributes movement liveness only
+while the defensive follower is actually planning or moving; the policy's
+unchanged 30-second bound covers stationary combat/disengagement observation.
+DIFF CHECK PASS. P0.4-TEMP living-water avoidance remains preserved.
+
 ## P0.5 chase/terminal closure (2026-10-07; static validation in progress)
 
 Starting HEAD `bf08ec65c53edcb751d6c37da5533c5b00e2cb9b` was verified.

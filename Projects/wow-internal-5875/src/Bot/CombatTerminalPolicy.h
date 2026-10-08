@@ -42,6 +42,22 @@ namespace Bot
             if (!observing_)
             { observing_=true; guid_=s.targetGuid; started_=s.nowMs; hp_=s.playerHp; }
             hp_=s.playerHp; // a heal must not hide a later HP drop
+            // Defensive escape may have stopped and cleared our own Attack
+            // before this terminal verifier ran. Confirming all three native
+            // ownership fields clear is stronger than dispatching a redundant
+            // target-clear command, and still never counts as a kill.
+            if (!issued_ && !s.selectedGuid && !s.serverVictimGuid &&
+                s.attackKnown && !s.attackActive)
+            {
+                if (s.nowMs-started_<VerificationMs)
+                    return {CombatTerminalAction::Observe,
+                        "verifying_already_clear_own_target"};
+                return s.mandatoryObjective
+                    ? CombatTerminalDecision{CombatTerminalAction::OwnerFailure,
+                        "mandatory_combat_liveness_exhausted"}
+                    : CombatTerminalDecision{CombatTerminalAction::Abandoned,
+                        "own_attack_and_selection_verified_clear"};
+            }
             if (issued_)
             {
                 if (!s.selectedGuid && !s.serverVictimGuid && s.attackKnown && !s.attackActive)

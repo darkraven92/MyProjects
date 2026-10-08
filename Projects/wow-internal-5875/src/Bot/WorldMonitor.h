@@ -1291,6 +1291,18 @@ namespace Bot
                         }
                     }
                     else if (
+                        combat.State() == CombatState::DefensiveContainment)
+                    {
+                        // The follower owns movement liveness only while it
+                        // is planning or moving. Attack-stop/disengagement
+                        // observation is bounded by containment itself.
+                        if (combat.DefensiveContainmentOwnsMovement())
+                        {
+                            autonomySample.activity = AutonomyActivity::Movement;
+                            autonomySample.identity = combat.LockedGuid();
+                        }
+                    }
+                    else if (
                         grindMode.State() == GrindModeState::ApproachingTarget ||
                         grindMode.State() == GrindModeState::Roaming)
                     {
@@ -1304,7 +1316,9 @@ namespace Bot
                     autonomySample.z = world.player.z;
                     autonomySample.monotonicMs = GetTickCount64();
                     autonomySample.navigationInitialization =
-                        grindMode.NavigationInitializationObservation();
+                        combat.State() == CombatState::DefensiveContainment
+                            ? combat.DefensiveContainmentInitialization()
+                            : grindMode.NavigationInitializationObservation();
                     const auto& work = autonomySample.navigationInitialization;
                     if (work.Valid() &&
                         (!lastAutonomyInitialization.pending ||
@@ -1421,9 +1435,11 @@ namespace Bot
                     robustnessSample.vendorActive =
                         grindMode.State() == GrindModeState::Vendoring;
                     robustnessSample.navigationInitializationPending =
-                        grindMode.NavigationInitializationPending();
+                        grindMode.NavigationInitializationPending() ||
+                        combat.DefensiveContainmentInitialization().pending;
                     robustnessSample.navigationOwned =
-                        grindMode.NavigationOwnsMovement() || navMeshReturn.OwnsMovement();
+                        grindMode.NavigationOwnsMovement() || navMeshReturn.OwnsMovement() ||
+                        combat.DefensiveContainmentOwnsMovement();
                     robustnessSample.deathRecoveryActive = deathRecoveryOwnedTick;
                     robustnessSample.dialogActive = vileFamiliarsTurnIn.IsActive();
                     robustnessSample.vendorState =

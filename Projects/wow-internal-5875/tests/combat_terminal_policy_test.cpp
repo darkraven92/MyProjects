@@ -68,4 +68,16 @@ int main()
     p.Reset(); s=Sample(); s.optionalGrind=false; s.mandatoryObjective=true;
     s.hostileEngaged=true;
     assert(p.Observe(s).action==CombatTerminalAction::SystemFail);
+
+    // An already stopped own attack after verified defensive disengagement
+    // needs no duplicate clear command and never credits a kill.
+    p.Reset(); s=Sample(); s.selectedGuid=s.serverVictimGuid=0;
+    s.attackActive=false;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s.nowMs=1001;
+    assert(p.Observe(s).action==CombatTerminalAction::Abandoned);
+    p.Reset(); s=Sample(); s.optionalGrind=false; s.mandatoryObjective=true;
+    s.selectedGuid=s.serverVictimGuid=0; s.attackActive=false;
+    p.Observe(s); s.nowMs=1001;
+    assert(p.Observe(s).action==CombatTerminalAction::OwnerFailure);
 }

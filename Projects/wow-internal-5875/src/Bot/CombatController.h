@@ -5,6 +5,7 @@
 #include "AutoAttackController.h"
 #include "CombatLivenessPolicy.h"
 #include "CombatTerminalPolicy.h"
+#include "CombatDefensiveContainmentPolicy.h"
 #include "ChaseController.h"
 #include "CombatFacingPolicy.h"
 #include "CombatPositioningPolicy.h"
@@ -26,6 +27,7 @@
 #include "../Debug/Logger.h"
 #include "../Objects/WorldState.h"
 #include "../Navigation/DetourNavigationProvider.h"
+#include "../Navigation/GenericNavMeshPathFollower.h"
 
 #include <algorithm>
 #include <cmath>
@@ -56,7 +58,8 @@ namespace Bot
         Looting,
         PostKillDelay,
         Recovering,
-        Failed
+        Failed,
+        DefensiveContainment
     };
 
     class CombatController
@@ -298,6 +301,14 @@ namespace Bot
 
         CombatLivenessPolicy meleeLiveness_{};
         CombatTerminalPolicy meleeTerminal_{};
+        CombatDefensiveContainmentPolicy defensiveContainment_{};
+        std::unique_ptr<Navigation::GenericNavMeshPathFollower> defensiveRoute_{};
+        bool defensiveContainmentUsed_=false;
+        bool defensiveRouteStartFailed_=false;
+        const char* defensiveRouteFailure_="none";
+        float defensiveLastDistance_=0.0f;
+        float defensiveLastX_=0.0f, defensiveLastY_=0.0f;
+        std::uint64_t defensiveStopIssuedAtMs_=0;
         bool meleeTerminalPending_=false;
         const char* lastMeleeTerminalReason_=nullptr;
         const char* terminalCause_="offensive_no_progress";
@@ -363,14 +374,23 @@ namespace Bot
             terminal.nowMs=s.nowMs; terminal.targetGuid=lockedGuid_;
             terminal.selectedGuid=e.selected; terminal.serverVictimGuid=e.playerVictim;
             terminal.playerHp=e.playerHp;
-            terminal.optionalGrind=grindModeActive_ && !plannerQuestTargetActive_ && !vileFamiliarsActive_;
+            // Grind owns this episode even when an unrelated quest status flag
+            // remains active. The planner target bit is the actual exception.
+            terminal.optionalGrind=grindModeActive_ && !plannerQuestTargetActive_;
             terminal.mandatoryObjective=plannerQuestTargetActive_ && !vileFamiliarsActive_ &&
                 !grindModeActive_;
             terminal.known=e.known && e.aggressorsKnown && s.fresh && s.selectionKnown;
             terminal.inputSafe=s.inputSafe && !s.actionWait;
             terminal.hostileEngaged=e.PlayerCombat() || e.aggressor ||
-                e.targetVictim==world.activePlayerGuid || FindBestDirectAggressor(world)!=nullptr;
+                e.targetVictim==world.activePlayerGuid ||
+                (!e.aggressorsKnown && FindBestDirectAggressor(world)!=nullptr);
             terminal.attackKnown=s.actionKnown; terminal.attackActive=s.attackActive;
+            if ((terminal.hostileEngaged || !terminal.known) && !defensiveContainmentUsed_ &&
+                !meleeTerminal_.Issued())
+            {
+                BeginDefensiveContainment(world,target,s,terminal,tick);
+                return true;
+            }
             const auto d=meleeTerminal_.Observe(terminal);
             if (d.reason!=lastMeleeTerminalReason_)
             {
@@ -379,7 +399,9 @@ namespace Bot
                 Debug::Logger::Info("COMBAT TERMINAL TARGET targetGuid="+Hex64(lockedGuid_)+
                     " class="+terminalCause_+" hostileStillEngaged="+
                     (terminal.known ? (terminal.hostileEngaged ? "yes" : "no") : "unknown")+
-                    " repairAttempts="+std::to_string(meleeLiveness_.Repairs())+
+                    " repairDispatches="+std::to_string(meleeLiveness_.Repairs())+
+                    " repairLimit="+std::to_string(CombatLivenessPolicy::MaximumRepairs)+
+                    " hardRefreshLimit=1"+
                     " decision="+(d.action==CombatTerminalAction::SystemFail ? "system_fail" :
                         (terminal.mandatoryObjective ? "verify_owner_failure" : "verify_safe_abandon"))+
                     " reason="+d.reason);
@@ -427,6 +449,221 @@ namespace Bot
             return true;
         }
 
+        void BeginDefensiveContainment(const Objects::WorldState& world,
+            const Objects::UnitState& target, const CombatLivenessSample& s,
+            const CombatTerminalSample& terminal, std::uint64_t tick)
+        {
+            defensiveContainmentUsed_=true;
+            defensiveContainment_.Begin(lockedGuid_,s.targetHp,s.nowMs);
+            defensiveRouteStartFailed_=false;
+            defensiveRouteFailure_="none";
+            defensiveLastDistance_=target.distance;
+            defensiveLastX_=world.player.x;
+            defensiveLastY_=world.player.y;
+            defensiveStopIssuedAtMs_=0;
+            meleeTerminal_.Reset();
+            lastMeleeTerminalReason_=nullptr;
+            meleeLiveness_.Pause(s.nowMs); // elapsed escape time is not offense
+            Debug::Logger::Info("COMBAT TERMINAL DECISION guid="+Hex64(lockedGuid_)+
+                " optional="+(terminal.optionalGrind ? "yes" : "no")+
+                " mandatory="+(terminal.mandatoryObjective ? "yes" : "no")+
+                " aggressor="+(terminal.hostileEngaged ? "yes" : "unknown")+
+                " decision=continue_defense reason=bounded_offensive_repair_exhausted");
+            Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=enter guid="+
+                Hex64(lockedGuid_)+" reason="+terminalCause_+
+                " playerHp="+std::to_string(world.player.health)+
+                " targetHp="+std::to_string(target.health)+
+                " range="+Float(target.distance)+
+                " repairDispatches="+std::to_string(meleeLiveness_.Repairs())+
+                " repairLimit="+std::to_string(CombatLivenessPolicy::MaximumRepairs));
+            if (!terminal.inputSafe || !s.inputSafe)
+            {
+                defensiveRouteStartFailed_=true;
+                defensiveRouteFailure_="containment_input_conflict";
+            }
+            else
+            {
+                if (chase_.IsActive()) chase_.Stop();
+                if (!MovementController::HoldPosition(world.player) ||
+                    !AutoAttackController::Stop())
+                {
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="input_neutralization_failed";
+                }
+                else defensiveStopIssuedAtMs_=s.nowMs;
+            }
+            attackStarted_=false;
+            SetState(CombatState::DefensiveContainment);
+            (void)tick;
+        }
+
+        void UpdateDefensiveContainment(const Objects::WorldState& world,
+            std::uint64_t tick)
+        {
+            const auto* target=TargetSelector::FindByGuid(world,lockedGuid_);
+            if (target && target->valid && target->health==0)
+            {
+                if (defensiveRoute_ && !MovementController::HoldPosition(world.player))
+                { Fail("defensive_containment_stop_rejected",false); return; }
+                defensiveRoute_.reset();
+                FinishTarget(world,target,tick,true);
+                return;
+            }
+            const auto evidence=target ? CombatClientEvidence5875::Execution(world,*target)
+                : CombatClientEvidence5875::ExecutionEvidence{};
+            const bool known=target && evidence.known && evidence.aggressorsKnown &&
+                evidence.targetHp==target->health &&
+                evidence.playerHp==world.player.health;
+            const bool hostile= !known || evidence.PlayerCombat() || evidence.aggressor ||
+                evidence.targetVictim==world.activePlayerGuid ||
+                (!evidence.aggressorsKnown && FindBestDirectAggressor(world)!=nullptr);
+            const auto attack=AutoAttackController::ProbeCombatAction();
+            DefensiveContainmentSample sample{};
+            sample.nowMs=GetTickCount64(); sample.guid=lockedGuid_;
+            sample.playerAlive=world.player.health>0;
+            sample.targetValid=target && target->valid && target->health>0;
+            sample.targetHp=known ? evidence.targetHp : 0;
+            sample.evidenceKnown=known; sample.hostileEngaged=hostile;
+            sample.reengageReady=known && evidence.selected==lockedGuid_ &&
+                attack.known && attack.attack.valid && attack.attack.active &&
+                target->distance<=PostChargeImmediateMeleeDistance &&
+                CombatFacingPolicy::IsAbilityFacingReady(
+                    FacingController::AngularDifference(world.player.rotation,
+                        FacingController::CalculateFacing(world.player,*target)));
+            sample.routeFailed=defensiveRouteStartFailed_ ||
+                (defensiveRoute_ && defensiveRoute_->Failed());
+            sample.routeArrived=defensiveRoute_ && defensiveRoute_->Arrived();
+            const auto decision=defensiveContainment_.Observe(sample);
+            if (decision.action==DefensiveContainmentAction::DeathHandoff)
+                return; // WorldMonitor hands verified death to DeathRecovery.
+            if (decision.action==DefensiveContainmentAction::VerifiedDisengagement)
+            {
+                if (defensiveRoute_ && !MovementController::HoldPosition(world.player))
+                { Fail("defensive_containment_stop_rejected",false); return; }
+                defensiveRoute_.reset();
+                Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=disengaged guid="+
+                    Hex64(lockedGuid_)+" reason="+decision.reason);
+                CombatLivenessSample terminalSample{};
+                terminalSample.nowMs=sample.nowMs; terminalSample.fresh=known;
+                terminalSample.selectionKnown=known;
+                terminalSample.inputSafe=attack.known && attack.inputSafe;
+                terminalSample.actionKnown=attack.attack.valid && attack.attack.actionSlotFound;
+                terminalSample.attackActive=attack.attack.active;
+                return (void)ResolveMeleeTerminal(world,*target,terminalSample,tick);
+            }
+            if (decision.action==DefensiveContainmentAction::Reengage)
+            {
+                if (defensiveRoute_ && !MovementController::HoldPosition(world.player))
+                { Fail("defensive_containment_stop_rejected",false); return; }
+                defensiveRoute_.reset();
+                meleeLiveness_.Pause(sample.nowMs);
+                meleeTerminalPending_=false;
+                Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=reengage guid="+
+                    Hex64(lockedGuid_)+" reason=verified_target_damage");
+                SetState(CombatState::Fighting);
+                return;
+            }
+            if (decision.action==DefensiveContainmentAction::Fail)
+            {
+                Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=failed guid="+
+                    Hex64(lockedGuid_)+" reason="+decision.reason+
+                    " routeReason="+defensiveRouteFailure_);
+                if (defensiveRoute_) MovementController::HoldPosition(world.player);
+                defensiveRoute_.reset();
+                Fail(std::string("defensive_containment_exhausted:")+decision.reason);
+                return;
+            }
+            if (!defensiveRoute_ && !defensiveRouteStartFailed_ && hostile)
+            {
+                // A short deterministic away-point is only a destination for
+                // the existing Detour follower. Its ordinary living filter
+                // excludes water and retains all terrain/hazard validation.
+                if (!grindModeActive_ || !known || !target->valid ||
+                    !defensiveStopIssuedAtMs_)
+                {
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="escape_position_map_or_stop_unknown";
+                    return;
+                }
+                if (!attack.known || !attack.attack.valid ||
+                    !attack.attack.actionSlotFound || attack.attack.active)
+                {
+                    if (sample.nowMs-defensiveStopIssuedAtMs_ <
+                        CombatLivenessPolicy::StructuralVerificationMs)
+                        return;
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="attack_stop_not_confirmed";
+                    return;
+                }
+                std::array<DefensiveThreatPosition,
+                    CombatDefensiveEscapePolicy::MaximumThreats> threats{};
+                unsigned threatCount=0;
+                for (const auto& unit:world.units)
+                {
+                    if (!unit.valid || !unit.health ||
+                        unit.targetGuid!=world.activePlayerGuid) continue;
+                    if (threatCount==threats.size())
+                    {
+                        defensiveRouteStartFailed_=true;
+                        defensiveRouteFailure_="escape_threat_geometry_unknown";
+                        return;
+                    }
+                    threats[threatCount++]={unit.x,unit.y};
+                }
+                if (threatCount!=evidence.aggressorCount)
+                {
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="escape_threat_positions_incomplete";
+                    return;
+                }
+                DefensiveEscapePoint escape{};
+                if (!CombatDefensiveEscapePolicy::AwayPoint(
+                    {world.player.x,world.player.y,world.player.z},
+                    threats,threatCount,escape))
+                {
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="escape_threat_geometry_unknown";
+                    return;
+                }
+                const Navigation::NavPoint destination{
+                    escape.x,escape.y,escape.z};
+                Navigation::GenericNavMeshStartOptions options{};
+                options.allowFullMapFallback=false; // bounded local escape
+                options.waterTraversal=Navigation::WaterTraversalMode::AvoidUntilQualified;
+                auto route=std::make_unique<Navigation::GenericNavMeshPathFollower>();
+                if (!route->Start(world.player,tick,destination,1,2.5f,
+                    "combat defensive containment",false,options))
+                {
+                    defensiveRouteStartFailed_=true;
+                    defensiveRouteFailure_="defensive_route_start_rejected";
+                    return;
+                }
+                defensiveRoute_=std::move(route);
+                Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=escape attempt=1"
+                    " owner=Combat route=detour_ground_only reason=hostile_still_engaged"
+                    " destination=("+Float(destination.x)+","+Float(destination.y)+","+
+                    Float(destination.z)+")");
+            }
+            if (defensiveRoute_ && defensiveRoute_->OwnsMovement())
+            {
+                defensiveRoute_->Update(world.player,tick);
+                if (target && std::hypot(world.player.x-defensiveLastX_,
+                        world.player.y-defensiveLastY_)>=2.0f &&
+                    std::isfinite(target->distance) &&
+                    target->distance>=defensiveLastDistance_+2.0f)
+                {
+                    defensiveLastDistance_=target->distance;
+                    defensiveLastX_=world.player.x;
+                    defensiveLastY_=world.player.y;
+                    Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=escape"
+                        " progress=physical_separation range="+Float(target->distance));
+                }
+                if (defensiveRoute_->Failed())
+                    defensiveRouteFailure_=Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                        defensiveRoute_->LastPlanFailure());
+            }
+        }
+
         bool ObserveMeleeLiveness(const Objects::WorldState& world,
             const Objects::UnitState& target, std::uint64_t tick)
         {
@@ -455,6 +692,9 @@ namespace Bot
             meleeDecision_=meleeLiveness_.Observe(s);
             if (meleeDecision_.damageObserved)
             {
+                // Only real damage, never escape dispatch or a structural
+                // latch repair, earns a new containment episode.
+                defensiveContainmentUsed_=false;
                 autonomyRecoveryAttemptsByGuid_.erase(target.guid);
                 Debug::Logger::Info("COMBAT LIVENESS EPISODE guid="+Hex64(target.guid)+
                     " decision=reset reason=verified_target_hp_decrease hp="+
@@ -768,6 +1008,9 @@ namespace Bot
 
                 case CombatState::Failed:
                     return "Failed";
+
+                case CombatState::DefensiveContainment:
+                    return "DefensiveContainment";
 
                 default:
                     return "Unknown";
@@ -1548,6 +1791,8 @@ namespace Bot
                 chase_.Stop();
             }
 
+            defensiveRoute_.reset();
+
             warrior_.EndTarget();
 
             SetState(
@@ -1557,6 +1802,14 @@ namespace Bot
 
         void ResetTargetState()
         {
+            defensiveRoute_.reset();
+            defensiveContainment_.Reset();
+            defensiveContainmentUsed_=false;
+            defensiveRouteStartFailed_=false;
+            defensiveRouteFailure_="none";
+            defensiveLastDistance_=0.0f;
+            defensiveLastX_=defensiveLastY_=0.0f;
+            defensiveStopIssuedAtMs_=0;
             meleeTerminal_.Reset();
             meleeTerminalPending_=false;
             lastMeleeTerminalReason_=nullptr;
@@ -2937,11 +3190,19 @@ namespace Bot
                 world.player.maxHealth > 0 &&
                 world.player.health == 0)
             {
+                if (state_==CombatState::DefensiveContainment)
+                    return; // DeathRecovery preempts at WorldMonitor.
                 Fail(
                     "player health reached zero; "
                     "death recovery is not implemented."
                 );
 
+                return;
+            }
+
+            if (state_==CombatState::DefensiveContainment)
+            {
+                UpdateDefensiveContainment(world,tick);
                 return;
             }
 
@@ -4530,6 +4791,11 @@ namespace Bot
             // Preserve the same locked target and Attack state. Only ground
             // chase, loot movement and seated recovery are relinquished.
             if (chase_.IsActive()) chase_.Stop();
+            if (defensiveRoute_)
+            {
+                defensiveRoute_->CancelForLivingWater();
+                defensiveRouteFailure_="living_water_blocked";
+            }
             meleeLiveness_.Pause(GetTickCount64());
             loot_.Reset();
             recovery_.Reset();
@@ -4547,6 +4813,8 @@ namespace Bot
 
             if (chase_.IsActive())
                 chase_.Stop();
+
+            defensiveRoute_.reset();
 
             if (player.valid)
                 MovementController::HoldPosition(player);
@@ -5106,6 +5374,18 @@ namespace Bot
         bool TemporaryGrindModeActive() const
         {
             return grindModeActive_;
+        }
+
+        bool DefensiveContainmentOwnsMovement() const
+        {
+            return state_==CombatState::DefensiveContainment && defensiveRoute_ &&
+                defensiveRoute_->OwnsMovement();
+        }
+
+        Navigation::NavigationInitializationObservation DefensiveContainmentInitialization() const
+        {
+            return defensiveRoute_ ? defensiveRoute_->InitializationObservation() :
+                Navigation::NavigationInitializationObservation{};
         }
 
         bool IsTemporaryGrindTargetBlacklisted(
