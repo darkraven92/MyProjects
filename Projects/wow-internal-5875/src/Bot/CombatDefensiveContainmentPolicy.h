@@ -75,6 +75,10 @@ namespace Bot
 
         void Reset() { *this=CombatDefensiveContainmentPolicy{}; }
         bool Active() const { return active_; }
+        bool Expired(std::uint64_t nowMs) const
+        {
+            return !active_ || nowMs<startedMs_ || nowMs-startedMs_>=MaximumDurationMs;
+        }
         void Begin(std::uint64_t guid, std::uint32_t hp, std::uint64_t nowMs)
         {
             Reset();

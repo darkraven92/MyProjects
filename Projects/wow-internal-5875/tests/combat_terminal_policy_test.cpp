@@ -1,5 +1,6 @@
 #include "../src/Bot/CombatTerminalPolicy.h"
 #include <cassert>
+#include <string>
 using namespace Bot;
 static CombatTerminalSample Sample(std::uint64_t now=1)
 {
@@ -80,4 +81,46 @@ int main()
     s.selectedGuid=s.serverVictimGuid=0; s.attackActive=false;
     p.Observe(s); s.nowMs=1001;
     assert(p.Observe(s).action==CombatTerminalAction::OwnerFailure);
+
+    // Captured P0.5.2 shape: disengaged, but own UI selection and replicated
+    // victim still name the live optional target while Attack readback is unknown.
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(1001); s.attackKnown=s.inputSafe=false;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s=Sample(1500); s.attackKnown=s.inputSafe=false;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s=Sample(2001);
+    assert(p.Observe(s).action==CombatTerminalAction::StopAndClearOwnTarget);
+    p.Dispatched(2001);
+    s=Sample(2001); s.selectedGuid=s.serverVictimGuid=0; s.attackActive=false;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe); // no same-snapshot proof
+    s.nowMs=2251;
+    assert(p.Observe(s).action==CombatTerminalAction::Abandoned); // no kill credit
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(4999); s.attackKnown=s.inputSafe=false;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s.nowMs=5000;
+    assert(p.Observe(s).action==CombatTerminalAction::SystemFail);
+    assert(p.Observe(s).reason==std::string("post_containment_release_timeout"));
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(1100); s.hostileEngaged=true;
+    assert(p.Observe(s).action==CombatTerminalAction::HostileReturned);
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.selectedGuid=42;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe); // never clear unrelated UI target
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.optionalGrind=false; s.mandatoryObjective=true;
+    assert(p.Observe(s).action==CombatTerminalAction::StopAndClearOwnTarget);
+    p.Dispatched(s.nowMs);
+    s=Sample(2251); s.optionalGrind=false; s.mandatoryObjective=true;
+    s.selectedGuid=s.serverVictimGuid=0; s.attackActive=false;
+    assert(p.Observe(s).action==CombatTerminalAction::OwnerFailure);
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(1500); s.playerHp=0; // controller hands death to DeathRecovery
+    assert(p.Observe(s).action==CombatTerminalAction::SystemFail);
 }

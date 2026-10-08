@@ -1,5 +1,49 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5.2 post-containment safe release (2026-10-08)
+
+Starting published HEAD `e1625db3b791963194008e6fb878a4295e0531a4`.
+The natural P0.6-session chase of optional entry 3426, GUID
+`0xF130000D620037CE`, exhausted the existing 3/3 chase-recovery budget.
+P0.5.1 entered DefensiveContainment and verified disengagement for the
+structural interval: playerCombat=no, targetCombat=no, targetVictimGuid=0,
+complete live aggressor scan clear, player HP 664, target HP 100. The native
+UI selection and replicated player victim still named that GUID, while the
+Lua Attack-action probe was unknown. `ResolveMeleeTerminal` set `inputSafe`
+from that unknown probe and the terminal policy immediately returned
+`terminal_action_input_conflict`; CombatController Failed and stopped the bot.
+Thus P0.5.1 containment entry and disengagement are RUNTIME PASS, but the
+post-disengagement release and overall P0.5.1 are RUNTIME FAIL before this
+patch. P0.5 normal long-run remains RUNTIME PASS; P0.2.1 hard-refresh timing
+remains RUNTIME PASS. P0.6 is STATIC PASS / RUNTIME PENDING.
+
+Build-5875 native UI selection comes from the validated client selection
+cache; player `UNIT_FIELD_TARGET` is the replicated attack-victim field, not
+UI selection. A residual own victim does not itself prove a live hostile when
+combat flags, target victim and complete aggressor enumeration are clear, but
+it must clear before optional abandonment. The Attack probe's `unknown` is
+neither inactive nor permission to issue input. The new target-bound
+post-containment release phase observes fresh evidence for at most four
+existing 1-second structural windows, within the unchanged 30-second
+containment cap. It waits through unknown action/input evidence, issues the
+existing game-thread-guarded own-GUID stop/clear at most once when permitted,
+and requires a later snapshot proving native UI selection, replicated own
+victim and Attack all clear. An unrelated selected GUID is never cleared.
+Renewed hostile evidence returns to the same bounded containment episode;
+verified death remains a DeathRecovery handoff. Optional release blacklists
+the same GUID without kill/loot credit; mandatory release returns typed owner
+failure. Release timeout is explicit, not silent success. P0.4 swimming is
+PAUSED and P0.4-TEMP ground-only water avoidance is unchanged.
+
+P0.5.2 static status: SOURCE VERIFIED, TEST PASS, BUILD PASS, DIFF CHECK
+PASS. Full dirty worktree: 98 strict C++ tests, 26 audit Python tests,
+13 QuestDB Python tests, SQL fixture and nine Lua fixtures PASS; results
+`/tmp/wow-validation-e_z2sbcc/results.json`. Fresh published-HEAD-plus-staged
+isolated tree: 49 strict C++ tests, 26 audit Python tests, QuestDB SQL fixture,
+four published Lua fixtures, and complete MinGW DLL/GUI/loader build PASS;
+results `/tmp/wow-validation-jl_zqa0v/results.json`. P0.5.2 runtime remains
+RUNTIME PENDING; no WoW or GUI was launched here.
+
 ## P0.5.1 active-aggressor defensive containment (2026-10-08)
 
 Starting HEAD `cdaa0486a74d29a5c952acbb072a85e474f51288` was verified.

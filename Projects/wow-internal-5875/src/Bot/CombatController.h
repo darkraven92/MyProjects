@@ -304,6 +304,7 @@ namespace Bot
         CombatDefensiveContainmentPolicy defensiveContainment_{};
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> defensiveRoute_{};
         bool defensiveContainmentUsed_=false;
+        bool postContainmentRelease_=false;
         bool defensiveRouteStartFailed_=false;
         const char* defensiveRouteFailure_="none";
         float defensiveLastDistance_=0.0f;
@@ -395,6 +396,19 @@ namespace Bot
             if (d.reason!=lastMeleeTerminalReason_)
             {
                 lastMeleeTerminalReason_=d.reason;
+                if (postContainmentRelease_)
+                    Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=verify guid="+
+                        Hex64(lockedGuid_)+" selectedGuid="+Hex64(terminal.selectedGuid)+
+                        " serverVictimGuid="+Hex64(terminal.serverVictimGuid)+
+                        " playerCombat="+(e.known ? (e.PlayerCombat() ? "yes" : "no") : "unknown")+
+                        " targetCombat="+(e.known ? (e.TargetCombat() ? "yes" : "no") : "unknown")+
+                        " targetVictimGuid="+Hex64(e.targetVictim)+
+                        " attackKnown="+(terminal.attackKnown ? "yes" : "no")+
+                        " attackActive="+(terminal.attackKnown ? (terminal.attackActive ? "yes" : "no") : "unknown")+
+                        " result="+(d.action==CombatTerminalAction::SystemFail ? "conflict" :
+                            (d.action==CombatTerminalAction::Abandoned ||
+                             d.action==CombatTerminalAction::OwnerFailure ? "confirmed" : "pending"))+
+                        " reason="+d.reason);
                 LogCombatExecution(target,s,e);
                 Debug::Logger::Info("COMBAT TERMINAL TARGET targetGuid="+Hex64(lockedGuid_)+
                     " class="+terminalCause_+" hostileStillEngaged="+
@@ -408,12 +422,27 @@ namespace Bot
             }
             if (d.action==CombatTerminalAction::SystemFail)
             {
+                if (postContainmentRelease_)
+                    Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=failed guid="+
+                        Hex64(lockedGuid_)+" reason="+d.reason);
                 Fail(std::string("combat_terminal_system_failure:")+d.reason,
                     terminal.known && terminal.inputSafe);
                 return true;
             }
+            if (d.action==CombatTerminalAction::HostileReturned)
+            {
+                Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=hostile_returned guid="+
+                    Hex64(lockedGuid_)+" reason="+d.reason);
+                postContainmentRelease_=false;
+                meleeTerminal_.Reset();
+                lastMeleeTerminalReason_=nullptr;
+                return true; // Same bounded containment episode, never passive abandon.
+            }
             if (d.action==CombatTerminalAction::StopAndClearOwnTarget)
             {
+                if (postContainmentRelease_)
+                    Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=command action=stop_attack_clear_selection attempt=1 guid="+
+                        Hex64(lockedGuid_));
                 meleeTerminal_.Dispatched(s.nowMs); // one bounded dispatch, never a kill
                 const bool issued=AutoAttackController::AbandonOwnCombatTarget(world,lockedGuid_,
                     PostChargeImmediateMeleeDistance);
@@ -422,6 +451,9 @@ namespace Bot
             }
             if (d.action==CombatTerminalAction::Abandoned)
             {
+                if (postContainmentRelease_)
+                    Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=complete guid="+
+                        Hex64(lockedGuid_)+" result=optional_blacklist");
                 const auto abandoned=lockedGuid_;
                 if (chaseTerminalPending_)
                     ++autonomyTargetsAbandoned_;
@@ -438,6 +470,9 @@ namespace Bot
             }
             if (d.action==CombatTerminalAction::OwnerFailure)
             {
+                if (postContainmentRelease_)
+                    Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=complete guid="+
+                        Hex64(lockedGuid_)+" result=mandatory_owner_failure");
                 ownerTargetFailureGuid_=lockedGuid_;
                 ownerTargetFailureEntry_=target.entryId;
                 ownerTargetFailureReason_=d.reason;
@@ -454,6 +489,7 @@ namespace Bot
             const CombatTerminalSample& terminal, std::uint64_t tick)
         {
             defensiveContainmentUsed_=true;
+            postContainmentRelease_=false;
             defensiveContainment_.Begin(lockedGuid_,s.targetHp,s.nowMs);
             defensiveRouteStartFailed_=false;
             defensiveRouteFailure_="none";
@@ -500,6 +536,14 @@ namespace Bot
         void UpdateDefensiveContainment(const Objects::WorldState& world,
             std::uint64_t tick)
         {
+            const auto nowMs=GetTickCount64();
+            if (postContainmentRelease_ && defensiveContainment_.Expired(nowMs))
+            {
+                Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=failed guid="+
+                    Hex64(lockedGuid_)+" reason=containment_timeout");
+                Fail("defensive_containment_exhausted:containment_timeout");
+                return;
+            }
             const auto* target=TargetSelector::FindByGuid(world,lockedGuid_);
             if (target && target->valid && target->health==0)
             {
@@ -518,8 +562,39 @@ namespace Bot
                 evidence.targetVictim==world.activePlayerGuid ||
                 (!evidence.aggressorsKnown && FindBestDirectAggressor(world)!=nullptr);
             const auto attack=AutoAttackController::ProbeCombatAction();
+            if (postContainmentRelease_)
+            {
+                if (!target || !known)
+                {
+                    // Missing fresh world evidence is not a release proof.
+                    // The terminal policy's bounded observation expires if it persists.
+                    CombatTerminalSample pending{};
+                    pending.nowMs=nowMs; pending.targetGuid=lockedGuid_;
+                    pending.playerHp=world.player.health;
+                    pending.optionalGrind=grindModeActive_ && !plannerQuestTargetActive_;
+                    pending.mandatoryObjective=plannerQuestTargetActive_ &&
+                        !vileFamiliarsActive_ && !grindModeActive_;
+                    pending.known=false;
+                    const auto d=meleeTerminal_.Observe(pending);
+                    if (d.action==CombatTerminalAction::SystemFail)
+                    {
+                        Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=failed guid="+
+                            Hex64(lockedGuid_)+" reason="+d.reason);
+                        Fail(std::string("combat_terminal_system_failure:")+d.reason,false);
+                    }
+                    return;
+                }
+                CombatLivenessSample terminalSample{};
+                terminalSample.nowMs=nowMs; terminalSample.fresh=known;
+                terminalSample.selectionKnown=known;
+                terminalSample.inputSafe=attack.known && attack.inputSafe;
+                terminalSample.actionKnown=attack.attack.valid && attack.attack.actionSlotFound;
+                terminalSample.attackActive=attack.attack.active;
+                ResolveMeleeTerminal(world,*target,terminalSample,tick);
+                return;
+            }
             DefensiveContainmentSample sample{};
-            sample.nowMs=GetTickCount64(); sample.guid=lockedGuid_;
+            sample.nowMs=nowMs; sample.guid=lockedGuid_;
             sample.playerAlive=world.player.health>0;
             sample.targetValid=target && target->valid && target->health>0;
             sample.targetHp=known ? evidence.targetHp : 0;
@@ -543,13 +618,15 @@ namespace Bot
                 defensiveRoute_.reset();
                 Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=disengaged guid="+
                     Hex64(lockedGuid_)+" reason="+decision.reason);
-                CombatLivenessSample terminalSample{};
-                terminalSample.nowMs=sample.nowMs; terminalSample.fresh=known;
-                terminalSample.selectionKnown=known;
-                terminalSample.inputSafe=attack.known && attack.inputSafe;
-                terminalSample.actionKnown=attack.attack.valid && attack.attack.actionSlotFound;
-                terminalSample.attackActive=attack.attack.active;
-                return (void)ResolveMeleeTerminal(world,*target,terminalSample,tick);
+                postContainmentRelease_=true;
+                meleeTerminal_.BeginPostContainment(sample.nowMs,lockedGuid_,evidence.playerHp);
+                lastMeleeTerminalReason_=nullptr;
+                Debug::Logger::Info("COMBAT POST-CONTAINMENT RELEASE state=enter guid="+
+                    Hex64(lockedGuid_)+" selectedGuid="+Hex64(evidence.selected)+
+                    " serverVictimGuid="+Hex64(evidence.playerVictim)+
+                    " attackKnown="+(attack.attack.valid && attack.attack.actionSlotFound ? "yes" : "no")+
+                    " attackActive="+(attack.attack.valid ? (attack.attack.active ? "yes" : "no") : "unknown"));
+                return; // Next tick supplies fresh post-containment evidence.
             }
             if (decision.action==DefensiveContainmentAction::Reengage)
             {
@@ -1805,6 +1882,7 @@ namespace Bot
             defensiveRoute_.reset();
             defensiveContainment_.Reset();
             defensiveContainmentUsed_=false;
+            postContainmentRelease_=false;
             defensiveRouteStartFailed_=false;
             defensiveRouteFailure_="none";
             defensiveLastDistance_=0.0f;

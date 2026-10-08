@@ -33,6 +33,9 @@ int main()
     assert(!p.Active());
     p.Begin(7,80,100);
     assert(p.Active());
+    assert(!p.Expired(100));
+    assert(!p.Expired(30099));
+    assert(p.Expired(30100));
     auto s=Sample(100);
     assert(p.Observe(s).action==DefensiveContainmentAction::Observe);
     s.nowMs=300; s.routeArrived=true;

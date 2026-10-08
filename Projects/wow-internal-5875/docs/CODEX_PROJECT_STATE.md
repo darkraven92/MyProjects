@@ -9,10 +9,39 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.6 unattended vendor/full-bag closure**. P0.4 autonomous
+- Current phase: V6 **P0.5.2 post-containment safe release**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.2 post-containment release (2026-10-08)
+
+Starting published HEAD `e1625db3b791963194008e6fb878a4295e0531a4`.
+During the natural P0.6 test, optional entry 3426/GUID
+`0xF130000D620037CE` exhausted 3/3 chase recoveries, entered P0.5.1
+DefensiveContainment, and verified combat/aggressors clear. Player HP stayed
+664 and target HP stayed 100. Native UI selected GUID and replicated player
+victim still equaled the locked GUID, while Attack readback was unknown.
+The old terminal verifier immediately classified `inputSafe=false` as
+`terminal_action_input_conflict` and stopped the bot. P0.5 normal long-run is
+RUNTIME PASS; P0.5.1 containment entry and disengagement are RUNTIME PASS,
+but P0.5.1 post-disengagement release and overall P0.5.1 were RUNTIME FAIL.
+
+P0.5.2 adds a bounded own-target release observation after disengagement:
+unknown Attack is not inactive; fresh safe input authorizes one guarded
+same-GUID stop/clear; a later snapshot must prove selection, own victim and
+Attack clear. A returning hostile resumes the same 30-second containment
+episode; verified death hands to DeathRecovery. Optional release has no kill
+credit and uses the existing 120-second GUID blacklist; mandatory objectives
+receive owner-visible failure. Repair limits, route safety, water guard, AFK,
+P0.6 vendor behavior and DeathRecovery are unchanged. P0.5.2 static status:
+SOURCE VERIFIED, TEST PASS, BUILD PASS, DIFF CHECK PASS. Full dirty worktree:
+98 strict C++ tests, 26 audit Python, 13 QuestDB Python, SQL fixture and nine
+Lua fixtures PASS; `/tmp/wow-validation-e_z2sbcc/results.json`. Fresh
+HEAD-plus-exact-staged isolated tree: 49 strict C++ tests, 26 audit Python,
+QuestDB SQL fixture, four published Lua fixtures, and complete MinGW build
+PASS; `/tmp/wow-validation-jl_zqa0v/results.json`. P0.5.2 RUNTIME PENDING.
+P0.6 remains STATIC PASS / RUNTIME PENDING. P0.4 remains PAUSED.
 
 ## P0.6 unattended vendor/full-bag closure (2026-10-08)
 
