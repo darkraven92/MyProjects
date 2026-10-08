@@ -1,5 +1,60 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5.3 post-containment release command eligibility (2026-10-08)
+
+Starting published HEAD `d8b88caa333b493da8fae91fee903e7791ac606b`.
+The natural P0.5.2 follow-up on optional entry 3426/GUID
+`0xF130000D620037CE` entered containment, verified disengagement, and entered
+post-containment release. Attack remained unknown, selected GUID and player
+`UNIT_FIELD_TARGET` remained that GUID, target HP and player HP stayed 100/664,
+and cumulative attack/charge commands stayed zero. No release command was
+eligible: the terminal policy required the Attack probe's `inputSafe` and
+`attackKnown`, and the old atomic abandon script also required an identified
+Attack action slot. Waiting consumed the unchanged four-second release bound
+and ended in `post_containment_release_timeout`. P0.5 normal long-run is
+RUNTIME PASS; P0.5.1 containment entry/disengagement and P0.5.2 release entry
+and bounded unknown observation are RUNTIME PASS; actual release and overall
+P0.5.2 are RUNTIME FAIL. P0.5.3 runtime is PENDING.
+
+Source audit: the local WoW.exe SHA256 remains
+`b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`.
+SetTarget 0x493540 accepts GUID zero: 0x4938F3 calls the native clear helper
+0x493910, which clears B4E2D8/DC at 0x4939D3/0x4939D9 and serializes the
+zero selection GUID through the ordinary selection packet path at
+0x493A49..0x493A64. The new command checks the branch and packet-path bytes
+before invoking this existing native function on the game thread. It also
+rechecks exact native UI selection, live target/player health, complete
+aggressor enumeration, no combat flags, no target victim linkage, and a
+separate read-only UI/cast input probe at dispatch time. It never clears an
+unrelated selection. The 1.12.1 server's HandleSetSelectionOpcode calls
+Player::SetSelectionGuid, which writes both selection and UNIT_FIELD_TARGET;
+Unit::Attack and AttackStop also write UNIT_FIELD_TARGET. Thus its residual
+GUID is multiplexed replicated target state, not exclusive proof of a live
+Attack latch. A fresh post-command zero read remains mandatory; a stale
+nonzero value is observed then fails typed, never silently accepted.
+
+Per-locked-GUID attack ownership is now established only after this controller
+dispatched an Attack command or observed an active Attack action. The captured
+chase never reached either; global cumulative counters are not used as an
+episode proof. For such an episode, a separately safe selection probe permits
+one guarded native clear without an Attack slot. If Attack ownership was
+established, the existing action-slot-based stop and Attack-off verification
+remain required; unknown Attack is never treated as off, and lack of a
+source-verified stop remains fail-closed. A renewed hostile cancels passive
+release within the same unchanged 30-second containment episode; death still
+hands to DeathRecovery. Optional completion keeps the existing 120-second
+same-GUID blacklist with no kill/loot credit; mandatory completion returns
+owner-visible failure. Combat 3-repair/1-refresh limits, AFK, P0.6 vendor,
+P0.4-TEMP water avoidance, and navigation budgets are unchanged.
+
+P0.5.3 static status: SOURCE VERIFIED, TEST PASS, BUILD PASS, DIFF CHECK
+PASS. Full dirty worktree: 98 strict C++ tests, 26 audit Python tests,
+13 QuestDB Python tests, SQL fixture and nine Lua fixtures PASS. Fresh
+published-HEAD-plus-staged isolated tree: 49 strict C++ tests, 26 audit
+Python tests, QuestDB SQL fixture, four published Lua fixtures and complete
+MinGW DLL/GUI/loader build PASS. P0.5.3 RUNTIME PENDING; no WoW or GUI was
+launched in this checkpoint.
+
 ## P0.5.2 post-containment safe release (2026-10-08)
 
 Starting published HEAD `e1625db3b791963194008e6fb878a4295e0531a4`.

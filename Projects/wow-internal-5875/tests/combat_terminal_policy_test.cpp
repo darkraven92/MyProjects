@@ -123,4 +123,60 @@ int main()
     p.BeginPostContainment(1000,7,100);
     s=Sample(1500); s.playerHp=0; // controller hands death to DeathRecovery
     assert(p.Observe(s).action==CombatTerminalAction::SystemFail);
+
+    // P0.5.3 captured case: no episode Attack command or active latch was
+    // established. An independent safe selection probe permits one guarded
+    // clear without an Attack slot; command dispatch is never release proof.
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(1001); s.attackKnown=s.inputSafe=false;
+    s.selectionInputSafe=true;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s.nowMs=2001;
+    assert(p.Observe(s).action==CombatTerminalAction::ClearOwnSelection);
+    p.Dispatched(s.nowMs,CombatTerminalAction::ClearOwnSelection);
+    s.selectedGuid=s.serverVictimGuid=0;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s.nowMs=2251; s.serverVictimGuid=7;
+    assert(std::string(p.Observe(s).reason)=="selection_clear_victim_stale");
+    s.serverVictimGuid=0;
+    assert(p.Observe(s).action==CombatTerminalAction::Abandoned);
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.attackKnown=s.inputSafe=false;
+    s.selectionInputSafe=true; s.episodeAttackOwnershipEstablished=true;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe); // no unsafe toggle
+    s.attackKnown=s.inputSafe=true; s.attackActive=true;
+    assert(p.Observe(s).action==CombatTerminalAction::StopAndClearOwnTarget);
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.attackKnown=s.inputSafe=false;
+    s.selectionInputSafe=true; s.selectedGuid=42;
+    assert(std::string(p.Observe(s).reason)=="post_containment_unrelated_selection");
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.attackKnown=s.inputSafe=false;
+    s.selectionInputSafe=true; s.hostileEngaged=true;
+    assert(p.Observe(s).action==CombatTerminalAction::HostileReturned);
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.attackKnown=s.inputSafe=false;
+    s.selectionInputSafe=true; s.optionalGrind=false; s.mandatoryObjective=true;
+    assert(p.Observe(s).action==CombatTerminalAction::ClearOwnSelection);
+    p.Dispatched(s.nowMs,CombatTerminalAction::ClearOwnSelection);
+    s.nowMs=2251; s.selectedGuid=s.serverVictimGuid=0;
+    assert(p.Observe(s).action==CombatTerminalAction::OwnerFailure);
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(2001); s.attackKnown=s.inputSafe=false;
+    s.selectionInputSafe=true;
+    assert(p.Observe(s).action==CombatTerminalAction::ClearOwnSelection);
+    p.Dispatched(s.nowMs,CombatTerminalAction::ClearOwnSelection);
+    s.nowMs=3001; s.selectedGuid=0; s.serverVictimGuid=7;
+    assert(std::string(p.Observe(s).reason)=="selection_clear_victim_not_confirmed");
+
+    p.BeginPostContainment(1000,7,100);
+    s=Sample(1500); s.known=false; s.selectionInputSafe=true;
+    assert(p.Observe(s).action==CombatTerminalAction::Observe);
+    s.nowMs=5000;
+    assert(std::string(p.Observe(s).reason)=="post_containment_release_timeout");
 }

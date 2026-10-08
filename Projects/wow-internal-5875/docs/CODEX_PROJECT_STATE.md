@@ -9,10 +9,39 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.2 post-containment safe release**. P0.4 autonomous
+- Current phase: V6 **P0.5.3 post-containment release command eligibility**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.3 post-containment release eligibility (2026-10-08)
+
+Starting HEAD `d8b88caa333b493da8fae91fee903e7791ac606b` verified.
+Natural optional entry 3426/GUID `0xF130000D620037CE` repeated the chase
+failure. P0.5.1 containment entry and disengagement were RUNTIME PASS.
+P0.5.2 release entry and bounded unknown-Attack observation were RUNTIME PASS,
+but actual safe release was RUNTIME FAIL: Attack remained unknown, no command
+was eligible, and `post_containment_release_timeout` stopped the bot. This
+episode had no bot Attack dispatch or observed active Attack action; target
+and player HP stayed 100/664. P0.5 normal long-run remains RUNTIME PASS.
+
+The build-5875 native SetTarget(0) branch and ordinary zero-GUID selection
+packet path were disassembled and signature-guarded. Local 1.12.1 server
+source proves `UNIT_FIELD_TARGET` is written by selection as well as attack,
+so it is not an Attack-latch surrogate. P0.5.3 tracks controller Attack
+ownership per locked GUID. If never established, an independent read-only
+UI/cast probe can authorize one exact-GUID native selection clear after
+verified disengagement; a later fresh zero UI selection and replicated target
+field are required. Established Attack ownership retains the stricter
+stop/Attack-off proof and fails closed if the slot remains unknown. Hostile
+return cancels release without resetting the 30-second containment budget;
+death preempts to DeathRecovery. P0.5.3 static status: SOURCE VERIFIED,
+TEST PASS, BUILD PASS, DIFF CHECK PASS. Full dirty worktree: 98 strict C++
+tests, 26 audit Python, 13 QuestDB Python, SQL fixture and nine Lua fixtures
+PASS. Fresh HEAD-plus-staged isolated tree: 49 strict C++ tests, 26 audit
+Python, QuestDB SQL fixture, four published Lua fixtures and complete MinGW
+build PASS. P0.5.3 RUNTIME PENDING. P0.6 remains STATIC PASS / RUNTIME PENDING.
+P0.4 remains PAUSED and P0.4-TEMP living-water avoidance remains unchanged.
 
 ## P0.5.2 post-containment release (2026-10-08)
 

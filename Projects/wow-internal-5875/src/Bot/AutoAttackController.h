@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -544,6 +545,55 @@ namespace Bot
             e.known=true; e.inputSafe=true;
             e.attack={true,slot>0,active==1,slot};
             return e;
+        }
+        static CombatActionEvidence ProbeSelectionReleaseInput()
+        {
+            CombatActionEvidence e{};
+            std::string result;
+            const auto script=CombatActionScript("selection_probe");
+            if (!ExecuteLuaReadback(script.c_str(),"wow-internal/SelectionReleaseProbe.lua",result))
+                return e;
+            e.reason=result;
+            e.known=result=="ready" || result=="blocked" || result=="wait";
+            e.inputSafe=result=="ready";
+            e.waiting=result=="wait";
+            return e;
+        }
+        // Build-5875 SetTarget(0) takes the native clear-selection path at
+        // 4938F3 -> 493910, clears B4E2D8/DC, and sends CMSG_SET_SELECTION
+        // with the zero GUID. Never call it for an unrelated UI selection.
+        static bool ClearOwnSelection(const Objects::WorldState& world,
+            const Objects::UnitState& target, std::uint64_t guid)
+        {
+            bool issued=false;
+            GameThreadDispatcher::Invoke([&]
+            {
+                if (!GameThreadDispatcher::IsGameThread() || !guid ||
+                    target.guid!=guid || !TargetController::Validate()) return;
+                const auto base=Wow5875::Client::Base();
+                constexpr std::array<unsigned char,10> clearBranch{
+                    0xb9,0x01,0x00,0x00,0x00,0xe8,0x13,0x00,0x00,0x00};
+                constexpr std::array<unsigned char,13> zeroPacketGuid{
+                    0x8b,0x15,0xdc,0xe2,0xb4,0x00,0xa1,0xd8,0xe2,0xb4,0x00,0x52,0x50};
+                std::array<unsigned char,10> actualBranch{};
+                std::array<unsigned char,13> actualPacketGuid{};
+                if (!Core::Memory::Read(base+0x938f3,actualBranch) ||
+                    actualBranch!=clearBranch ||
+                    !Core::Memory::Read(base+0x93a49,actualPacketGuid) ||
+                    actualPacketGuid!=zeroPacketGuid) return;
+                const auto input=ProbeSelectionReleaseInput();
+                if (!input.known || !input.inputSafe) return;
+                const auto e=CombatClientEvidence5875::Execution(world,target);
+                if (!e.known || !e.aggressorsKnown || e.selected!=guid ||
+                    (e.playerVictim && e.playerVictim!=guid) || !e.playerHp ||
+                    !e.targetHp || e.PlayerCombat() || e.TargetCombat() ||
+                    e.aggressor || e.targetVictim==world.activePlayerGuid)
+                    return;
+                using SetTargetFunction=void (__stdcall*)(std::uint64_t);
+                reinterpret_cast<SetTargetFunction>(TargetController::FunctionAddress())(0);
+                issued=true; // Dispatch only. Fresh selection/victim reads verify later.
+            });
+            return issued;
         }
         static bool RecoverCombatAction(const Objects::WorldState& world,
             std::uint64_t guid, bool refresh, float meleeEnvelope)

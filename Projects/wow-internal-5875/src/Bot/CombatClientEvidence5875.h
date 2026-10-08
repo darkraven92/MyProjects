@@ -7,7 +7,9 @@
 
 namespace Bot
 {
-    // UI selection is NOT UNIT_FIELD_TARGET (the server's attack victim).
+    // UI selection is NOT UNIT_FIELD_TARGET. The server also writes that
+    // replicated field for CMSG_SET_SELECTION (Player::SetSelectionGuid),
+    // besides Unit::Attack/AttackStop; it is not exclusive Attack ownership.
     // SetTarget 493540 compares B4E2D8/DC at 493605..493617 and returns
     // without sending CMSG_SET_SELECTION if it already equals the request.
     struct CombatClientEvidence5875

@@ -65,4 +65,9 @@ local f={IsVisible=function() return true end,GetObjectType=function() return 'E
 EnumerateFrames=function(prev) if not prev then return f end end
 check('blocked','start'); assert(uses==0)
 reset(); GetActionCooldown=function() error('unknown') end; check('unknown','start'); assert(uses==0)
+reset(); IsAttackAction=nil; IsCurrentAction=nil; GetActionCooldown=nil; GetTime=nil
+check('ready','selection_probe'); assert(uses==0 and clears==0)
+reset(); CastingBarFrame.casting=1; check('wait','selection_probe'); assert(clears==0)
+reset(); _G.MerchantFrame={IsVisible=function() return true end}
+check('blocked','selection_probe'); assert(clears==0)
 print('Combat action evidence Lua: passed')

@@ -11,9 +11,11 @@ local function run()
  if not UIParent or not UIParent.IsVisible or not UIParent:IsVisible() or
     not UnitIsDeadOrGhost or UnitIsDeadOrGhost('player') or
     not UnitExists or not UnitIsDead or
-    not CastingBarFrame or not IsAttackAction or not IsCurrentAction or
-    not GetActionCooldown or not GetTime or not SpellIsTargeting or
+    not CastingBarFrame or not SpellIsTargeting or
     not EnumerateFrames then return 'unknown' end
+ if mode~='selection_probe' and
+    (not IsAttackAction or not IsCurrentAction or
+     not GetActionCooldown or not GetTime) then return 'unknown' end
  local frames={'GossipFrame','QuestFrame','MerchantFrame','ClassTrainerFrame','LootFrame',
   'TalentFrame','TradeFrame','MailFrame','ItemTextFrame','TaxiFrame','GameMenuFrame',
   'StaticPopup1','StaticPopup2','StaticPopup3','StaticPopup4'}
@@ -34,6 +36,10 @@ local function run()
   if i==4096 and f then return 'unknown' end
  end
  if SpellIsTargeting() then return 'blocked' end
+ if mode=='selection_probe' then
+  if CastingBarFrame.casting or CastingBarFrame.channeling then return 'wait' end
+  return 'ready'
+ end
  if mode~='probe' and (not UnitExists('target') or UnitIsDead('target')) then return 'blocked' end
  local wait=CastingBarFrame.casting or CastingBarFrame.channeling
  local a=0
