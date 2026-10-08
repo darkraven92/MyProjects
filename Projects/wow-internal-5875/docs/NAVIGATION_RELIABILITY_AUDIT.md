@@ -1,5 +1,44 @@
 # P0.3 navigation reliability audit
 
+## P0.5.9 terrain-failure provenance audit (2026-10-08)
+
+The latest user-reported multi-death run reconfirmed P0.5.8 directed-link
+avoidance and end-to-end resurrection **RUNTIME PASS**. A full-map route with
+`rejectedTransitions=1` / `effectiveConstraintMode=directed_links` makes its
+route→expanded→full-map inheritance **RUNTIME PASS** as well. A second death
+failed closed on an 8.996/10.000 portal-to-portal leg after the first known
+unsafe edge was excluded. The new failure's `pointIndex=11` means
+`NavPathResult::points[10] -> points[11]`; it does not index corridor polygons.
+Their exact refs are not in the preserved rejection line. The repeated point
+coordinates suggest reused route geometry, but do not prove which upstream
+link was shared across tiers or corpse variants.
+
+Source trace: `findPath` retains the complete ordered polygon corridor;
+`findStraightPath(..., DT_STRAIGHTPATH_ALL_CROSSINGS)` emits a point ref naming
+the polygon entered. In this Detour fork, `appendPortals` appends only actual
+2D portal intersections and `appendVertex` merges coincident points while
+updating the ref. Thus adjacent emitted points can correspond to nonadjacent
+corridor indices. The old `ValidateTerrainRoute` kept only a transient scan
+index and returned an unsafe leg with `fromPoly=toPoly=0` if the indices were
+not exactly one apart. Nothing was lost by failure serialization; singular
+edge attribution was unavailable at validation. Blocking the first proven
+edge caused a new Detour corridor to be checked, exposing a separate unsafe
+leg; it does not prove that the second leg is the same directed transition.
+
+The path now retains each straight point's ordered source corridor index.
+Validation reports `corridorFromIndex`, `corridorToIndex`, `adjacent`, and
+`transitionKnown` on each terrain rejection. The Detour link check precedes
+this attribution. Only a one-link span with verified adjacency obtains
+nonzero directed refs; those refs continue through the existing bounded
+follower and DeathRecovery transition memories. A zero- or multi-link span
+cannot be assigned a singular bad edge without guessing, so it remains an
+unsafe fail-closed result. No nearest-poly inference, spatial fallback,
+large-polygon blacklist, water-policy change, or budget increase was made.
+P0.5.9 full-worktree static TEST PASS / BUILD PASS / DIFF CHECK PASS:
+102 C++ tests, 26 audit Python tests, 13 QuestDB Python tests, SQL fixture
+and Lua fixtures. Runtime is PENDING; the anonymous multi-link branch still
+requires source-safe attribution or a separately qualified bounded fallback.
+
 ## P0.5.7 generated destination and partial-stage audit (2026-10-08)
 
 The P0.5.6 manual run was PARTIAL PASS / OVERALL FAIL. Portal classification,

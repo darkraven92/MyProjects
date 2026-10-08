@@ -9,10 +9,49 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: **P0.5.3 post-containment release runtime requalification prep**. P0.4 autonomous
+- Current phase: **P0.5.9 terrain-failure polygon provenance**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.9 terrain-failure polygon provenance (2026-10-08)
+
+Starting published HEAD `e458ff6c5f935ef66b20b43ac2d8a4fe62cb623a`.
+The newest user-reported runtime did not exercise rare P0.5.3 containment/
+post-containment release: its static qualification remains PASS and runtime is
+**PENDING / NON-BLOCKING**; no containment behavior is changed here. Its first
+natural death reconfirmed P0.5.8 end-to-end resurrection and Grind resume.
+Full-map telemetry with `rejectedTransitions=1` and
+`effectiveConstraintMode=directed_links` now also qualifies route→expanded→
+full-map constraint inheritance **RUNTIME PASS**.
+
+A second natural death failed closed after a proven unsafe directed edge was
+masked and an alternate route exposed a 8.996 horizontal/10.000 vertical
+`portal_to_portal` leg with zero polygon refs. Source audit shows Detour's
+`ALL_CROSSINGS` code only emits portal intersections and coalesces coincident
+points. Consecutive emitted points can therefore span zero or multiple
+ordered corridor links; the prior validator returned zero refs whenever the
+span was not exactly one. `pointIndex` is the index in the emitted straight
+point vector, not the corridor index. The captured line lacks the two point
+refs/corridor indices, so the exact unsafe link cannot be reconstructed from
+that log. Do not assign one by nearest-poly projection or by choosing an
+arbitrary link in the span.
+
+P0.5.9 stores the ordered corridor index of each Detour straight point at
+path construction. Terrain rejection now carries typed from/to indices,
+adjacency and exact-transition provenance; an exact verified link continues
+through existing episode-local directed-link avoidance and DeathRecovery
+inheritance. A multi-link or same-poly leg still fails closed, with sparse
+`NAV TERRAIN TRANSITION PROVENANCE` telemetry for a future natural run. No
+spatial fallback, terrain threshold change, additional retry, or new hazard
+memory is introduced. The captured anonymous route family remains a SOURCE
+GAP until its corridor span can be observed or a separately justified bounded
+diversification strategy is designed. P0.5.9 runtime is **PENDING**. P0.6
+remains STATIC PASS / RUNTIME PENDING; P0.7 is not started.
+P0.5.9 static is **TEST PASS / BUILD PASS / DIFF CHECK PASS** in the full
+dirty worktree: 102 C++ tests, 26 audit Python tests, 13 QuestDB Python
+tests, SQL fixture and Lua fixtures, plus a separate MinGW build. This
+does not qualify the anonymous multi-link DeathRecovery branch at runtime.
 
 ## P0.5.3 release requalification prep (2026-10-08)
 

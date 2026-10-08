@@ -12,6 +12,7 @@
 #include "LivingWaterTraversalPolicy.h"
 #include "DirectedTransitionQueryPolicy.h"
 #include "EpisodeBadTransitionPolicy.h"
+#include "TerrainPortalProvenancePolicy.h"
 #include "TerrainTransitionPolicy.h"
 
 #include <windows.h>
@@ -94,6 +95,7 @@ namespace Navigation
         // local corridor transition associated with a physical stall.
         std::vector<std::uint64_t> corridorPolys;
         std::vector<std::uint64_t> pointPolys;
+        std::vector<std::size_t> pointCorridorIndices;
 
         bool avoidanceActive = false;
         int avoidanceRequestedCount = 0;
@@ -120,6 +122,10 @@ namespace Navigation
         bool tileSeam = false;
         TerrainTransitionPolicy::Geometry geometry{};
         std::size_t pointIndex = 0;
+        std::size_t corridorFromIndex = 0;
+        std::size_t corridorToIndex = 0;
+        bool adjacent = false;
+        bool transitionKnown = false;
         const char* reason = "none";
     };
 
@@ -2555,6 +2561,14 @@ namespace Navigation
                     static_cast<std::uint64_t>(straightRefs[index]));
             }
 
+            if (!TerrainPortalProvenancePolicy::ResolvePointIndices(
+                    result.corridorPolys, result.pointPolys,
+                    result.pointCorridorIndices))
+            {
+                result.error = "Straight-point polygon refs do not follow the Detour corridor.";
+                return false;
+            }
+
             result.success =
                 true;
 
@@ -2574,6 +2588,7 @@ namespace Navigation
             if (!CurrentTopology() || mesh_ == nullptr ||
                 path.meshGeneration != session_->generation || path.points.size() < 2 ||
                 path.pointPolys.size() != path.points.size() ||
+                path.pointCorridorIndices.size() != path.points.size() ||
                 path.corridorPolys.empty())
             {
                 result.valid = false;
@@ -2653,6 +2668,10 @@ namespace Navigation
                 result.valid = false;
                 result.fromPoly = path.corridorPolys[i - 1];
                 result.toPoly = path.corridorPolys[i];
+                result.corridorFromIndex = i - 1;
+                result.corridorToIndex = i;
+                result.adjacent = true;
+                result.transitionKnown = true;
                 result.fromFlags = fromPoly->flags;
                 result.toFlags = toPoly->flags;
                 result.tileSeamKnown = true;
@@ -2673,20 +2692,13 @@ namespace Navigation
                 return result;
             }
 
-            std::size_t corridorIndex = 0;
             for (std::size_t i = 1; i < path.points.size(); ++i)
             {
-                // This Detour fork reports ref=0 for the final straight-path
-                // endpoint. It still lies on the corridor's final polygon.
-                const std::uint64_t enteredRef =
-                    TerrainTransitionPolicy::EnteredRef(
-                        path.pointPolys[i], i + 1 == path.points.size(),
-                        path.corridorPolys.back());
-                std::size_t entered = corridorIndex;
-                while (entered < path.corridorPolys.size() &&
-                       path.corridorPolys[entered] != enteredRef)
-                    ++entered;
-                if (entered == path.corridorPolys.size())
+                const auto provenance = TerrainPortalProvenancePolicy::Segment(
+                    path.corridorPolys, path.pointCorridorIndices, i, true);
+                if (provenance.corridorFromIndex >= path.corridorPolys.size() ||
+                    provenance.corridorToIndex >= path.corridorPolys.size() ||
+                    provenance.corridorToIndex < provenance.corridorFromIndex)
                 {
                     result.valid = false;
                     result.pointIndex = i;
@@ -2703,12 +2715,17 @@ namespace Navigation
                     result.geometry = geometry;
                     result.pointIndex = i;
                     result.reason = "unsafe_vertical_portal";
-                    // A skipped polygon crossing cannot safely identify just
-                    // one directed edge for the existing avoidance policy.
-                    if (entered != corridorIndex + 1)
+                    result.corridorFromIndex = provenance.corridorFromIndex;
+                    result.corridorToIndex = provenance.corridorToIndex;
+                    result.adjacent = provenance.adjacent;
+                    result.transitionKnown = provenance.transitionKnown;
+                    // One straight leg can span several Detour links when
+                    // ALL_CROSSINGS omits a portal point. That leg is unsafe,
+                    // but no individual link is thereby proven unsafe.
+                    if (!provenance.transitionKnown)
                         return result;
-                    result.fromPoly = path.corridorPolys[corridorIndex];
-                    result.toPoly = path.corridorPolys[entered];
+                    result.fromPoly = provenance.fromPoly;
+                    result.toPoly = provenance.toPoly;
                     mesh_->getPolyFlags(
                         static_cast<dtPolyRef>(result.fromPoly),
                         &result.fromFlags);
@@ -2767,7 +2784,6 @@ namespace Navigation
                     }
                     return result;
                 }
-                corridorIndex = entered;
             }
             return result;
         }

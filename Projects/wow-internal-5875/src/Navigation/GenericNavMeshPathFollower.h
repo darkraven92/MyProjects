@@ -5445,10 +5445,27 @@ namespace Navigation
                 if (terrain.valid)
                     break;
 
-                const DirectedPolyTransition rejected{
-                    terrain.fromPoly, terrain.toPoly};
+                const DirectedPolyTransition rejected = terrain.transitionKnown
+                    ? DirectedPolyTransition{terrain.fromPoly, terrain.toPoly}
+                    : DirectedPolyTransition{};
                 lastRejectedCorridorFingerprint_ =
                     FingerprintCorridor(path.corridorPolys);
+                Debug::Logger::Info(
+                    "NAV TERRAIN TRANSITION PROVENANCE segmentSource="+
+                    std::string(terrain.pointIndex==1
+                        ? "live_player_to_portal" : terrain.pointIndex>1
+                            ? "portal_to_portal" : "steep_polygon_centers")+
+                    " pointIndex="+std::to_string(terrain.pointIndex)+
+                    " corridorFromIndex="+
+                        std::to_string(terrain.corridorFromIndex)+
+                    " corridorToIndex="+
+                        std::to_string(terrain.corridorToIndex)+
+                    " fromPoly="+HexPoly(terrain.fromPoly)+
+                    " toPoly="+HexPoly(terrain.toPoly)+
+                    " adjacent="+(terrain.adjacent ? "yes" : "no")+
+                    " transitionKnown="+
+                        (terrain.transitionKnown ? "yes" : "no")+
+                    " reason="+terrain.reason);
                 Debug::Logger::Info(
                     "NAV 14O.1 TERRAIN REJECT fromPoly=" +
                     HexPoly(terrain.fromPoly) + " toPoly=" +
@@ -5952,6 +5969,7 @@ namespace Navigation
                     selectedStagePrefixLength = stage.prefixLength;
                     path.points.resize(stage.pointIndex + 1);
                     path.pointPolys.resize(stage.pointIndex + 1);
+                    path.pointCorridorIndices.resize(stage.pointIndex + 1);
                     pathValid = ValidatePath(path, error, length,
                                              &lastPlanFailure_,&validationDetail);
                     selectedCompleteLongStage = pathValid;
