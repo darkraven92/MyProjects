@@ -9,10 +9,50 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.6 complex-terrain navigation**. P0.4 autonomous
+- Current phase: V6 **P0.5.7 generated-roam preflight and partial-staging scope**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.7 generated roam targets and partial staging (2026-10-08)
+
+Starting published HEAD `5d93845b0cc3cedb704331c1e7e415211ad27fa4`.
+The manual P0.5.6 run is **PARTIAL PASS / OVERALL FAIL**: typed portal
+classification and verified portal-crossing destination gain ran live; valid
+progress reset the recovery episode. Unsafe vertical routes remained rejected,
+transition avoidance stayed fail-closed, and the 2000/4/2 limits were intact.
+However, 48/54 terminal movement failures were
+`destination_projection_failed`. Generated roam sectors carried the origin Z
+and `TryStartRoam` replaced it with player Z, then sent that unproven point
+through route, expanded and full-map initialization. A partial route also
+reached `partialAttempt=4/3` after ~81 yd displacement because the three-attempt
+counter survived forward staging progress. One bounded local recovery and one
+replan budget exhaustion occurred; two later route requests correctly hit
+persistent hazard memory. Those rare cases are not separately changed here.
+
+P0.5.7 preflights generated roaming and post-death safe-sector destinations
+before starting a movement intent. It loads route-scope topology incrementally,
+tests bounded vertical samples against living ground with water and steep
+polygons excluded, rejects hard-hazard endpoints, and requires a complete
+connected route with unchanged terrain validation. A failed candidate cools
+down as an unavailable optional sector; it never triggers expanded/full-map
+work. Arbitrary navigation callers keep strict destination projection.
+Preflight reports actual initialization work to acquisition liveness and does
+not issue movement. Partial staging retains exactly three attempts per episode;
+only a fresh, same-generation route starting on a later polygon of the prior
+validated corridor, with live matching projection, physical displacement and
+material destination-distance gain, starts a new episode. Displacement alone
+does not refund attempts. No navigation safety budget, water filter, hazard
+memory, cache policy or DeathRecovery owner semantics changed.
+
+P0.5.7 static: **TEST PASS / BUILD PASS / DIFF CHECK PASS**. The full dirty
+worktree validator passed 100 C++ tests, 26 navigation/audit Python tests,
+13 QuestDB Python tests, SQL and nine Lua fixtures; the exact staged tree
+passed 51 published C++ tests, 26 audit Python tests, SQL and five published
+Lua fixtures with a complete MinGW DLL/GUI/loader build. The larger local
+test set belongs to unrelated uncommitted work and was not published.
+P0.5.7 runtime: **PENDING**; no WoW/GUI launched in this checkpoint. P0.6
+remains STATIC PASS / RUNTIME PENDING; P0.4 remains PAUSED.
 
 ## P0.5.6 complex-terrain navigation (2026-10-08)
 
@@ -36,8 +76,9 @@ neutral. Vertical-route rejection, 2000/4/2 budgets, water exclusion, hazard
 memory, cache, and DeathRecovery owner logic are unchanged. Unsafe-route logs
 now include the exact tested leg, start projection delta, and tile-seam status.
 P0.5.6 **TEST PASS / BUILD PASS / DIFF CHECK PASS** in both the full worktree
-and fresh isolated staged tree; **RUNTIME PENDING**. No WoW/GUI launched in
-this checkpoint.
+and fresh isolated staged tree; the subsequent manual run was **PARTIAL PASS /
+OVERALL FAIL** for the generated-destination cause above. No WoW/GUI launched
+in the P0.5.6 coding checkpoint.
 
 ## P0.5.5 offensive input evidence and melee progress (2026-10-08)
 

@@ -14,6 +14,7 @@
 
 #include "../Debug/Logger.h"
 #include "../Navigation/DetourNavigationProvider.h"
+#include "../Navigation/GeneratedRoamTargetPolicy.h"
 #include "../Navigation/GenericNavMeshPathFollower.h"
 #include "../Navigation/NavigationHazardMemory.h"
 #include "../Objects/WorldState.h"
@@ -133,6 +134,10 @@ namespace Bot
         std::size_t activeSectorIndex_ = InvalidSectorIndex;
         std::size_t roamDestinationIndex_ = InvalidSectorIndex;
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> roamNavigator_{};
+        std::unique_ptr<Navigation::DetourNavigationProvider> roamPreflight_{};
+        std::size_t roamPreflightSector_ = InvalidSectorIndex;
+        bool roamPreflightDangerEscape_ = false;
+        std::uint64_t roamPreflightIntent_ = 0;
         std::uint64_t nextRoamScanTick_ = 0;
         int emptySectorScanStreak_ = 0;
         int roamLegsStarted_ = 0;
@@ -557,6 +562,8 @@ namespace Bot
         void ResetRoam()
         {
             roamNavigator_.reset();
+            roamPreflight_.reset();
+            roamPreflightSector_ = InvalidSectorIndex;
             roamDestinationIndex_ = InvalidSectorIndex;
         }
 
@@ -675,6 +682,141 @@ namespace Bot
             return MaintenanceNeed{};
         }
 
+        enum class RoamPreflightOutcome { Pending, Accepted, Skipped };
+
+        RoamPreflightOutcome PreflightGeneratedSector(
+            const Objects::WorldState& world, std::size_t index,
+            std::uint64_t tick, bool dangerEscape,
+            Navigation::NavPoint& destination)
+        {
+            const Navigation::NavPoint start{
+                world.player.x, world.player.y, world.player.z};
+            // The generated sector's Z is only the search seed. It is never
+            // passed to a movement owner as a proven ground destination.
+            const Navigation::NavPoint raw{
+                sectors_[index].center.x, sectors_[index].center.y,
+                world.player.z};
+            bool hazardRejected = false;
+            const char* reason = "no_safe_ground_projection";
+
+            if (!roamPreflight_ || roamPreflightSector_ != index ||
+                roamPreflightDangerEscape_ != dangerEscape)
+            {
+                roamPreflight_ =
+                    std::make_unique<Navigation::DetourNavigationProvider>();
+                roamPreflightSector_ = index;
+                roamPreflightDangerEscape_ = dangerEscape;
+                ++roamPreflightIntent_;
+                std::string error;
+                if (!roamPreflight_->BeginIncrementalForRoute(
+                        Navigation::DetourNavigationProvider::ResolveMmapsDirectory(),
+                        MapId, start, raw, 1, error, "route"))
+                    reason = "route_tile_initialization_failed";
+                else
+                    return RoamPreflightOutcome::Pending;
+            }
+            else
+            {
+                std::string error;
+                const auto status = roamPreflight_->StepIncremental(error);
+                if (status == Navigation::DetourNavigationProvider::IncrementalStatus::Pending)
+                    return RoamPreflightOutcome::Pending;
+                if (status == Navigation::DetourNavigationProvider::IncrementalStatus::Failed)
+                    reason = "route_tile_initialization_failed";
+                else
+                {
+                    std::vector<std::uint64_t> inspected;
+                    for (int step = 0; step <= 6; ++step)
+                    {
+                        for (int side = 0; side < (step == 0 ? 1 : 2); ++side)
+                        {
+                            Navigation::NavPoint probe = raw;
+                            probe.z += static_cast<float>(
+                                (side == 0 ? 1 : -1) * step *
+                                Navigation::GeneratedRoamTargetPolicy::ProbeStep);
+                            Navigation::NavPoint candidate{};
+                            std::uint64_t poly = 0;
+                            if (!roamPreflight_->ProjectToNavMesh(
+                                    probe, candidate, poly,
+                                    Navigation::GeneratedRoamTargetPolicy::ProbeHorizontalExtent,
+                                    Navigation::GeneratedRoamTargetPolicy::ProbeVerticalExtent,
+                                    Navigation::TerrainTransitionPolicy::SteepFlag) ||
+                                std::find(inspected.begin(), inspected.end(), poly) !=
+                                    inspected.end())
+                                continue;
+                            inspected.push_back(poly);
+                            const bool bounded =
+                                Navigation::GeneratedRoamTargetPolicy::BoundedProjection(
+                                    raw.x, raw.y, raw.z,
+                                    candidate.x, candidate.y, candidate.z);
+                            const bool hardHazard =
+                                Navigation::NavigationHazardMemory::Instance().IsHardBlocked(
+                                    MapId, candidate);
+                            hazardRejected = hazardRejected || hardHazard;
+                            if (!bounded || hardHazard)
+                                continue;
+
+                            Navigation::NavPathResult path{};
+                            const bool pathFound = roamPreflight_->FindPath(
+                                start, candidate, path);
+                            const bool complete = pathFound && path.success &&
+                                !path.partial && path.corridorConnected &&
+                                path.startPoly != 0 && path.endPoly == poly;
+                            const bool terrainValid = complete &&
+                                roamPreflight_->ValidateTerrainRoute(start, path).valid;
+                            if (!Navigation::GeneratedRoamTargetPolicy::SafeConnectedGround(
+                                    bounded, hardHazard, complete, terrainValid,
+                                    path.waterAwareRoute || path.waterPolygonCount != 0,
+                                    path.steepFallback))
+                            {
+                                reason = "no_safe_connected_ground";
+                                continue;
+                            }
+
+                            destination = candidate;
+                            Debug::Logger::Info(
+                                "GRIND ROAM TARGET PREFLIGHT sector=" +
+                                std::to_string(index) + " rawTarget=(" +
+                                std::to_string(raw.x) + "," +
+                                std::to_string(raw.y) + "," +
+                                std::to_string(raw.z) + ") rawZSource=player" +
+                                " projectionResult=ground projectedTarget=(" +
+                                std::to_string(candidate.x) + "," +
+                                std::to_string(candidate.y) + "," +
+                                std::to_string(candidate.z) + ") projectedPoly=" +
+                                std::to_string(poly) + " horizontalDelta=" +
+                                std::to_string(std::hypot(candidate.x - raw.x,
+                                    candidate.y - raw.y)) + " verticalDelta=" +
+                                std::to_string(candidate.z - raw.z) +
+                                " waterExcluded=yes hazardRejected=no"
+                                " decision=accept reason=safe_connected_ground");
+                            roamPreflight_.reset();
+                            roamPreflightSector_ = InvalidSectorIndex;
+                            return RoamPreflightOutcome::Accepted;
+                        }
+                    }
+                }
+            }
+
+            auto& sector = sectors_[index];
+            sector.cooldownUntil = tick + FailedSectorCooldownTicks;
+            ++sector.failures;
+            Debug::Logger::Info(
+                "GRIND ROAM TARGET PREFLIGHT sector=" +
+                std::to_string(index) + " rawTarget=(" +
+                std::to_string(raw.x) + "," +
+                std::to_string(raw.y) + "," +
+                std::to_string(raw.z) + ") rawZSource=player"
+                " projectionResult=none projectedTarget=none projectedPoly=0"
+                " horizontalDelta=unknown verticalDelta=unknown"
+                " waterExcluded=yes hazardRejected=" +
+                std::string(hazardRejected ? "yes" : "no") +
+                " decision=skip reason=" + reason);
+            roamPreflight_.reset();
+            roamPreflightSector_ = InvalidSectorIndex;
+            return RoamPreflightOutcome::Skipped;
+        }
+
         bool TryStartDangerEscape(
             const Objects::WorldState& world,
             std::uint64_t tick)
@@ -688,20 +830,26 @@ namespace Bot
             if (RecoveryController::HealthPercent(world.player) <
                 PostDeathEscapeMinimumHealthPercent)
             {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
                 return false;
             }
 
             const std::size_t next = SelectNextRoamSector(world, tick);
             if (next == InvalidSectorIndex)
             {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
                 Debug::Logger::Info(
                     "DANGER MEMORY 14G.5: post-death escape waiting for an unquarantined NavMesh sector.");
                 return false;
             }
 
+            Navigation::NavPoint destination{};
+            if (PreflightGeneratedSector(world, next, tick, true, destination) !=
+                RoamPreflightOutcome::Accepted)
+                return false;
             auto nav = std::make_unique<Navigation::GenericNavMeshPathFollower>();
-            auto destination = sectors_[next].center;
-            destination.z = world.player.z;
             if (!nav->Start(
                     world.player,
                     tick,
@@ -757,6 +905,11 @@ namespace Bot
             const auto* candidate = FindApproachCandidate(world, combat, tick);
             if (candidate == nullptr)
                 return false;
+
+            // A newly owned target approach supersedes an optional sector
+            // projection; do not leave phantom navigation work pending.
+            roamPreflight_.reset();
+            roamPreflightSector_ = InvalidSectorIndex;
 
             auto nav = std::make_unique<Navigation::GenericNavMeshPathFollower>();
             const Navigation::NavPoint destination{
@@ -909,6 +1062,8 @@ namespace Bot
                 HasCombatRangeCandidate(world, combat, tick) ||
                 HasApproachCandidate(world, combat, tick))
             {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
                 emptySectorScanStreak_ = 0;
                 return false;
             }
@@ -940,6 +1095,8 @@ namespace Bot
             const std::size_t next = SelectNextRoamSector(world, tick);
             if (next == InvalidSectorIndex)
             {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
                 std::size_t oldest = InvalidSectorIndex;
                 std::uint64_t oldestUntil = std::numeric_limits<std::uint64_t>::max();
                 for (std::size_t i = 0; i < sectors_.size(); ++i)
@@ -958,9 +1115,11 @@ namespace Bot
                 return false;
             }
 
+            Navigation::NavPoint destination{};
+            if (PreflightGeneratedSector(world, next, tick, false, destination) !=
+                RoamPreflightOutcome::Accepted)
+                return false;
             auto nav = std::make_unique<Navigation::GenericNavMeshPathFollower>();
-            auto destination = sectors_[next].center;
-            destination.z = world.player.z;
             const auto& sector = sectors_[next];
 
             if (!nav->Start(
@@ -1187,6 +1346,8 @@ namespace Bot
         {
             if (combat.State() != CombatState::AcquiringTarget)
             {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
                 emptySectorScanStreak_ = 0;
                 return;
             }
@@ -1200,6 +1361,8 @@ namespace Bot
                 HasCombatRangeCandidate(world, combat, tick) ||
                 HasApproachCandidate(world, combat, tick))
             {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
                 emptySectorScanStreak_ = 0;
                 return;
             }
@@ -1324,6 +1487,16 @@ namespace Bot
         {
             if (state_ == GrindModeState::Failed)
                 return;
+
+            if (roamPreflight_ &&
+                (state_ != GrindModeState::Grinding ||
+                 combat.State() != CombatState::AcquiringTarget ||
+                 FindDirectAggressor(world) != nullptr ||
+                 world.player.health == 0))
+            {
+                roamPreflight_.reset();
+                roamPreflightSector_ = InvalidSectorIndex;
+            }
 
             if (state_ == GrindModeState::WaitingForManualVendor)
             {
@@ -2205,6 +2378,7 @@ namespace Bot
         {
             return (approachNavigator_ && approachNavigator_->InitializationProgressing()) ||
                 (roamNavigator_ && roamNavigator_->InitializationProgressing()) ||
+                roamPreflight_ != nullptr ||
                 vendor_.NavigationInitializationPending();
         }
         Navigation::NavigationInitializationObservation NavigationInitializationObservation() const
@@ -2213,6 +2387,13 @@ namespace Bot
                 return approachNavigator_->InitializationObservation();
             if (roamNavigator_)
                 return roamNavigator_->InitializationObservation();
+            if (roamPreflight_)
+            {
+                const auto progress = roamPreflight_->InitializationProgress();
+                return {true, roamPreflightIntent_,
+                    Navigation::NavigationInitTier::Route,
+                    progress.processed, progress.total};
+            }
             return {};
         }
         bool FirstAidActive() const { return firstAid_.IsActive(); }

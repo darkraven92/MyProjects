@@ -1,11 +1,52 @@
 # P0.3 navigation reliability audit
 
+## P0.5.7 generated destination and partial-stage audit (2026-10-08)
+
+The P0.5.6 manual run was PARTIAL PASS / OVERALL FAIL. Portal classification,
+verified forward portal progress, bounded recovery reset, unsafe-vertical
+rejection and unchanged 2000/4/2 budgets were observed. Of 54 terminal
+movement failures, 48 were destination projection failures. A generated
+sector at `(2401.633,-2452.717,100.330)` inherited the player's
+`100.330` Z from `(2316.780,-2537.570,100.330)`; route, expanded and full-map
+each found destination poly zero. The source owner constructed these XY sectors
+with `sectorOrigin_.z`, then replaced Z with `world.player.z` before Start.
+That Z was a search seed, never a verified ground point.
+
+Generated roam and post-death safe-sector targets now use bounded route-scope
+preflight: up to 24 yd vertical seed search in 4-yd samples, 3-yd nearest-poly
+horizontal extent, 2-yd nearest-poly vertical extent, and at most 6 yd
+projected XY deviation. Projection excludes water and steep flags, rejects a
+hard-hazard endpoint, and requires a complete connected Detour route with
+the same terrain validator used by the follower. Unavailable optional sectors
+cool down before a movement intent exists. There is no full-map escalation
+for an unproven generated endpoint and no global nearest-poly extent change.
+The persistent session topology is reused; route tile loading remains
+incremental. `GRIND ROAM TARGET PREFLIGHT` logs one accept/skip per sector.
+
+Partial staging formerly counted all accepted partial corridors against one
+intent-wide three-attempt limit; physical displacement of ~81 yd did not
+matter. The same limit now starts a new episode only on a fresh same-generation
+validated route whose start poly matches a live player projection and lies
+*ahead* on the previous validated directed corridor, with >=4 yd physical
+displacement and >=4 yd destination gain. Rejected candidates never reset the
+counter. New `NAV PARTIAL STAGE PROGRESS` telemetry distinguishes earned
+episodes from retained budgets. The 3-attempt episode limit and all 2000/4/2
+navigation limits are unchanged. A later replan exhaustion and one bounded
+local recovery are recorded but not expanded into broad changes; two
+persistent-hazard rejections remain correct.
+
+P0.5.7 static TEST PASS / BUILD PASS / DIFF CHECK PASS in full worktree
+(100 C++/26 audit Python/13 QuestDB Python/SQL/nine Lua fixtures) and exact
+isolated staged tree (51 C++/26 audit Python/SQL/five published Lua fixtures).
+Runtime PENDING; no WoW or GUI was launched in this checkpoint.
+
 ## P0.5.6 complex-terrain portal and vertical-route audit (2026-10-08)
 
 Starting published HEAD `7281743f3a0242be71b2051101a4126b69302702`.
 P0.5.5 combat initiation is RUNTIME PASS in the clean manual run (ready
 bootstrap input, Attack dispatch, verified damage, multiple fights and kill).
-P0.5.6 navigation is RUNTIME PENDING; no WoW/GUI run is authorized here.
+P0.5.6 navigation was later PARTIAL PASS / OVERALL FAIL in the manual run;
+no WoW/GUI run is authorized in this coding checkpoint.
 
 The available full log shows complete non-steep Detour corridors but repeated
 clearance/raycast rejection near directed edges. Example death route: at

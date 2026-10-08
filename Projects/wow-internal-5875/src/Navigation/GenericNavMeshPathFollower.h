@@ -14,6 +14,7 @@
 #include "LocalPortalSteeringPolicy.h"
 #include "IssuedSteeringCommandPolicy.h"
 #include "PathValidationDiagnosticPolicy.h"
+#include "PartialStagingEpisodePolicy.h"
 
 #include "../Bot/ClickToMoveController.h"
 #include "../Debug/Logger.h"
@@ -584,6 +585,9 @@ namespace Navigation
         // Phase 13D.6 bounded partial-corridor staging state.
         bool partialStageActive_ = false;
         int partialStageAttempts_ = 0;
+        std::uint64_t partialStageEpisode_ = 0;
+        std::uint64_t partialStageStartPoly_ = 0;
+        std::uint64_t partialStageMeshGeneration_ = 0;
         float partialStageBestResidualDistance_ = 1.0e30f;
         float partialStageStartFinalDistance_ = 1.0e30f;
         std::uint64_t partialCorridorFingerprint_ = 0;
@@ -5657,6 +5661,27 @@ namespace Navigation
                         player.x, player.y,
                         partialCorridorStartX_, partialCorridorStartY_)
                     : 0.0f;
+                NavPoint liveProjected{};
+                std::uint64_t livePoly = 0;
+                const bool liveProjection = provider_.ProjectToNavMesh(
+                    PlayerPoint(player), liveProjected, livePoly);
+                const PartialStagingEpisodeEvidence stageEvidence{
+                    partialStageActive_,
+                    path.meshGeneration != 0,
+                    partialStageActive_ && !corridorPolys_.empty(),
+                    true, // the candidate route passed 14O.1 validation above
+                    path.corridorConnected,
+                    liveProjection && livePoly == path.startPoly,
+                    !path.waterAwareRoute && path.waterPolygonCount == 0,
+                    partialStageMeshGeneration_, path.meshGeneration,
+                    partialStageStartPoly_, path.startPoly,
+                    physicalProgress,
+                    partialStageStartFinalDistance_ - startFinalDistance};
+                const bool verifiedForwardProgress =
+                    PartialStagingEpisodePolicy::VerifiedForwardProgress(
+                        stageEvidence, corridorPolys_);
+                const int candidateAttempt = verifiedForwardProgress
+                    ? 1 : partialStageAttempts_ + 1;
                 const std::uint64_t corridorFingerprint =
                     FingerprintCorridor(path.corridorPolys);
                 // Raw dtPolyRef values change when route-scoped tiles are
@@ -5721,7 +5746,7 @@ namespace Navigation
                     " verticalDelta=" + Float(verticalResidual) +
                     " reachableAdvance=" + Float(reachableAdvance) +
                     " physicalProgress=" + Float(physicalProgress) +
-                    " partialAttempt=" + std::to_string(partialStageAttempts_ + 1) +
+                    " partialAttempt=" + std::to_string(candidateAttempt) +
                     "/" + std::to_string(MaximumPartialStageAttempts) +
                     " queryNodes=" + std::to_string(path.queryNodePoolSize) +
                     " corridorFingerprint=" + std::to_string(corridorFingerprint) +
@@ -5751,7 +5776,8 @@ namespace Navigation
                 }
 
                 std::string partialRejectReason;
-                if (partialStageAttempts_ >= MaximumPartialStageAttempts)
+                if (partialStageAttempts_ >= MaximumPartialStageAttempts &&
+                    !verifiedForwardProgress)
                     partialRejectReason = "partial staging attempt budget exhausted";
                 else if (!std::isfinite(residualDistance) ||
                          !std::isfinite(verticalResidual) ||
@@ -5773,6 +5799,20 @@ namespace Navigation
 
                 if (!partialRejectReason.empty())
                 {
+                    if (partialStageActive_)
+                        Debug::Logger::Info(
+                            "NAV PARTIAL STAGE PROGRESS attempt=" +
+                            std::to_string(partialStageAttempts_) +
+                            " episode=" + std::to_string(partialStageEpisode_) +
+                            " oldStartPoly=" + HexPoly(partialStageStartPoly_) +
+                            " newStartPoly=" + HexPoly(path.startPoly) +
+                            " oldDestinationDistance=" +
+                            Float(partialStageStartFinalDistance_) +
+                            " newDestinationDistance=" + Float(startFinalDistance) +
+                            " physicalProgress=" + Float(physicalProgress) +
+                            " verifiedForwardProgress=" +
+                            (verifiedForwardProgress ? "yes" : "no") +
+                            " decision=retain_budget reason=candidate_rejected");
                     lastPlanFailure_ =
                         NavigationInitTelemetryPolicy::QueryFailure(path.error) ==
                             NavigationPlanFailure::WaterTraversalDisabled
@@ -5786,7 +5826,7 @@ namespace Navigation
                         " reachableAdvance=" + Float(reachableAdvance) +
                         " verticalDelta=" + Float(verticalResidual) +
                         " physicalProgress=" + Float(physicalProgress) +
-                        " partialAttempt=" + std::to_string(partialStageAttempts_ + 1) +
+                        " partialAttempt=" + std::to_string(candidateAttempt) +
                         "/" + std::to_string(MaximumPartialStageAttempts) +
                         " queryNodes=" + std::to_string(path.queryNodePoolSize) +
                         " geometryFingerprint=" + std::to_string(geometryFingerprint) +
@@ -5802,9 +5842,34 @@ namespace Navigation
 
                 if (!startOptions_.planningOnly)
                 {
+                    if (partialStageActive_)
+                        Debug::Logger::Info(
+                            "NAV PARTIAL STAGE PROGRESS attempt=" +
+                            std::to_string(partialStageAttempts_) +
+                            " episode=" + std::to_string(partialStageEpisode_) +
+                            " oldStartPoly=" + HexPoly(partialStageStartPoly_) +
+                            " newStartPoly=" + HexPoly(path.startPoly) +
+                            " oldDestinationDistance=" +
+                            Float(partialStageStartFinalDistance_) +
+                            " newDestinationDistance=" + Float(startFinalDistance) +
+                            " physicalProgress=" + Float(physicalProgress) +
+                            " verifiedForwardProgress=" +
+                            (verifiedForwardProgress ? "yes" : "no") +
+                            " decision=" + (verifiedForwardProgress
+                                ? "new_episode" : "retain_budget") +
+                            " reason=" + (verifiedForwardProgress
+                                ? "new_poly_ahead_on_validated_corridor_and_destination_gain"
+                                : "forward_corridor_proof_unavailable"));
+                    if (verifiedForwardProgress)
+                    {
+                        partialStageAttempts_ = 0;
+                        ++partialStageEpisode_;
+                    }
                     ++partialStageAttempts_;
                     partialStageActive_ = true;
                     partialStageStartFinalDistance_ = startFinalDistance;
+                    partialStageStartPoly_ = path.startPoly;
+                    partialStageMeshGeneration_ = path.meshGeneration;
                     partialStageBestResidualDistance_ = std::min(
                         partialStageBestResidualDistance_, residualDistance);
                     partialCorridorFingerprint_ = geometryFingerprint;
@@ -5841,6 +5906,8 @@ namespace Navigation
                 partialStageAttempts_ = 0;
                 partialStageBestResidualDistance_ = 1.0e30f;
                 partialStageStartFinalDistance_ = 1.0e30f;
+                partialStageStartPoly_ = 0;
+                partialStageMeshGeneration_ = 0;
                 partialCorridorFingerprint_ = 0;
             }
 
@@ -6618,6 +6685,9 @@ namespace Navigation
             issuedOrdinarySteeringTargetValid_ = false;
             partialStageActive_ = false;
             partialStageAttempts_ = 0;
+            partialStageEpisode_ = 0;
+            partialStageStartPoly_ = 0;
+            partialStageMeshGeneration_ = 0;
             partialStageBestResidualDistance_ = 1.0e30f;
             partialStageStartFinalDistance_ = 1.0e30f;
             partialCorridorFingerprint_ = 0;

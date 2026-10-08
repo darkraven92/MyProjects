@@ -1490,7 +1490,8 @@ namespace Navigation
             NavPoint& projected,
             std::uint64_t& polyRef,
             float horizontalExtent = 3.0f,
-            float verticalExtent = 5.0f) const
+            float verticalExtent = 5.0f,
+            unsigned short additionalExcludeFlags = 0) const
         {
             std::lock_guard lock(Cache().Mutex());
             projected = point;
@@ -1511,7 +1512,7 @@ namespace Navigation
             };
             dtQueryFilter filter;
             filter.setIncludeFlags(QueryIncludeFlags());
-            filter.setExcludeFlags(QueryExcludeFlags());
+            filter.setExcludeFlags(QueryExcludeFlags(additionalExcludeFlags));
             dtPolyRef reference = 0;
             float closest[3]{};
             const dtStatus status = query_->findNearestPoly(
