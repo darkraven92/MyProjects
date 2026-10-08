@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameThreadDispatcher.h"
+#include "CombatInitiationPolicy.h"
 
 #include "../Debug/Logger.h"
 #include "../Objects/PlayerSnapshot.h"
@@ -118,10 +119,10 @@ namespace Bot
          * remains responsible for approach.
          */
         static constexpr float ChargeMinimumDistance =
-            8.0f;
+            CombatInitiationPolicy::ChargeMinimumDistance;
 
         static constexpr float ChargeMaximumDistance =
-            25.0f;
+            CombatInitiationPolicy::ChargeMaximumDistance;
 
         /*
          * Thunder Clap costs 20 rage at the currently trained rank.
@@ -1291,10 +1292,7 @@ namespace Bot
                 target.health > 0 &&
                 target.maxHealth > 0 &&
                 selectedTargetMatches &&
-                target.distance >=
-                    ChargeMinimumDistance &&
-                target.distance <=
-                    ChargeMaximumDistance;
+                CombatInitiationPolicy::ChargeRangeEligible(target.distance);
         }
 
         bool TryCharge(
@@ -1343,11 +1341,7 @@ namespace Bot
                 return false;
             }
 
-            if (
-                target.distance <
-                    ChargeMinimumDistance ||
-                target.distance >
-                    ChargeMaximumDistance)
+            if (!CombatInitiationPolicy::ChargeRangeEligible(target.distance))
             {
                 Debug::Logger::Info(
                     "CHARGE: target outside opener "

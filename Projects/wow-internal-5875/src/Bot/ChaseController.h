@@ -2,6 +2,7 @@
 
 #include "MovementController.h"
 #include "ChaseProgressWatchdog.h"
+#include "CombatInitiationPolicy.h"
 #include "TargetSelector.h"
 
 #include "../Debug/Logger.h"
@@ -59,7 +60,7 @@ namespace Bot
          * spelaren som inom melee-range för denna fas.
          */
         static constexpr float InRangeDistance =
-            5.0f;
+            CombatInitiationPolicy::MeleeEnterDistance;
 
         /*
          * Hysteresis:
@@ -72,7 +73,7 @@ namespace Bot
          * CTM hela tiden runt samma gränsvärde.
          */
         static constexpr float ResumeChaseDistance =
-            6.0f;
+            CombatInitiationPolicy::ChaseResumeDistance;
 
         /*
          * Vi tillåter inte att movement-only chase
@@ -620,9 +621,7 @@ namespace Bot
              * Skicka ingen CTM. Vänta tills mobben
              * faktiskt går utanför ResumeChaseDistance.
              */
-            if (
-                target.distance <=
-                    InRangeDistance)
+            if (CombatInitiationPolicy::EnterMelee(target.distance))
             {
                 SetState(
                     ChaseState::InRange
@@ -779,9 +778,7 @@ namespace Bot
             // Enter melee range
             // =========================================
 
-            if (
-                target->distance <=
-                    InRangeDistance)
+            if (CombatInitiationPolicy::EnterMelee(target->distance))
             {
                 if (
                     state_ !=

@@ -9,10 +9,50 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.3 post-containment release command eligibility**. P0.4 autonomous
+- Current phase: V6 **P0.5.4 combat initiation / Charge-facing regression**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.4 combat initiation regression (2026-10-08)
+
+Starting published HEAD `e74f78679f95ca8f6d8888be3364d2c232a0ed65`.
+The newest dirty-worktree runtime is **RUNTIME FAIL for ordinary combat
+initiation**: optional entry 3426/GUID `0xF130000D620037CE` was selected and
+locked near 19 yd; Charge-facing logged its first aligned sample but never a
+second, no Charge or Attack was sent, chase followed into ~3 yd without a
+melee handoff, and three supervisor recoveries ended in containment/release
+timeout. Target HP stayed 100 and player HP 664. The periodic WorldState
+selection=0 line was a pre-command snapshot; native selection later matched.
+
+Published P0.2 melee-liveness observation runs before every Charge-facing,
+chase, and Fighting update. Its early return on an unknown/stale action or
+input readback can freeze all three initiation FSMs; the current log does not
+identify which underlying readback was unavailable. Unpublished pull-safety,
+diagnostic, and quest handoff work is present in the dirty CombatController,
+but this early-return gate is in the published code. P0.5.4 separates bounded
+Charge/chase state progress from positive authorization of an offensive
+command, retains the two fresh selected/aligned Charge samples, and lets
+ChaseController's unchanged 5/6-yd hysteresis drive melee handoff. Sparse
+`COMBAT INIT GATE` telemetry identifies target, selection and input evidence
+on the next manual run. No supervisor threshold, repair budget, navigation,
+water, AFK, vendor or DeathRecovery policy is changed. If only the full
+Attack/cooldown readback is unavailable, a separately safe UI/cast probe
+permits one initial Attack bootstrap using the existing action-slot/
+`AttackTarget` semantics and the same fresh GUID/range/facing guard. This
+spends an existing repair attempt, does not repeat a toggle each tick, and
+still needs later structural/damage evidence. Normal `start`/`refresh` and
+P0.5.3 release semantics remain unchanged. P0.5.4 static status:
+TEST PASS, BUILD PASS, DIFF CHECK PASS. Full dirty worktree: 99 strict C++
+tests, 26 audit Python tests, 13 QuestDB Python tests, SQL fixture and nine
+Lua fixtures PASS. Fresh
+HEAD-plus-exact-staged isolated tree: 50 strict C++ tests, 26 audit Python,
+QuestDB SQL fixture, four published Lua fixtures and complete MinGW build
+PASS. P0.5.4 RUNTIME PENDING;
+only a later live run can prove ordinary Charge/Attack initiation.
+P0.5.3 remains STATIC PASS, but its runtime result is not accepted while
+ordinary initiation is broken. P0.6 remains STATIC PASS / RUNTIME PENDING;
+P0.4 remains PAUSED.
 
 ## P0.5.3 post-containment release eligibility (2026-10-08)
 

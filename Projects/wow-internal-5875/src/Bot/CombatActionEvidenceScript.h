@@ -14,8 +14,9 @@ local function run()
     not CastingBarFrame or not SpellIsTargeting or
     not EnumerateFrames then return 'unknown' end
  if mode~='selection_probe' and
-    (not IsAttackAction or not IsCurrentAction or
-     not GetActionCooldown or not GetTime) then return 'unknown' end
+    (not IsAttackAction or not IsCurrentAction) then return 'unknown' end
+ if mode~='selection_probe' and mode~='bootstrap' and
+    (not GetActionCooldown or not GetTime) then return 'unknown' end
  local frames={'GossipFrame','QuestFrame','MerchantFrame','ClassTrainerFrame','LootFrame',
   'TalentFrame','TradeFrame','MailFrame','ItemTextFrame','TaxiFrame','GameMenuFrame',
   'StaticPopup1','StaticPopup2','StaticPopup3','StaticPopup4'}
@@ -45,8 +46,10 @@ local function run()
  local a=0
  for i=1,120 do
   if a==0 and IsAttackAction(i) then a=i end
-  local start,duration=GetActionCooldown(i)
-  if start and duration and duration>0 and duration<=1.5 and start+duration>GetTime() then wait=true end
+  if mode~='bootstrap' then
+   local start,duration=GetActionCooldown(i)
+   if start and duration and duration>0 and duration<=1.5 and start+duration>GetTime() then wait=true end
+  end
  end
  if wait then return 'wait' end
  if mode=='abandon' then

@@ -70,4 +70,11 @@ check('ready','selection_probe'); assert(uses==0 and clears==0)
 reset(); CastingBarFrame.casting=1; check('wait','selection_probe'); assert(clears==0)
 reset(); _G.MerchantFrame={IsVisible=function() return true end}
 check('blocked','selection_probe'); assert(clears==0)
+reset(); check('issued','start'); assert(uses==1 and clears==0)
+reset(); GetActionCooldown=function() error('unavailable') end
+check('unknown','start'); assert(uses==0)
+check('issued','bootstrap'); assert(uses==1 and active)
+reset(); active=true; GetActionCooldown=nil; GetTime=nil
+check('issued','bootstrap'); assert(uses==0 and active) -- never toggle active Attack off
+reset(); CastingBarFrame.casting=1; check('wait','bootstrap'); assert(uses==0)
 print('Combat action evidence Lua: passed')

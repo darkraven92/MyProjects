@@ -1,5 +1,63 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## P0.5.4 combat initiation / Charge-facing regression (2026-10-08)
+
+Starting published HEAD `e74f78679f95ca8f6d8888be3364d2c232a0ed65`.
+The latest dirty-worktree natural run selected and locked optional entry
+3426/GUID `0xF130000D620037CE` near 19 yd. `WarriorChargeFacing` logged one
+aligned sample; Charge and Attack counters stayed zero. At ~8 yd the
+unchanged 32-tick supervisor performed recovery 1/3 and forced chase. The
+chase physically closed to ~3 yd but did not hand off at the existing 5-yd
+envelope. Recovery 2/3 forced Fighting, still with no Attack; recovery 3/3
+eventually entered containment. Player/target HP stayed 664/100. The later
+post-containment timeout is secondary to this first-action failure. Earlier
+P0.5.1 long-run Charge episodes had a second aligned sample and issued Charge.
+
+Source attribution: published `CombatController::Update` invokes
+`ObserveMeleeLiveness` before Charge-facing and chase, then returns before
+their FSMs when its action, selection, health, or input readback is unknown.
+The runtime has no `COMBAT LIVENESS` classification transition, consistent
+with the initial `UnknownOrStale` class persisting, but lacks the sub-evidence
+needed to identify which read failed. P0.5.3 changed only release-side
+selection probing; the normal offensive `ProbeCombatAction` script and this
+early return predate it. The dirty worktree changes pull ranking, adds
+diagnostics/chase GUID checks, and includes quest handoff work; none creates
+the early return. The target remained locked and later native UI selection
+matched; the periodic WorldState target=0 was an older snapshot, not proof of
+a persistent UI selection failure.
+
+P0.5.4 keeps the melee watchdog observational during Charge-facing/chase
+when only Attack readback is unknown. Fresh target and native selection
+evidence remain required; known cast/dialog/input blockers still hold.
+Offensive input requires a positive safe probe, independent of physical chase
+progress. Charge-facing alignment is reset on selection mismatch and requires
+two fresh selected/aligned samples; an unavailable Charge falls back to
+existing chase without increasing the six-tick window. ChaseController keeps
+its 5-yd entry/6-yd resume hysteresis. At verified melee handoff, Fighting
+waits for safe input before its existing bounded Attack startup path. Sparse
+`COMBAT INIT GATE` telemetry now reports which evidence holds startup and
+whether state progress or offensive input was authorized. The 32-tick
+supervisor threshold, three recoveries, combat repair budget, water guard,
+navigation/AFK/DeathRecovery and P0.6 vendor behavior are unchanged. A
+separate `bootstrap` Lua mode is allowed only for the first same-GUID melee
+start after a positive UI/cast input probe, fresh game-thread GUID/health/
+range/facing checks, and two aligned facing samples. It uses the established
+idempotent Attack-slot/`AttackTarget` action path without depending on a full
+120-slot cooldown readback; the ordinary `start`/`refresh` and post-containment
+release modes are untouched. The bootstrap consumes one existing repair
+attempt and dispatch alone is never offensive-progress proof.
+
+P0.5.4 static validation: TEST PASS, BUILD PASS, DIFF CHECK PASS. Full dirty
+worktree: 99 strict C++ tests, 26 audit Python, 13 QuestDB Python, QuestDB SQL
+fixture and nine Lua fixtures PASS.
+Fresh published-HEAD-plus-exact-staged isolated tree: 50 strict C++ tests,
+26 audit Python, QuestDB SQL fixture, four published Lua fixtures and complete
+MinGW build PASS. P0.5.4
+runtime: PENDING; no WoW/GUI launch is authorized here. Current full
+dirty-worktree ordinary initiation: RUNTIME FAIL. P0.5.3 remains STATIC PASS,
+while release runtime qualification cannot be accepted until normal initiation
+works. P0.6 remains STATIC PASS / RUNTIME PENDING. P0.4 remains PAUSED.
+
 ## P0.5.3 post-containment release command eligibility (2026-10-08)
 
 Starting published HEAD `d8b88caa333b493da8fae91fee903e7791ac606b`.

@@ -8,6 +8,7 @@
 #include "CombatDefensiveContainmentPolicy.h"
 #include "ChaseController.h"
 #include "CombatFacingPolicy.h"
+#include "CombatInitiationPolicy.h"
 #include "CombatPositioningPolicy.h"
 #include "FacingController.h"
 #include "GrindTargetPolicy.h"
@@ -322,6 +323,13 @@ namespace Bot
         CombatLivenessDecision meleeDecision_{};
         AutoAttackController::CombatActionEvidence meleeActionEvidence_{};
         CombatStallClass lastMeleeClassification_=CombatStallClass::UnknownOrStale;
+        bool lastMeleeTargetFresh_=false;
+        bool lastMeleeSelectionKnown_=false;
+        std::uint64_t lastMeleeSelectedGuid_=0;
+        std::uint64_t lastInitGateGuid_=0;
+        CombatState lastInitGateState_=CombatState::Idle;
+        CombatInitiationReason lastInitGateReason_=CombatInitiationReason::Ready;
+        bool lastInitGateOffenseAllowed_=false;
 
         static std::uint64_t ClientSelectedGuid(const Objects::WorldState& world)
         {
@@ -788,12 +796,16 @@ namespace Bot
             s.targetGuid=target.guid; s.targetObject=target.address;
             s.targetValid=target.valid; s.alive=world.player.health>0;
             s.selectionKnown=CombatClientEvidence5875::Selection(world,s.selectedGuid);
+            lastMeleeSelectionKnown_=s.selectionKnown;
+            lastMeleeSelectedGuid_=s.selectedGuid;
             s.fresh=CombatClientEvidence5875::FreshHealth(world,target,
                 s.targetHp,s.playerHp,s.attackPeriodMs);
             // A stale object snapshot is not a stationary live target sample.
             s.fresh=s.fresh && s.targetHp==target.health && s.playerHp==world.player.health;
+            lastMeleeTargetFresh_=s.fresh;
             meleeActionEvidence_=AutoAttackController::ProbeCombatAction();
-            s.fresh=s.fresh && meleeActionEvidence_.known;
+            // Health sampling remains authoritative even when the Attack
+            // action probe is unavailable during a bounded bootstrap.
             s.inputSafe=meleeActionEvidence_.known && meleeActionEvidence_.inputSafe &&
                 !combatSeparationActive_ &&
                 (!chase_.TargetGuid() || chase_.TargetGuid()==lockedGuid_);
@@ -866,7 +878,8 @@ namespace Bot
         }
 
         bool IssueLivenessAttack(const Objects::WorldState& world,
-            const Objects::UnitState& target, std::uint64_t tick, bool refresh)
+            const Objects::UnitState& target, std::uint64_t tick, bool refresh,
+            bool initialBootstrap=false)
         {
             if (meleeLiveness_.Pending() || meleeLiveness_.Repairs()>=CombatLivenessPolicy::MaximumRepairs)
                 return false;
@@ -876,8 +889,11 @@ namespace Bot
             Debug::Logger::Info("COMBAT RECOVERY step="+std::string(CombatRecoveryName(action))+
                 " attempt="+std::to_string(meleeLiveness_.Repairs())+" targetGuid="+Hex64(target.guid)+
                 " reason="+CombatStallName(meleeDecision_.classification));
-            const bool issued=AutoAttackController::RecoverCombatAction(world,target.guid,refresh,
-                PostChargeImmediateMeleeDistance);
+            const bool issued=initialBootstrap
+                ? AutoAttackController::BootstrapCombatAction(world,target.guid,
+                    PostChargeImmediateMeleeDistance)
+                : AutoAttackController::RecoverCombatAction(world,target.guid,refresh,
+                    PostChargeImmediateMeleeDistance);
             attackStarted_=issued;
             if (issued && episodeAttackGuid_==target.guid)
                 episodeAttackOwnershipEstablished_=true;
@@ -2528,9 +2544,8 @@ namespace Bot
                     WarriorChargeFacingMaximumTicks;
 
                 warriorChargeFacingStableSnapshots_ =
-                    chargeFacingReady
-                        ? 1u
-                        : 0u;
+                    CombatInitiationPolicy::ConfirmChargeFacing(0,
+                        ClientSelectedGuid(world)==target.guid,chargeFacingReady);
 
                 warriorChargeFacingCommandsForTarget_ =
                     0;
@@ -3176,6 +3191,10 @@ namespace Bot
             // verifies the structural latch; only damage re-arms the budget.
             if (meleeActionEvidence_.attack.actionSlotFound && meleeActionEvidence_.attack.active)
             {
+                if (!attackStarted_)
+                    Debug::Logger::Info("COMBAT INIT GATE state=attack_start guid="+
+                        Hex64(lockedGuid_)+" selectedGuid="+Hex64(ClientSelectedGuid(world))+
+                        " decision=already_active reason=observed_attack_latch");
                 attackStarted_=true;
                 episodeAttackOwnershipEstablished_=true;
                 autoAttackReengagePending_=false;
@@ -3190,7 +3209,12 @@ namespace Bot
             {
                 // Initial no-slot bootstrap: unknown latch is not active/false
                 // evidence. One start is permitted; verification stays pending.
-                IssueLivenessAttack(world,target,tick,false);
+                Debug::Logger::Info("COMBAT INIT GATE state=attack_start guid="+
+                    Hex64(lockedGuid_)+" selectedGuid="+Hex64(ClientSelectedGuid(world))+
+                    " attackKnown="+(meleeActionEvidence_.attack.actionSlotFound ? "yes" : "no")+
+                    " attackActive=no decision=start reason=initial_melee_bootstrap");
+                IssueLivenessAttack(world,target,tick,false,
+                    !meleeActionEvidence_.known);
             }
 
             return true;
@@ -4460,14 +4484,57 @@ namespace Bot
                 return;
             }
 
-            if (ObserveMeleeLiveness(world,*target,tick))
+            ObserveMeleeLiveness(world,*target,tick);
+            if (meleeTerminalPending_ ||
+                state_==CombatState::DefensiveContainment ||
+                state_==CombatState::Failed ||
+                state_==CombatState::AcquiringTarget)
                 return;
 
+            // An unknown Attack-action readback is not evidence that Charge
+            // facing or physical chase stopped making progress. Keep those
+            // bounded FSMs advancing; authorize offensive input separately.
+            AutoAttackController::CombatActionEvidence alternateInput{};
+            if (!meleeActionEvidence_.known && lastMeleeTargetFresh_)
+                alternateInput=AutoAttackController::ProbeSelectionReleaseInput();
+            const auto initPhase=state_==CombatState::Fighting
+                ? CombatInitiationPhase::Melee : state_==CombatState::Chasing ||
+                    state_==CombatState::WarriorOpening
+                    ? CombatInitiationPhase::Chase : CombatInitiationPhase::ChargeFacing;
+            const CombatInitiationEvidence initEvidence{
+                lastMeleeTargetFresh_,
+                lastMeleeSelectionKnown_,lastMeleeSelectedGuid_==lockedGuid_,
+                meleeActionEvidence_.known,meleeActionEvidence_.inputSafe,
+                meleeActionEvidence_.waiting,alternateInput.known,alternateInput.inputSafe,
+                alternateInput.waiting};
+            const auto initGate=CombatInitiationPolicy::Decide(initPhase,initEvidence);
+            if (lockedGuid_!=lastInitGateGuid_ || state_!=lastInitGateState_ ||
+                initGate.reason!=lastInitGateReason_ ||
+                initGate.offensiveInputAllowed!=lastInitGateOffenseAllowed_)
+            {
+                lastInitGateGuid_=lockedGuid_;
+                lastInitGateState_=state_;
+                lastInitGateReason_=initGate.reason;
+                lastInitGateOffenseAllowed_=initGate.offensiveInputAllowed;
+                Debug::Logger::Info("COMBAT INIT GATE state="+std::string(StateNameInternal(state_))+
+                    " guid="+Hex64(lockedGuid_)+" selectedGuid="+Hex64(lastMeleeSelectedGuid_)+
+                    " distance="+Float(target->distance)+
+                    " selectionFresh="+(initEvidence.selectionKnown ? "yes" : "no")+
+                    " targetFresh="+(initEvidence.targetFresh ? "yes" : "no")+
+                    " alignedCount="+std::to_string(warriorChargeFacingStableSnapshots_)+
+                    " actionEvidence="+meleeActionEvidence_.reason+
+                    " alternateInput="+alternateInput.reason+
+                    " decision="+(initGate.stateProgressAllowed ?
+                        (initGate.offensiveInputAllowed ? "advance" : "advance_no_offense") : "wait")+
+                    " reason="+CombatInitiationReasonName(initGate.reason));
+            }
             MaintainTargetSelection(
                 world,
                 *target,
                 tick
             );
+            if (!initGate.stateProgressAllowed)
+                return;
 
             // =========================================
             // Phase 14G.5.2.2: bounded Charge facing acquisition
@@ -4487,7 +4554,8 @@ namespace Bot
                         lockedGuid_)
                 {
                     warriorChargeFacingStableSnapshots_ =
-                        0;
+                        CombatInitiationPolicy::ConfirmChargeFacing(
+                            warriorChargeFacingStableSnapshots_,false,false);
 
                     if (
                         tick >=
@@ -4531,7 +4599,8 @@ namespace Bot
                         0;
 
                     warriorChargeFacingStableSnapshots_ =
-                        0;
+                        CombatInitiationPolicy::ConfirmChargeFacing(
+                            warriorChargeFacingStableSnapshots_,true,false);
 
                     warriorChargeFacingCommandsForTarget_ =
                         0;
@@ -4570,7 +4639,8 @@ namespace Bot
                 if (!chargeFacingReady)
                 {
                     warriorChargeFacingStableSnapshots_ =
-                        0;
+                        CombatInitiationPolicy::ConfirmChargeFacing(
+                            warriorChargeFacingStableSnapshots_,true,false);
 
                     const bool timedOut =
                         tick >=
@@ -4653,13 +4723,9 @@ namespace Bot
                     return;
                 }
 
-                if (
-                    warriorChargeFacingStableSnapshots_ <
-                        CombatFacingPolicy::
-                            StableSnapshotsRequired)
-                {
-                    ++warriorChargeFacingStableSnapshots_;
-                }
+                warriorChargeFacingStableSnapshots_ =
+                    CombatInitiationPolicy::ConfirmChargeFacing(
+                        warriorChargeFacingStableSnapshots_,true,true);
 
                 if (
                     warriorChargeFacingStableSnapshots_ <
@@ -4670,6 +4736,19 @@ namespace Bot
                         "CHARGE FACING 14G.5.2.2: aligned snapshot confirmed once; waiting for one fresh confirmation."
                     );
 
+                    return;
+                }
+
+                if (!initGate.offensiveInputAllowed)
+                {
+                    if (tick >= warriorChargeFacingUntilTick_)
+                    {
+                        Debug::Logger::Info("COMBAT INIT GATE state=charge_facing decision=fallback_melee reason=input_evidence_unavailable");
+                        warriorChargeFacingUntilTick_=0;
+                        warriorChargeFacingStableSnapshots_=0;
+                        warriorChargeFacingCommandsForTarget_=0;
+                        StartChaseForLockedTarget(world,*target,tick);
+                    }
                     return;
                 }
 
@@ -4767,11 +4846,10 @@ namespace Bot
 
                     if (state_ == CombatState::Fighting)
                     {
+                        if (!initGate.offensiveInputAllowed)
+                            return;
                         const bool facingReady =
-                            MaintainFacingAndAttack(
-                                world,
-                                *target,
-                                tick);
+                            MaintainFacingAndAttack(world,*target,tick);
 
                         if (attackStarted_)
                         {
@@ -4869,6 +4947,9 @@ namespace Bot
             {
                 if (wasChasingBeforeUpdate)
                 {
+                    Debug::Logger::Info("COMBAT INIT GATE state=chase guid="+
+                        Hex64(lockedGuid_)+" distance="+Float(target->distance)+
+                        " decision=enter_melee reason=verified_chase_in_range");
                     autoAttackReengagePending_ = true;
                     facingStableSnapshots_ = 0;
                     facingGuardHolding_ = true;
@@ -4881,6 +4962,9 @@ namespace Bot
                 SetState(
                     CombatState::Fighting
                 );
+
+                if (!initGate.offensiveInputAllowed)
+                    return; // A later fresh input probe owns melee bootstrap.
 
                 const bool facingReady =
                     MaintainFacingAndAttack(

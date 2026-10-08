@@ -30,6 +30,18 @@ int main(int argc, char** argv)
     auto firstDamage = p.Observe(s);
     assert(firstDamage.action == CombatRecoveryAction::None && firstDamage.damageObserved);
     assert(p.NoDamageMs(s.nowMs) == 0);
+    // A fresh health decrease remains damage progress even while Attack
+    // readback is unavailable; it must not grant unsafe recovery input.
+    p.Reset(); p.Observe(Sample());
+    s = Sample(1001); s.targetHp = 95; s.inputSafe = false;
+    s.actionKnown = false;
+    const auto damageWithoutActionReadback = p.Observe(s);
+    assert(damageWithoutActionReadback.damageObserved);
+    assert(damageWithoutActionReadback.action == CombatRecoveryAction::None);
+    assert(p.NoDamageMs(s.nowMs) == 0);
+    p.Reset(); p.Observe(Sample());
+    s = Sample(8001); s.targetHp = 90;
+    assert(p.Observe(s).damageObserved);
     s = Sample(9001); s.targetHp = 90; s.selectedGuid = 0;
     auto d = p.Observe(s);
     assert(d.classification == CombatStallClass::TargetSelectionDesync);

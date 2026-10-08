@@ -602,6 +602,18 @@ namespace Bot
             const auto script=CombatActionScript(refresh ? "refresh" : "start");
             return ExecuteLuaReadback(script.c_str(),"wow-internal/CombatRecovery.lua",result,&world,guid,meleeEnvelope) && result=="issued";
         }
+        // First melee start only: unlike a latch repair, there is no prior
+        // offensive action to preserve. The caller must have a separate safe
+        // UI/cast probe; the game-thread fresh GUID/range/facing guard below
+        // still applies. This does not bypass the normal recovery script.
+        static bool BootstrapCombatAction(const Objects::WorldState& world,
+            std::uint64_t guid, float meleeEnvelope)
+        {
+            std::string result;
+            const auto script=CombatActionScript("bootstrap");
+            return ExecuteLuaReadback(script.c_str(),"wow-internal/CombatBootstrap.lua",
+                result,&world,guid,meleeEnvelope) && result=="issued";
+        }
         static bool AbandonOwnCombatTarget(const Objects::WorldState& world,
             std::uint64_t guid, float meleeEnvelope)
         {
