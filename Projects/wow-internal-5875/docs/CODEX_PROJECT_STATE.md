@@ -9,10 +9,35 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.5 offensive input evidence / melee progress**. P0.4 autonomous
+- Current phase: V6 **P0.5.6 complex-terrain navigation**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.5.6 complex-terrain navigation (2026-10-08)
+
+Starting published HEAD `7281743f3a0242be71b2051101a4126b69302702`.
+The clean P0.5.5 manual run is **RUNTIME PASS** for combat initiation:
+bootstrap probe ready, Attack dispatched, target HP decreased, multiple
+targets progressed and a verified kill occurred. The next observed blocker is
+navigation on complex terrain, including DeathRecovery local portal failures
+and later unsafe vertical-route rejection. P0.6 remains STATIC PASS / RUNTIME
+PENDING; P0.4 remains PAUSED with living-water avoidance enabled.
+
+P0.5.6 adds a filtered, clearance- and ray-verified interior target inside a
+known directed portal's destination polygon when an exact boundary point is
+unusable. A near-portal Detour ray wall hit remains a blocked boundary, never
+proof of crossing. An interior stage spends the existing surface-recovery
+budget; budget reset needs a fresh observed destination polygon, the original
+directed pair, an unblocked post-move Detour ray traversing only that pair,
+safe live geometry, same route
+generation and >4 yd destination gain. Lateral displacement alone remains
+neutral. Vertical-route rejection, 2000/4/2 budgets, water exclusion, hazard
+memory, cache, and DeathRecovery owner logic are unchanged. Unsafe-route logs
+now include the exact tested leg, start projection delta, and tile-seam status.
+P0.5.6 **TEST PASS / BUILD PASS / DIFF CHECK PASS** in both the full worktree
+and fresh isolated staged tree; **RUNTIME PENDING**. No WoW/GUI launched in
+this checkpoint.
 
 ## P0.5.5 offensive input evidence and melee progress (2026-10-08)
 

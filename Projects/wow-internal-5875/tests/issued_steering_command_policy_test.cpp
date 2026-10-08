@@ -76,7 +76,9 @@ int main()
         std::string::npos);
     assert(source.find("IssuedSteeringCommandPolicy::Invalidate(issuedNavCommand_);") !=
         std::string::npos);
-    assert(source.find("AttributeFailedSteering(player,fromIndex,firstCandidate)") !=
+    assert(source.find("AttributeFailedSteering(player,fromIndex,firstCandidate,") !=
+        std::string::npos);
+    assert(source.find("SteeringCandidateDecision::RejectedClearance") !=
         std::string::npos);
     assert(source.find("IssueVerifiedPortalStage(player,tick,localFailure)") !=
         std::string::npos);

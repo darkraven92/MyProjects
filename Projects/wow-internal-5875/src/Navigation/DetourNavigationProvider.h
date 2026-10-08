@@ -112,6 +112,8 @@ namespace Navigation
         NavPoint portalA{};
         NavPoint portalB{};
         bool portalKnown = false;
+        bool tileSeamKnown = false;
+        bool tileSeam = false;
         TerrainTransitionPolicy::Geometry geometry{};
         std::size_t pointIndex = 0;
         const char* reason = "none";
@@ -1754,6 +1756,49 @@ namespace Navigation
             return false;
         }
 
+        // A route-local steering candidate inside one already selected poly.
+        // Topology is unchanged, and a living query cannot sample excluded
+        // water polygons through this helper. Terrain/steep validation remains
+        // the follower's separate pre-movement gate.
+        bool GetFilteredPolygonInterior(std::uint64_t reference,
+            NavPoint& interior) const
+        {
+            std::lock_guard lock(Cache().Mutex());
+            interior = {};
+            if (!CurrentTopology() || !query_ || !mesh_ || !reference)
+                return false;
+            const dtMeshTile* tile = nullptr;
+            const dtPoly* poly = nullptr;
+            if (dtStatusFailed(mesh_->getTileAndPolyByRef(
+                    static_cast<dtPolyRef>(reference), &tile, &poly)) ||
+                !tile || !poly || !poly->vertCount ||
+                (poly->flags & QueryIncludeFlags()) == 0 ||
+                (poly->flags & QueryExcludeFlags()) != 0)
+                return false;
+            NavPoint center{};
+            for (unsigned vertex = 0; vertex < poly->vertCount; ++vertex)
+            {
+                const NavPoint point = ToWow(&tile->verts[
+                    poly->verts[vertex] * 3]);
+                center.x += point.x;
+                center.y += point.y;
+                center.z += point.z;
+            }
+            const float count = static_cast<float>(poly->vertCount);
+            center.x /= count;
+            center.y /= count;
+            center.z /= count;
+            float desired[3]{}, closest[3]{};
+            ToDetour(center, desired);
+            if (dtStatusFailed(query_->closestPointOnPoly(
+                    static_cast<dtPolyRef>(reference), desired, closest,
+                    nullptr)))
+                return false;
+            interior = ToWow(closest);
+            return std::isfinite(interior.x) && std::isfinite(interior.y) &&
+                std::isfinite(interior.z);
+        }
+
         // Phase 13C.1: validate a local steering segment against the
         // currently loaded Detour surface before handing it to WoW CTM.
         // A point can be on NavMesh yet still be separated from the live
@@ -2523,6 +2568,8 @@ namespace Navigation
                 result.toPoly = path.corridorPolys[i];
                 result.fromFlags = fromPoly->flags;
                 result.toFlags = toPoly->flags;
+                result.tileSeamKnown = true;
+                result.tileSeam = fromTile != toTile;
                 result.geometry = geometry;
                 result.reason = "unsafe_steep_corridor_transition";
                 if (portal->edge < fromPoly->vertCount)
@@ -2581,6 +2628,21 @@ namespace Navigation
                     mesh_->getPolyFlags(
                         static_cast<dtPolyRef>(result.toPoly),
                         &result.toFlags);
+
+                    const dtMeshTile* toTile = nullptr;
+                    const dtPoly* toPoly = nullptr;
+                    const dtMeshTile* fromTile = nullptr;
+                    const dtPoly* fromPoly = nullptr;
+                    if (dtStatusSucceed(mesh_->getTileAndPolyByRef(
+                            static_cast<dtPolyRef>(result.fromPoly),
+                            &fromTile,&fromPoly)) &&
+                        dtStatusSucceed(mesh_->getTileAndPolyByRef(
+                            static_cast<dtPolyRef>(result.toPoly),
+                            &toTile,&toPoly)) && fromTile && toTile)
+                    {
+                        result.tileSeamKnown = true;
+                        result.tileSeam = fromTile != toTile;
+                    }
 
                     const dtMeshTile* tile = nullptr;
                     const dtPoly* poly = nullptr;

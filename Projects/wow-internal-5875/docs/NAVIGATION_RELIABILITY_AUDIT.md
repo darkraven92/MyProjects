@@ -1,5 +1,51 @@
 # P0.3 navigation reliability audit
 
+## P0.5.6 complex-terrain portal and vertical-route audit (2026-10-08)
+
+Starting published HEAD `7281743f3a0242be71b2051101a4126b69302702`.
+P0.5.5 combat initiation is RUNTIME PASS in the clean manual run (ready
+bootstrap input, Attack dispatch, verified damage, multiple fights and kill).
+P0.5.6 navigation is RUNTIME PENDING; no WoW/GUI run is authorized here.
+
+The available full log shows complete non-steep Detour corridors but repeated
+clearance/raycast rejection near directed edges. Example death route: at
+`(266.708,-1951.753,92.153)`, a ray from poly `...D07` toward `...CFB`
+stopped in `...D07` near linked edge `...D07 -> ...CDF`. This is a Detour wall
+hit, not a successful portal crossing. At `(262.004,-1951.304,91.888)`, an
+8.461-yd lateral recovery improved destination distance by 8.240 yd but had
+no verified forward poly transition, correctly remaining neutral. Detour's
+raycast traverses a directed link only if its edge/filter and clipped tile
+interval permit it; proximity to the link alone cannot authorize CTM.
+
+The follower now distinguishes intended portal passage, blocked corridor
+boundary, unrelated blocking geometry, unavailable provenance and insufficient
+clearance. On a known directed edge it tries the clipped midpoint and then
+bounded interior samples of the *filtered destination polygon*. Each candidate
+must project to the expected poly, have safe live vertical geometry and step,
+clearance >=0.70 yd, and a complete ray visiting exactly the directed pair.
+If no candidate passes, existing bounded lateral/backtrack/terminal behavior
+remains. The mesh is never mutated and no water fallback is enabled. Crossing
+credit for such an issued interior stage requires a fresh physical observation
+in the expected destination poly, same route generation, a complete post-move
+ray visiting exactly that pair, safe live geometry and >4 yd destination gain; command
+dispatch or a new route alone cannot refund attempts. Ordinary lateral
+recovery still remains neutral without proof of a forward transition.
+
+`ValidateTerrainRoute` checks actual ALL_CROSSINGS straight-path legs (live
+player -> first portal, then portal -> portal); its steep-fallback center check
+is separately typed. The reported 3.851/6.040 and 8.996/10.000 horizontal/
+vertical samples exceed the unchanged 14O.1 slope gate. Current source already
+learns a valid rejected directed edge and tries a bounded polygon exclusion;
+an unidentifiable skipped edge or no safe alternative remains fail-closed.
+The available local log does not include those two exact later vertical events,
+so it cannot prove whether they were real cliffs, tile seams or projection
+mismatches. New sparse rejection telemetry records tested point endpoints,
+source (live player or portal), projected-start delta and exact tile-seam
+identity for the next manual run. No Ashenvale coordinate or DeathRecovery
+special case is introduced. Persistent hazard memory and 2000/4/2 budgets are
+unchanged.
+
+
 Updated 2026-10-07. P0.3/P0.3.1/P0.3.2 baseline RUNTIME PASS.
 P0.4-TEMP adds a production-default living-only query-time Water exclusion
 `0x08` (including mixed Ground|Water polygons), retaining the session topology

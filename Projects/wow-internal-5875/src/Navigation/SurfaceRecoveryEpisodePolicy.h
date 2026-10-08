@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <cstdint>
 
 namespace Navigation
 {
@@ -7,6 +8,22 @@ namespace Navigation
 
     struct SurfaceRecoveryEpisodePolicy
     {
+        static bool VerifiedPortalStageProgress(bool interiorStage,
+            std::uint64_t issuedFrom, std::uint64_t issuedTo,
+            std::uint64_t initialPoly, std::uint64_t observedPoly,
+            std::uint64_t rayLastPoly, bool sameRouteGeneration,
+            bool rayComplete, bool terrainSafe, float initialDistance,
+            float observedDistance, float requiredGain)
+        {
+            return interiorStage && issuedFrom != 0 && issuedTo != 0 &&
+                issuedFrom != issuedTo && initialPoly == issuedFrom &&
+                observedPoly == issuedTo && rayLastPoly == issuedTo &&
+                sameRouteGeneration && rayComplete && terrainSafe &&
+                std::isfinite(initialDistance) &&
+                std::isfinite(observedDistance) &&
+                observedDistance + requiredGain < initialDistance;
+        }
+
         // A waypoint reached by ordinary corridor following is stronger
         // evidence than movement to a lateral recovery target or a new path.
         static SurfaceRecoveryQuality Assess(float before, float after,

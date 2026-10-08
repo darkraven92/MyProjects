@@ -546,6 +546,10 @@ namespace Navigation
         bool surfaceRecoveryActive_ = false;
         float surfaceRecoveryStartX_ = 0.0f;
         float surfaceRecoveryStartY_ = 0.0f;
+        float surfaceRecoveryStartZ_ = 0.0f;
+        std::uint64_t surfaceRecoveryStartPoly_ = 0;
+        std::uint64_t surfaceRecoveryRouteGeneration_ = 0;
+        bool surfaceRecoveryInteriorStage_ = false;
         NavPoint surfaceRecoveryTarget_{};
         float surfaceRecoveryBestTargetDistance_ = 0.0f;
         std::uint64_t surfaceRecoveryProgressTick_ = 0;
@@ -1105,7 +1109,8 @@ namespace Navigation
 
         void BeginSurfaceRecoveryAttempt(const Objects::PlayerState& player,
             const NavPoint& target, float finalDistance,
-            DirectedPolyTransition provenFailure = {})
+            DirectedPolyTransition provenFailure = {},
+            bool interiorStage = false)
         {
             if(!surfaceEpisodeActive_)
             {
@@ -1122,6 +1127,13 @@ namespace Navigation
                 ? pointPolyRefs_[pointIndex_] : 0;
             surfaceRecoveryProblemFrom_=provenFailure.from;
             surfaceRecoveryProblemTo_=provenFailure.to;
+            surfaceRecoveryStartZ_=player.z;
+            surfaceRecoveryRouteGeneration_=routeGeneration_;
+            surfaceRecoveryInteriorStage_=interiorStage;
+            NavPoint projectedStart{};
+            surfaceRecoveryStartPoly_=0;
+            provider_.ProjectToNavMesh(PlayerPoint(player),projectedStart,
+                surfaceRecoveryStartPoly_);
             if (!provenFailure.Valid())
                 ResolveIssuedLocalTransition(player,surfaceRecoveryProblemFrom_,
                     surfaceRecoveryProblemTo_);
@@ -1994,6 +2006,53 @@ namespace Navigation
                     surfaceRecoveryStartY_);
                 const float after=Distance2D(player.x,player.y,
                     destination_.x,destination_.y);
+                if (surfaceRecoveryInteriorStage_ &&
+                    !surfaceEpisodeForwardPortal_)
+                {
+                    NavPoint projected{};
+                    std::uint64_t observedPoly=0;
+                    const bool projectedKnown=provider_.ProjectToNavMesh(
+                        PlayerPoint(player),projected,observedPoly) &&
+                        std::fabs(projected.z-player.z)<=1.5f;
+                    NavSurfaceRayTrace trace{};
+                    NavPoint reached{};
+                    float rayFraction=0.0f;
+                    const bool rayKnown=provider_.IsSurfaceSegmentReachable(
+                        {surfaceRecoveryStartX_,surfaceRecoveryStartY_,
+                            surfaceRecoveryStartZ_},PlayerPoint(player),
+                        rayFraction,reached,&trace);
+                    const bool terrainSafe=!TerrainTransitionPolicy::Assess(
+                        NavPoint{surfaceRecoveryStartX_,
+                            surfaceRecoveryStartY_,surfaceRecoveryStartZ_},
+                        PlayerPoint(player)).rejected;
+                    const bool earned=SurfaceRecoveryEpisodePolicy::
+                        VerifiedPortalStageProgress(
+                            true,surfaceRecoveryProblemFrom_,
+                            surfaceRecoveryProblemTo_,surfaceRecoveryStartPoly_,
+                            projectedKnown?observedPoly:0,
+                            rayKnown?trace.lastVisitedPoly:0,
+                            surfaceRecoveryRouteGeneration_==routeGeneration_,
+                            rayKnown && trace.complete &&
+                                trace.startPoly==surfaceRecoveryProblemFrom_ &&
+                                trace.visitedCount==2 &&
+                                rayFraction>=SteeringSelectionPolicy::
+                                    MinimumRaycastFraction,
+                            terrainSafe,surfaceEpisodeInitialDistance_,after,
+                            RecoveryResetProgressDistance);
+                    if (earned) surfaceEpisodeForwardPortal_=true;
+                    Debug::Logger::Info("NAV RECOVERY PROGRESS episode="+
+                        std::to_string(surfaceEpisodeId_)+
+                        " oldPlayerPoly="+HexPoly(surfaceRecoveryStartPoly_)+
+                        " newPlayerPoly="+HexPoly(observedPoly)+
+                        " oldDestinationDistance="+
+                            Float(surfaceEpisodeInitialDistance_)+
+                        " newDestinationDistance="+Float(after)+
+                        " freshRouteGeneration="+
+                            std::to_string(routeGeneration_)+
+                        " safeTransitionProof="+(earned?"yes":"no")+
+                        " result="+(earned?"earned":"neutral")+
+                        " reason=interior_portal_stage_observation");
+                }
                 const auto quality=SurfaceRecoveryEpisodePolicy::Assess(
                     surfaceEpisodeInitialDistance_,after,
                     RecoveryResetProgressDistance,surfaceEpisodeForwardPortal_);
@@ -2426,7 +2485,7 @@ namespace Navigation
                 Debug::Logger::Info("NAV RECOVERY RESET intent="+
                     std::to_string(intentId_)+" episode="+
                     std::to_string(surfaceEpisodeId_)+
-                    " earnedProgress=yes reason=ordinary_portal_crossed_and_destination_gain");
+                    " earnedProgress=yes reason=verified_portal_crossed_and_destination_gain");
                 surfaceEpisodeActive_=false;
                 surfaceEpisodeTargets_.clear();
                 surfaceEpisodeForwardPortal_=false;
@@ -4347,7 +4406,7 @@ namespace Navigation
 
         DirectedPolyTransition AttributeFailedSteering(
             const Objects::PlayerState& player, std::size_t fromIndex,
-            std::size_t candidateIndex) const
+            std::size_t candidateIndex, bool clearanceRejected) const
         {
             DirectedPolyTransition proven{};
             DirectedPolyTransition candidateEdge{};
@@ -4356,6 +4415,9 @@ namespace Navigation
             NavPoint reached{};
             bool adjacent = false;
             const char* attribution = "unknown";
+            LocalPortalRayClass rayClass =
+                LocalPortalRayClass::UnknownProvenance;
+            float rayFraction = 0.0f;
             const std::uint64_t candidatePoly =
                 candidateIndex < pointPolyRefs_.size()
                     ? pointPolyRefs_[candidateIndex] : 0;
@@ -4373,6 +4435,15 @@ namespace Navigation
                         candidateEdge.to, portalA, portalB);
                 if (adjacent)
                 {
+                    rayFraction = fraction;
+                    rayClass = LocalPortalSteeringPolicy::ClassifyRay(
+                        true,candidateEdge.from,candidateEdge.to,
+                        trace.lastVisitedPoly,fraction,
+                        LocalPortalSteeringPolicy::SegmentDistance2D(
+                            {reached.x,reached.y,reached.z},
+                            {portalA.x,portalA.y,portalA.z},
+                            {portalB.x,portalB.y,portalB.z}),
+                        SteeringSelectionPolicy::MinimumWallClearance,false);
                     proven = LocalPortalSteeringPolicy::AttributeRayFailure(
                         corridorPolys_, trace.startPoly, candidatePoly,
                         trace.lastVisitedPoly,
@@ -4385,9 +4456,29 @@ namespace Navigation
                 }
                 else attribution = "directed_portal_unavailable";
             }
+            else if (clearanceRejected && candidatePoly)
+            {
+                NavPoint projected{};
+                if (provider_.ProjectToNavMesh(PlayerPoint(player),projected,
+                        trace.startPoly))
+                {
+                    candidateEdge = LocalPortalSteeringPolicy::CandidateEdge(
+                        corridorPolys_,trace.startPoly,candidatePoly);
+                    NavPoint portalA{},portalB{};
+                    adjacent = candidateEdge.Valid() &&
+                        provider_.GetDirectedPortal(candidateEdge.from,
+                            candidateEdge.to,portalA,portalB);
+                    if (adjacent)
+                    {
+                        proven=candidateEdge;
+                        rayClass=LocalPortalRayClass::InsufficientClearance;
+                        attribution="directed_portal_clearance_rejected";
+                    }
+                }
+            }
             else attribution = "no_complete_local_blocked_ray";
             Debug::Logger::Info(
-                "STEERING FAILURE ATTRIBUTION map="+std::to_string(mapId_)+
+                "NAV PORTAL CLASSIFICATION map="+std::to_string(mapId_)+
                 " position=("+Float(player.x)+","+Float(player.y)+","+
                     Float(player.z)+")"+
                 " corridorFingerprint="+
@@ -4400,6 +4491,11 @@ namespace Navigation
                 " fromPoly="+HexPoly(proven.from)+
                 " toPoly="+HexPoly(proven.to)+
                 " adjacent="+(adjacent?"yes":"no")+
+                " portalKnown="+(adjacent?"yes":"no")+
+                " rayFraction="+Float(rayFraction)+
+                " classification="+
+                    LocalPortalSteeringPolicy::RayClassName(rayClass)+
+                " decision="+(proven.Valid()?"try_verified_stage":"bounded_recovery")+
                 " transitionKnown="+(proven.Valid()?"yes":"no")+
                 " reason="+attribution);
             return proven;
@@ -4411,37 +4507,72 @@ namespace Navigation
             if (!edge.Valid() || startOptions_.planningOnly ||
                 surfaceRecoveryAttempts_ >= MaximumSurfaceRecoveryAttempts)
                 return false;
-            NavPoint a{}, b{}, stage{};
-            if (!provider_.GetDirectedPortal(edge.from,edge.to,a,b) ||
-                !provider_.ProjectGroundNear(
-                    {(a.x+b.x)*0.5f,(a.y+b.y)*0.5f,(a.z+b.z)*0.5f},
-                    1.5f,3.0f,stage))
+            NavPoint a{}, b{}, stage{}, interior{};
+            if (!provider_.GetDirectedPortal(edge.from,edge.to,a,b))
                 return false;
-            NavPoint projected{};
-            std::uint64_t stagePoly=0;
-            if (!provider_.ProjectToNavMesh(stage,projected,stagePoly) ||
-                (stagePoly!=edge.from && stagePoly!=edge.to))
-                return false;
-            float horizontal=0.0f, vertical=0.0f;
-            if (IsUnsafeVerticalPortal(player,stage,horizontal,vertical) ||
-                vertical>SurfaceRecoveryMaximumVerticalDelta ||
-                Distance2D(player.x,player.y,stage.x,stage.y)>
-                    SurfaceRecoveryMaximumStep)
-                return false;
-            float fraction=0.0f;
-            NavPoint reached{};
-            const bool rayKnown=provider_.IsSurfaceSegmentReachable(
-                PlayerPoint(player),stage,fraction,reached);
-            float clearance=0.0f;
-            NavPoint wall{};
-            if (!provider_.FindWallDistance(stage,WallSteeringProbeRadius,
-                    clearance,wall) ||
-                !LocalPortalSteeringPolicy::AssessStage(
-                    {player.x,player.y,player.z},
+            const bool interiorKnown=provider_.GetFilteredPolygonInterior(
+                edge.to,interior);
+            const float fractions[]={0.0f,0.25f,0.50f,1.0f};
+            bool found=false;
+            const char* stageKind="none";
+            for (const float sample : fractions)
+            {
+                if (sample>0.0f && !interiorKnown) break;
+                const auto candidate=LocalPortalSteeringPolicy::InteriorStage(
                     {a.x,a.y,a.z},{b.x,b.y,b.z},
-                    {stage.x,stage.y,stage.z},clearance,rayKnown,fraction,
-                    SteeringSelectionPolicy::MinimumWallClearance,
-                    SurfaceRecoveryMinimumStep).allowed)
+                    {interior.x,interior.y,interior.z},sample);
+                NavPoint ground{};
+                if (!provider_.ProjectGroundNear(
+                        {candidate.x,candidate.y,candidate.z},
+                        1.5f,3.0f,ground))
+                    continue;
+                NavPoint projected{};
+                std::uint64_t stagePoly=0;
+                if (!provider_.ProjectToNavMesh(ground,projected,stagePoly) ||
+                    (sample==0.0f
+                        ? stagePoly!=edge.from && stagePoly!=edge.to
+                        : stagePoly!=edge.to))
+                    continue;
+                float horizontal=0.0f,vertical=0.0f;
+                if (IsUnsafeVerticalPortal(player,ground,horizontal,vertical) ||
+                    vertical>SurfaceRecoveryMaximumVerticalDelta ||
+                    Distance2D(player.x,player.y,ground.x,ground.y)>
+                        SurfaceRecoveryMaximumStep ||
+                    Distance2D(player.x,player.y,ground.x,ground.y)<
+                        SurfaceRecoveryMinimumStep)
+                    continue;
+                float fraction=0.0f;
+                NavPoint reached{};
+                NavSurfaceRayTrace trace{};
+                if (!provider_.IsSurfaceSegmentReachable(
+                        PlayerPoint(player),ground,fraction,reached,&trace) ||
+                    !trace.complete ||
+                    fraction<SteeringSelectionPolicy::MinimumRaycastFraction ||
+                    (sample>0.0f &&
+                        (trace.startPoly!=edge.from ||
+                         trace.lastVisitedPoly!=edge.to ||
+                         trace.visitedCount!=2)))
+                    continue;
+                float clearance=0.0f;
+                NavPoint wall{};
+                if (!provider_.FindWallDistance(ground,WallSteeringProbeRadius,
+                        clearance,wall) ||
+                    !SteeringSelectionPolicy::MeetsMinimumClearance(clearance))
+                    continue;
+                if (sample==0.0f &&
+                    !LocalPortalSteeringPolicy::AssessStage(
+                        {player.x,player.y,player.z},
+                        {a.x,a.y,a.z},{b.x,b.y,b.z},
+                        {ground.x,ground.y,ground.z},clearance,true,fraction,
+                        SteeringSelectionPolicy::MinimumWallClearance,
+                        SurfaceRecoveryMinimumStep).allowed)
+                    continue;
+                stage=ground;
+                stageKind=sample==0.0f?"clipped_midpoint":"filtered_poly_interior";
+                found=true;
+                break;
+            }
+            if (!found)
                 return false;
             const float finalDistance=Distance2D(player.x,player.y,
                 destination_.x,destination_.y);
@@ -4469,7 +4600,8 @@ namespace Navigation
             surfaceRecoveryStartX_=player.x;
             surfaceRecoveryStartY_=player.y;
             surfaceRecoveryTarget_=stage;
-            BeginSurfaceRecoveryAttempt(player,stage,finalDistance,edge);
+            BeginSurfaceRecoveryAttempt(player,stage,finalDistance,edge,
+                std::string(stageKind)=="filtered_poly_interior");
             surfaceRecoveryBestTargetDistance_=Distance2D(
                 player.x,player.y,stage.x,stage.y);
             surfaceRecoveryProgressTick_=tick;
@@ -4480,7 +4612,7 @@ namespace Navigation
                 Float(stage.x)+","+Float(stage.y)+","+Float(stage.z)+")"+
                 " attempt="+std::to_string(surfaceRecoveryAttempts_)+"/"+
                 std::to_string(MaximumSurfaceRecoveryAttempts)+
-                " reason=verified_clipped_portal_midpoint");
+                " reason=verified_"+std::string(stageKind));
             return true;
         }
 
@@ -4699,7 +4831,9 @@ namespace Navigation
                 return true;
             }
             const DirectedPolyTransition localFailure=
-                AttributeFailedSteering(player,fromIndex,firstCandidate);
+                AttributeFailedSteering(player,fromIndex,firstCandidate,
+                    SteeringSelectionPolicy::Assess(lastEvidence)==
+                        SteeringCandidateDecision::RejectedClearance);
             if (IssueVerifiedPortalStage(player,tick,localFailure))
                 return true;
             if (IssueSurfaceRecovery(
@@ -5348,12 +5482,41 @@ namespace Navigation
                     " toFlags=" + std::to_string(terrain.toFlags) +
                     " portalKnown=" +
                     std::string(terrain.portalKnown ? "yes" : "no") +
+                    " tileSeam="+(terrain.tileSeamKnown
+                        ? (terrain.tileSeam?"yes":"no") : "unknown")+
                     " portalA=(" + Float(terrain.portalA.x) + "," +
                     Float(terrain.portalA.y) + "," +
                     Float(terrain.portalA.z) + ")" +
                     " portalB=(" + Float(terrain.portalB.x) + "," +
                     Float(terrain.portalB.y) + "," +
                     Float(terrain.portalB.z) + ")" +
+                    " pointIndex="+std::to_string(terrain.pointIndex)+
+                    " segmentSource="+
+                        std::string(terrain.pointIndex==1
+                            ? "live_player_to_portal" :
+                            terrain.pointIndex>1 ? "portal_to_portal" :
+                            "steep_polygon_centers")+
+                    " projectedStartDelta="+
+                        Float(Distance3D(PlayerPoint(player),
+                            path.projectedStart))+
+                    " pointFrom="+(terrain.pointIndex>0 &&
+                        terrain.pointIndex<path.points.size()
+                            ? "("+Float((terrain.pointIndex==1
+                                ? PlayerPoint(player)
+                                : path.points[terrain.pointIndex-1]).x)+","+
+                                Float((terrain.pointIndex==1
+                                ? PlayerPoint(player)
+                                : path.points[terrain.pointIndex-1]).y)+","+
+                                Float((terrain.pointIndex==1
+                                ? PlayerPoint(player)
+                                : path.points[terrain.pointIndex-1]).z)+")"
+                            : "unknown")+
+                    " pointTo="+(terrain.pointIndex>0 &&
+                        terrain.pointIndex<path.points.size()
+                            ? "("+Float(path.points[terrain.pointIndex].x)+","+
+                                Float(path.points[terrain.pointIndex].y)+","+
+                                Float(path.points[terrain.pointIndex].z)+")"
+                            : "unknown")+
                     " reason=" + terrain.reason);
 
                 if (!rejected.Valid() ||
