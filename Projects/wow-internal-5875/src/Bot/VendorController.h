@@ -1,7 +1,10 @@
 #pragma once
 
 #include "AutonomousMaintenancePolicy.h"
+#include "AutoSellItemPolicy.h"
 #include "ClickToMoveController.h"
+#include "ConsumableClassificationPolicy.h"
+#include "EquipmentDurabilityProbe.h"
 #include "GameThreadDispatcher.h"
 #include "GrindBagMonitor.h"
 
@@ -92,6 +95,8 @@ namespace Bot
         static constexpr int MaximumInteractionAttempts = 5;
         static constexpr std::uint64_t MerchantOpenTimeoutTicks = 60; // 15 s
         static constexpr std::uint64_t SaleStepTicks = 2;
+        static constexpr std::uint64_t MetadataRetryTicks = 16; // 4 s
+        static constexpr std::uint64_t MetadataResolutionTimeoutTicks = 240; // 60 s
         static constexpr std::uint64_t MaintenanceStepTicks = 2;
         static constexpr std::uint64_t ServiceSearchWaitTicks = 48; // 12 s
         static constexpr int MaximumServiceCandidates = 10;
@@ -131,6 +136,9 @@ namespace Bot
         std::uint64_t lastInteractionTick_ = 0;
         std::uint64_t lastDirectMoveTick_ = 0;
         std::uint64_t lastSaleTick_ = 0;
+        std::uint64_t metadataWaitStartedTick_ = 0;
+        std::uint64_t nextMetadataRetryTick_ = 0;
+        int lastMetadataPendingCount_ = -1;
 
         float directApproachMaxDistance_ = DirectFallbackRadius;
         float lastDirectDistance_ = 0.0f;
@@ -148,6 +156,7 @@ namespace Bot
         bool candidatePendingVerification_ = false;
 
         std::unordered_set<std::uint32_t> blockedBagSlots_{};
+        std::unordered_set<std::string> loggedSaleDecisions_{};
 
         MaintenanceNeed requestedMaintenance_{};
         MaintenanceSnapshot maintenanceAtStart_{};
@@ -488,7 +497,8 @@ namespace Bot
             const auto getText =
                 reinterpret_cast<GetTextFunction>(getTextAddress);
 
-            char buffer[256]{};
+            // The bounded sale-decision trace can exceed a scalar readback.
+            char buffer[4096]{};
             bool onGameThread = false;
             bool luaExecuted = false;
             bool gotText = false;
@@ -596,31 +606,40 @@ namespace Bot
             const std::string script =
                 "local p=UnitPowerType('player'); if p==nil then p=-1 end; "
                 "local money=0; if GetMoney then money=GetMoney() or 0 end; "
-                "local mind=100; local dn=0; "
-                "if GetInventoryItemDurability then for i=1,19 do "
-                "local c,m=GetInventoryItemDurability(i); "
-                "if c and m and m>0 then dn=dn+1; local q=(c*100)/m; if q<mind then mind=q end; end; end; end; "
-                "local fc=0; local dc=0; "
+                + std::string(EquipmentDurabilityProbe::Lua()) +
+                "local fc=0; local dc=0; local unresolved=0; "
+                "local metadataPending=0; local tooltipPending=0; local inventoryPending=0; "
                 "if not WOW_INTERNAL_MAINT_TOOLTIP then "
                 "WOW_INTERNAL_MAINT_TOOLTIP=CreateFrame('GameTooltip','WOW_INTERNAL_MAINT_TOOLTIP',UIParent,'GameTooltipTemplate'); "
                 "WOW_INTERNAL_MAINT_TOOLTIP:SetOwner(UIParent,'ANCHOR_NONE'); end; "
-                "local tt=WOW_INTERNAL_MAINT_TOOLTIP; "
-                "for b=0,4 do local n=GetContainerNumSlots(b) or 0; for sl=1,n do "
-                "local link=GetContainerItemLink(b,sl); if link then "
-                "local _,cnt=GetContainerItemInfo(b,sl); cnt=cnt or 1; "
-                "tt:ClearLines(); tt:SetBagItem(b,sl); local f=0; local d=0; "
-                "for j=1,tt:NumLines() do "
-                "local l=getglobal('WOW_INTERNAL_MAINT_TOOLTIPTextLeft'..j); "
-                "if l and l:GetText() then local t=string.lower(l:GetText()); "
-                "if string.find(t,'health over') and string.find(t,'eating') then f=1 end; "
-                "if string.find(t,'mana over') and string.find(t,'drinking') then d=1 end; end; "
-                "local r=getglobal('WOW_INTERNAL_MAINT_TOOLTIPTextRight'..j); "
-                "if r and r:GetText() then local t=string.lower(r:GetText()); "
-                "if string.find(t,'health over') and string.find(t,'eating') then f=1 end; "
-                "if string.find(t,'mana over') and string.find(t,'drinking') then d=1 end; end; end; "
-                "if f==1 then fc=fc+cnt end; if d==1 then dc=dc+cnt end; "
-                "end; end; end; "
-                "WOW_INTERNAL_VENDOR_RESULT=p..'|'..money..'|'..mind..'|'..dn..'|'..fc..'|'..dc;";
+                "local tt=WOW_INTERNAL_MAINT_TOOLTIP; " +
+                std::string(ConsumableClassificationPolicy::LuaDefinition()) +
+                "for b=0,4 do local n=GetContainerNumSlots(b); "
+                "if b==0 and (not n or n==0) then inventoryPending=inventoryPending+1; unresolved=unresolved+1 end; "
+                "n=n or 0; for sl=1,n do "
+                "local texture,cnt=GetContainerItemInfo(b,sl); "
+                "local link=GetContainerItemLink(b,sl); "
+                "if link then "
+                "local pending=0; "
+                "tt:ClearLines(); tt:SetBagItem(b,sl); "
+                "local _,_,_,_,_,itemType=GetItemInfo(link); "
+                "if not itemType then "
+                "local _,_,idText=string.find(link,'item:(%d+)'); "
+                "local id=tonumber(idText or '0') or 0; "
+                "if id>0 then local _,_,_,_,_,byIdType=GetItemInfo(id); "
+                "itemType=byIdType; end; end; "
+                "local f,d,h,e,m,dr=classifyConsumable(tt); "
+                "if cnt and cnt>0 then "
+                "if f then fc=fc+cnt end; if d then dc=dc+cnt end; "
+                "else inventoryPending=inventoryPending+1; pending=1 end; "
+                "if not f and not d then "
+                "if not itemType then metadataPending=metadataPending+1; pending=1 "
+                "elseif itemType=='Consumable' and (tt:NumLines()<2 or h or e or m or dr) then "
+                "tooltipPending=tooltipPending+1; pending=1 end; end; "
+                "if pending==1 then unresolved=unresolved+1 end; "
+                "elseif texture then inventoryPending=inventoryPending+1; unresolved=unresolved+1 end; "
+                "end; end; "
+                "WOW_INTERNAL_VENDOR_RESULT=p..'|'..money..'|'..mind..'|'..dn..'|'..fc..'|'..dc..'|'..unresolved..'|'..metadataPending..'|'..tooltipPending..'|'..inventoryPending..'|'..durabilityKnown;";
 
             std::string result;
             if (!ExecuteLuaReadback(
@@ -637,21 +656,32 @@ namespace Bot
             int durableItems = 0;
             int foodCount = 0;
             int drinkCount = 0;
+            int unresolvedItems = 0;
+            int metadataPendingItems = 0;
+            int tooltipPendingItems = 0;
+            int inventoryPendingItems = 0;
+            int durabilityKnown = 0;
 
             if (std::sscanf(
                     result.c_str(),
-                    "%d|%u|%f|%d|%d|%d",
+                    "%d|%u|%f|%d|%d|%d|%d|%d|%d|%d|%d",
                     &powerType,
                     &money,
                     &minimumDurability,
                     &durableItems,
                     &foodCount,
-                    &drinkCount) != 6)
+                    &drinkCount,
+                    &unresolvedItems,
+                    &metadataPendingItems,
+                    &tooltipPendingItems,
+                    &inventoryPendingItems,
+                    &durabilityKnown) != 11)
             {
                 return false;
             }
 
             snapshot.valid = true;
+            snapshot.durabilityKnown = durabilityKnown == 1;
             snapshot.powerType = powerType;
             snapshot.money = static_cast<std::uint32_t>(money);
             snapshot.minimumDurabilityPercent =
@@ -659,6 +689,12 @@ namespace Bot
             snapshot.durableItems = std::max(0, durableItems);
             snapshot.foodCount = std::max(0, foodCount);
             snapshot.drinkCount = std::max(0, drinkCount);
+            snapshot.unresolvedItems = std::max(0, unresolvedItems);
+            snapshot.metadataPendingItems = std::max(0, metadataPendingItems);
+            snapshot.tooltipPendingItems = std::max(0, tooltipPendingItems);
+            snapshot.inventoryPendingItems = std::max(0, inventoryPendingItems);
+            snapshot.foodCountKnown = unresolvedItems == 0 && inventoryPendingItems == 0;
+            snapshot.drinkCountKnown = snapshot.foodCountKnown;
             return true;
         }
 
@@ -1313,17 +1349,20 @@ namespace Bot
             Failed,
             MerchantClosed,
             CandidateIssued,
+            MetadataPending,
             Done
         };
 
         SellStepResult SellOneUnprotectedItem(
             int& bag,
             int& slot,
-            std::uint32_t& itemId)
+            std::uint32_t& itemId,
+            int& metadataPending)
         {
             bag = -1;
             slot = -1;
             itemId = 0;
+            metadataPending = 0;
 
             const std::string blocked = BlockedSlotLuaExpression();
 
@@ -1334,34 +1373,39 @@ namespace Bot
                 "if not WOW_INTERNAL_VENDOR_TOOLTIP then "
                 "WOW_INTERNAL_VENDOR_TOOLTIP=CreateFrame('GameTooltip','WOW_INTERNAL_VENDOR_TOOLTIP',UIParent,'GameTooltipTemplate'); "
                 "WOW_INTERNAL_VENDOR_TOOLTIP:SetOwner(UIParent,'ANCHOR_NONE'); end; "
-                "local tt=WOW_INTERNAL_VENDOR_TOOLTIP; local found=0; "
+                "local tt=WOW_INTERNAL_VENDOR_TOOLTIP; local found=0; local trace=''; local metadataPending=0; " +
+                std::string(ConsumableClassificationPolicy::LuaDefinition()) +
+                AutoSellItemPolicy::LuaDefinition() +
                 "for b=0,4 do if found==0 then local n=GetContainerNumSlots(b) or 0; "
                 "for s=1,n do if found==0 and not (" + blocked + ") then "
                 "local link=GetContainerItemLink(b,s); if link then "
-                "local _,_,id=string.find(link,'item:(%d+)'); id=tonumber(id or '0') or 0; "
-                "local texture,count,locked=GetContainerItemInfo(b,s); "
-                "local name,ilink,quality,ilvl,req,itype=GetItemInfo(link); "
-                "local protect=0; "
-                "if locked then protect=1 end; "
-                "if id==6948 then protect=1 end; "
-                "if itype=='Quest' or itype=='Key' then protect=1 end; "
-                "tt:ClearLines(); tt:SetBagItem(b,s); "
-                "for i=1,tt:NumLines() do "
-                "local l=getglobal('WOW_INTERNAL_VENDOR_TOOLTIPTextLeft'..i); "
-                "if l and l:GetText() then local t=string.lower(l:GetText()); "
-                "if string.find(t,'quest item') then protect=1 end; "
-                "if string.find(t,'health over') and string.find(t,'eating') then protect=1 end; "
-                "if string.find(t,'mana over') and string.find(t,'drinking') then protect=1 end; end; "
-                "local r=getglobal('WOW_INTERNAL_VENDOR_TOOLTIPTextRight'..i); "
-                "if r and r:GetText() then local t=string.lower(r:GetText()); "
-                "if string.find(t,'quest item') then protect=1 end; "
-                "if string.find(t,'health over') and string.find(t,'eating') then protect=1 end; "
-                "if string.find(t,'mana over') and string.find(t,'drinking') then protect=1 end; end; end; "
-                "if protect==0 then "
+                "local _,count,locked=GetContainerItemInfo(b,s); "
+                "local reason,id,quality,itype=saleReason(b,s,link,count,locked); "
+                "if reason=='classification_unknown' and "
+                "(quality<0 or itype=='unknown') then "
+                "metadataPending=metadataPending+1; end; "
+                "if reason=='sell' then "
+                "local currentLink=GetContainerItemLink(b,s); "
+                "local _,currentCount,currentLocked=GetContainerItemInfo(b,s); "
+                "if currentLink==link and currentCount==count and "
+                "not currentLocked and not locked then "
+                "local currentReason,currentId=saleReason(b,s,currentLink,currentCount,currentLocked); "
+                "if currentReason=='sell' and currentId==id then "
                 "WOW_INTERNAL_VENDOR_RESULT='try|'..b..'|'..s..'|'..id; "
-                "UseContainerItem(b,s); found=1; end; "
+                "UseContainerItem(b,s); found=1; "
+                "else reason='revalidation_failed' end; "
+                "else reason='slot_changed' end; end; "
+                "local decision=reason=='sell' and 'sell' or 'keep'; "
+                "local row='bag='..b..' slot='..s..' itemId='..id.. "
+                "' quality='..quality..' count='..(count or 0).. "
+                "' classification='..itype..' decision='..decision..' reason='..reason..';'; "
+                "if string.len(trace)+string.len(row)<3000 then trace=trace..row end; "
                 "end; end; end; end; end; "
-                "if found==0 then WOW_INTERNAL_VENDOR_RESULT='done'; end;";
+                "if found==0 then "
+                "if metadataPending>0 then "
+                "WOW_INTERNAL_VENDOR_RESULT='metadata_pending|'..metadataPending "
+                "else WOW_INTERNAL_VENDOR_RESULT='done' end; end; "
+                "WOW_INTERNAL_VENDOR_RESULT=WOW_INTERNAL_VENDOR_RESULT..'#'..trace;";
 
             std::string result;
             if (!ExecuteLuaReadback(
@@ -1375,8 +1419,36 @@ namespace Bot
             if (result == "merchant_closed")
                 return SellStepResult::MerchantClosed;
 
-            if (result == "done")
+            const auto separator = result.find('#');
+            if (separator != std::string::npos)
+            {
+                const std::string trace = result.substr(separator + 1);
+                std::size_t begin = 0;
+                while (begin < trace.size())
+                {
+                    const auto end = trace.find(';', begin);
+                    if (end == std::string::npos)
+                        break;
+                    const std::string decision = trace.substr(begin, end - begin);
+                    if (!decision.empty() &&
+                        loggedSaleDecisions_.insert(decision).second)
+                    {
+                        Debug::Logger::Info("VENDOR SELL DECISION " + decision);
+                    }
+                    begin = end + 1;
+                }
+            }
+
+            if (result.rfind("done#", 0) == 0)
                 return SellStepResult::Done;
+
+            if (result.rfind("metadata_pending|", 0) == 0)
+            {
+                if (std::sscanf(result.c_str(), "metadata_pending|%d",
+                        &metadataPending) != 1 || metadataPending <= 0)
+                    return SellStepResult::Failed;
+                return SellStepResult::MetadataPending;
+            }
 
             unsigned parsedId = 0;
             if (std::sscanf(
@@ -1755,6 +1827,9 @@ namespace Bot
             lastInteractionTick_ = 0;
             lastDirectMoveTick_ = 0;
             lastSaleTick_ = 0;
+            metadataWaitStartedTick_ = 0;
+            nextMetadataRetryTick_ = 0;
+            lastMetadataPendingCount_ = -1;
             interactionAttempts_ = 0;
             directMoves_ = 0;
             directApproachMaxDistance_ = DirectFallbackRadius;
@@ -1769,6 +1844,7 @@ namespace Bot
             lastCandidateItemId_ = 0;
             candidatePendingVerification_ = false;
             blockedBagSlots_.clear();
+            loggedSaleDecisions_.clear();
             requestedMaintenance_ = maintenanceNeed;
             bagPressureTrigger_ = bagPressureTrigger;
             serviceSearchMode_ = false;
@@ -2369,12 +2445,15 @@ namespace Bot
             {
                 if (lastSaleTick_ != 0 && tick < lastSaleTick_ + SaleStepTicks)
                     return;
+                if (tick < nextMetadataRetryTick_)
+                    return;
 
                 int bag = -1;
                 int slot = -1;
                 std::uint32_t itemId = 0;
-                const SellStepResult result =
-                    SellOneUnprotectedItem(bag, slot, itemId);
+                int metadataPending = 0;
+                SellStepResult result =
+                    SellOneUnprotectedItem(bag, slot, itemId, metadataPending);
                 lastSaleTick_ = tick;
 
                 if (result == SellStepResult::Failed)
@@ -2387,6 +2466,57 @@ namespace Bot
                 {
                     Fail("MerchantFrame closed during vendor sell pass.", tick);
                     return;
+                }
+
+                if (result == SellStepResult::MetadataPending)
+                {
+                    // Unknown metadata need not delay independent repair or
+                    // supplies once bag pressure is already proven relieved.
+                    GrindBagMonitor::Snapshot currentBags{};
+                    const bool slotsVerified = bagPressureTrigger_ &&
+                        GrindBagMonitor::Read(currentBags) &&
+                        currentBags.freeSlots >= MinimumFreeSlotsAfterVendor;
+                    if (!bagPressureTrigger_ || slotsVerified)
+                    {
+                        Debug::Logger::Info(
+                            "VENDOR ITEM METADATA state=deferred unresolved=" +
+                            std::to_string(metadataPending) +
+                            " reason=bag_requirement_satisfied_or_not_requested");
+                        result = SellStepResult::Done;
+                    }
+                    else
+                    {
+                        if (metadataWaitStartedTick_ == 0)
+                            metadataWaitStartedTick_ = tick;
+                        if (metadataPending != lastMetadataPendingCount_)
+                        {
+                            lastMetadataPendingCount_ = metadataPending;
+                            Debug::Logger::Info(
+                                "VENDOR ITEM METADATA state=pending unresolved=" +
+                                std::to_string(metadataPending) +
+                                " reason=GetItemInfo_not_ready");
+                        }
+                        if (tick - metadataWaitStartedTick_ >=
+                            MetadataResolutionTimeoutTicks)
+                        {
+                            Fail("item metadata remained unavailable after bounded merchant wait; no unknown item was sold.", tick);
+                            return;
+                        }
+                        nextMetadataRetryTick_ = tick + MetadataRetryTicks;
+                        return;
+                    }
+                }
+                nextMetadataRetryTick_ = 0;
+                if (lastMetadataPendingCount_ > 0)
+                {
+                    Debug::Logger::Info(
+                        "VENDOR ITEM METADATA state=progress previousUnresolved=" +
+                        std::to_string(lastMetadataPendingCount_) +
+                        " decision=" +
+                        std::string(result == SellStepResult::CandidateIssued
+                            ? "sale_candidate_ready" : "classification_complete"));
+                    lastMetadataPendingCount_ = -1;
+                    metadataWaitStartedTick_ = 0;
                 }
 
                 if (result == SellStepResult::Done)
@@ -2506,6 +2636,10 @@ namespace Bot
             directMoves_ = 0;
             lastDirectMoveTick_ = 0;
             blockedBagSlots_.clear();
+            loggedSaleDecisions_.clear();
+            metadataWaitStartedTick_ = 0;
+            nextMetadataRetryTick_ = 0;
+            lastMetadataPendingCount_ = -1;
             candidatePendingVerification_ = false;
             requestedMaintenance_ = MaintenanceNeed{};
             maintenanceAtStart_ = MaintenanceSnapshot{};

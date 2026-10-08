@@ -7,6 +7,7 @@
 #include "GrindBagMonitor.h"
 #include "GrindLevelPolicy.h"
 #include "GrindTargetPolicy.h"
+#include "ManualVendorModePolicy.h"
 #include "MovementController.h"
 #include "PlayerPostureController.h"
 #include "VendorController.h"
@@ -105,6 +106,7 @@ namespace Bot
         int migrationRegionAdvances_ = 0;
         LocalScan lastLocalScan_{};
         VendorController vendor_{};
+        MaintenanceNeed manualVendorRequestedNeed_{};
         FirstAidController firstAid_{};
         std::uint64_t firstAidIdleSinceTick_ = 0;
         AdaptiveDangerMemory dangerMemory_{};
@@ -598,6 +600,8 @@ namespace Bot
             GrindBagMonitor::Snapshot next{};
             if (!GrindBagMonitor::Read(next))
             {
+                if (state_ == GrindModeState::WaitingForManualVendor)
+                    bags_.valid = false;
                 Debug::Logger::Info(
                     "GRIND 14G.2: bag probe unavailable; keeping current grind state.");
                 return;
@@ -1249,6 +1253,7 @@ namespace Bot
 
             nextBagProbeTick_ = tick;
             nextMaintenanceProbeTick_ = tick;
+            manualVendorRequestedNeed_ = MaintenanceNeed{};
             maintenanceSuppressedUntil_ = 0;
             startupVendorGraceUntil_ = tick + StartupVendorGraceTicks;
             startupVendorGraceSuppressionLogged_ = false;
@@ -1319,6 +1324,34 @@ namespace Bot
         {
             if (state_ == GrindModeState::Failed)
                 return;
+
+            if (state_ == GrindModeState::WaitingForManualVendor)
+            {
+                ProbeBags(tick);
+                ProbeMaintenance(tick);
+                if (!ManualVendorModePolicy::RequirementsSatisfied(
+                        bags_.valid, bags_.freeSlots,
+                        VendorTriggerFreeSlots, maintenance_,
+                        manualVendorRequestedNeed_))
+                    return;
+
+                grindHome_ = Navigation::NavPoint{
+                    world.player.x, world.player.y, world.player.z};
+                sectorOrigin_ = grindHome_;
+                currentGrindAnchor_ = grindHome_;
+                BuildRoamSectors();
+                activeSectorIndex_ = FindNearestSectorIndex(grindHome_);
+                nextApproachScanTick_ = tick + 1;
+                nextRoamScanTick_ = tick + RoamScanIntervalTicks;
+                emptySectorScanStreak_ = 0;
+                manualVendorRequestedNeed_ = MaintenanceNeed{};
+                combat.UpdateTemporaryGrindRegion(
+                    currentGrindAnchor_, CombatRegionRadius);
+                SetState(GrindModeState::Grinding);
+                Debug::Logger::Info(
+                    "GRIND MANUAL VENDOR CLEARED resuming=grind");
+                return;
+            }
 
             vendor_.ObserveWorld(world);
             dangerMemory_.ObserveLevel(world.player.level);
@@ -1413,6 +1446,16 @@ namespace Bot
                         AutonomousMaintenancePolicy::Evaluate(maintenance_).urgentRepair;
                     const bool bagPressure =
                         bags_.valid && bags_.freeSlots <= VendorTriggerFreeSlots;
+                    GrindBagMonitor::Snapshot postTripBags{};
+                    const bool postTripBagsKnown =
+                        GrindBagMonitor::Read(postTripBags);
+                    if (postTripBagsKnown)
+                        bags_ = postTripBags;
+                    else
+                        bags_.valid = false;
+                    const bool holdForFullBags =
+                        ManualVendorModePolicy::HoldAfterFailedTrip(
+                            postTripBagsKnown, postTripBags.freeSlots);
                     maintenanceSuppressedUntil_ = tick +
                         (urgent
                             ? UrgentMaintenanceRetryBackoffTicks
@@ -1423,16 +1466,74 @@ namespace Bot
                         "MAINTENANCE 14G.5.1: vendor trip failed; failure is non-terminal for unattended grind. retryAfterTick=" +
                         std::to_string(maintenanceSuppressedUntil_));
                     vendor_.Reset();
-                    nextBagProbeTick_ = tick + BagProbeIntervalTicks;
+                    nextBagProbeTick_ = holdForFullBags
+                        ? tick : tick + BagProbeIntervalTicks;
                     nextMaintenanceProbeTick_ = tick + MaintenanceProbeIntervalTicks;
                     nextApproachScanTick_ = tick + 1;
                     nextRoamScanTick_ = tick + 1;
+                    if (holdForFullBags)
+                    {
+                        ResetApproach();
+                        ResetRoam();
+                        firstAid_.Abort("full bags after failed vendor trip");
+                        firstAidIdleSinceTick_ = 0;
+                        manualVendorRequestedNeed_ =
+                            AutonomousMaintenancePolicy::Evaluate(maintenance_);
+                        const bool holdIssued =
+                            MovementController::HoldPosition(world.player);
+                        SetState(GrindModeState::WaitingForManualVendor);
+                        Debug::Logger::Info(
+                            "GRIND FULL BAG BLOCK state=entered reason=vendor_trip_failed"
+                            " postTripKnown=" +
+                            std::string(postTripBagsKnown ? "yes" : "no") +
+                            " freeSlots=" +
+                            (postTripBagsKnown
+                                ? std::to_string(postTripBags.freeSlots)
+                                : std::string("unknown")) +
+                            " holdIssued=" +
+                            (holdIssued ? "yes" : "no") +
+                            " decision=wait_for_verified_bag_space");
+                        return;
+                    }
                     SetState(GrindModeState::Grinding);
                     return;
                 }
 
                 if (vendor_.IsDone())
                 {
+                    GrindBagMonitor::Snapshot postTripBags{};
+                    const bool postTripBagsKnown =
+                        GrindBagMonitor::Read(postTripBags);
+                    if (postTripBagsKnown)
+                        bags_ = postTripBags;
+                    else
+                        bags_.valid = false;
+                    if (!postTripBagsKnown ||
+                        postTripBags.freeSlots <= VendorTriggerFreeSlots)
+                    {
+                        vendor_.Reset();
+                        ResetApproach();
+                        ResetRoam();
+                        firstAid_.Abort("vendor trip ended without verified bag space");
+                        firstAidIdleSinceTick_ = 0;
+                        manualVendorRequestedNeed_ =
+                            AutonomousMaintenancePolicy::Evaluate(maintenance_);
+                        nextBagProbeTick_ = tick + BagProbeIntervalTicks;
+                        const bool holdIssued =
+                            MovementController::HoldPosition(world.player);
+                        SetState(GrindModeState::WaitingForManualVendor);
+                        Debug::Logger::Info(
+                            "GRIND FULL BAG BLOCK state=entered reason=vendor_trip_no_verified_space"
+                            " postTripKnown=" +
+                            std::string(postTripBagsKnown ? "yes" : "no") +
+                            " freeSlots=" +
+                            (postTripBagsKnown
+                                ? std::to_string(postTripBags.freeSlots)
+                                : std::string("unknown")) +
+                            " holdIssued=" +
+                            (holdIssued ? "yes" : "no"));
+                        return;
+                    }
                     const bool maintenanceUnmet = vendor_.MaintenanceUnmet();
                     ++vendorTrips_;
                     vendor_.Reset();
@@ -1985,7 +2086,8 @@ namespace Bot
             const std::string& reason,
             bool escalated)
         {
-            if (state_ == GrindModeState::Failed)
+            if (state_ == GrindModeState::Failed ||
+                state_ == GrindModeState::WaitingForManualVendor)
                 return false;
 
             ++runtimeSupervisorResets_;

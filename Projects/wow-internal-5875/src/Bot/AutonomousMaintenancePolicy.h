@@ -14,6 +14,15 @@ namespace Bot
         int durableItems = 0;
         int foodCount = 0;
         int drinkCount = 0;
+        // Counts are lower bounds until every occupied bag slot can be
+        // classified. An unresolved item must not mean known-zero supplies.
+        bool foodCountKnown = false;
+        bool drinkCountKnown = false;
+        int unresolvedItems = 0;
+        int metadataPendingItems = 0;
+        int tooltipPendingItems = 0;
+        int inventoryPendingItems = 0;
+        bool durabilityKnown = false;
     };
 
     struct MaintenanceNeed
@@ -61,21 +70,25 @@ namespace Bot
                     UrgentRepairThresholdPercent;
             }
 
-            need.food = snapshot.foodCount < FoodTripThreshold;
+            need.food = snapshot.foodCountKnown &&
+                snapshot.foodCount < FoodTripThreshold;
             need.drink =
                 IsManaUser(snapshot) &&
+                snapshot.drinkCountKnown &&
                 snapshot.drinkCount < DrinkTripThreshold;
             return need;
         }
 
         static bool WantsFoodTopUp(const MaintenanceSnapshot& snapshot)
         {
-            return snapshot.valid && snapshot.foodCount < FoodTarget;
+            return snapshot.valid && snapshot.foodCountKnown &&
+                snapshot.foodCount < FoodTarget;
         }
 
         static bool WantsDrinkTopUp(const MaintenanceSnapshot& snapshot)
         {
-            return snapshot.valid && IsManaUser(snapshot) &&
+            return snapshot.valid && snapshot.drinkCountKnown &&
+                   IsManaUser(snapshot) &&
                    snapshot.drinkCount < DrinkTarget;
         }
 

@@ -19,6 +19,7 @@ LUA_PRODUCERS = {
     "quest_maintenance_sale_fixture.lua": "quest_maintenance_policy_test",
     "quest_dialog_diagnostics_fixture.lua": "quest_dialog_diagnostics_test",
     "class_trainer_fixture.lua": "class_trainer_policy_test",
+    "vendor_metadata_fixture.lua": "vendor_metadata_full_bag_test",
 }
 
 

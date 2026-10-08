@@ -9,10 +9,50 @@ Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 - Environment: Linux/CachyOS; C++20, MinGW/CMake; user commands in fish.
 - Active request: Master Roadmap V6. This explicitly authorizes reviewed,
   validated checkpoint commits/pushes (superseding earlier no-commit requests).
-- Current phase: V6 **P0.5.1 active-aggressor containment**. P0.4 autonomous
+- Current phase: V6 **P0.6 unattended vendor/full-bag closure**. P0.4 autonomous
   swimming remains PAUSED; P0.4.1 observe-only is preserved, P0.4-TEMP living
   water avoidance remains enabled, and P0.4.2 has NOT STARTED. Preserve verified
   navigation/cache, AFK, DeathRecovery and mixed-state fail-closed behavior.
+
+## P0.6 unattended vendor/full-bag closure (2026-10-08)
+
+Starting HEAD `9226e4aedf7abbc19db8cb50bbb2c07c9020a5e1` verified. The
+minimum consumable-classification prerequisite was independently validated
+and published as `b61e4962779a24a308b5f4388cfc71041b4b7ae9`. Broader
+unpublished service-hub, quest-maintenance, pull-safety, and GUI work remains
+outside P0.6. P0.5 normal combat closure is CLOSED; the historical
+active-aggressor failure remains recorded below, and its rare P0.5.1
+DefensiveContainment runtime branch is PENDING opportunistically.
+The newest local log showed a 48/48 bag, 47 unresolved item metadata records,
+merchant interaction success, every item with quality=-1/type unknown, no
+sale, and `freeSlots=0` at vendor completion. The failed trip then returned
+`Vendoring -> Grinding`, and Roaming started while the bag was still full.
+
+The narrow P0.6 worktree change primes each bag tooltip before reading
+`GetItemInfo`, tries the same item ID if the link lookup remains incomplete,
+and cross-checks item quality against the existing Vanilla bag-slot quality
+return. Unknown or contradictory metadata remains unsellable. A merchant
+pass with pending metadata retries at a low cadence for at most 60 seconds;
+authoritatively sufficient free slots can finish earlier. If the trip still
+fails with a full bag (or the post-trip bag read is unavailable), Grind enters
+`WaitingForManualVendor` instead of acquisition or Roaming. The vendor-done
+branch also requires a fresh post-trip bag read with verified free space;
+an unavailable read invalidates the old snapshot. Resume requires a later
+verified bag-space/maintenance snapshot.
+See `docs/VENDOR_FULL_BAG_AUDIT.md` for source and runtime distinctions.
+P0.6 static status: SOURCE/ARCHITECTURE VERIFIED for the source-backed item
+classification and fail-closed owner transitions; TEST PASS and BUILD PASS.
+Final full dirty worktree: 98 strict C++ tests, 26 audit Python tests,
+13 QuestDB Python tests, SQL fixture, nine Lua fixtures including 9/9
+vendor-metadata cases; results `/tmp/wow-validation-hb5dmot9/results.json`.
+Fresh prerequisite-HEAD-plus-staged P0.6 tree: 49 strict C++ tests,
+26 audit Python tests, SQL fixture, four published Lua fixtures including
+vendor metadata 9/9. Final isolated results path is reported with the
+checkpoint publication.
+The isolated MinGW DLL/GUI/loader build and both validation build steps
+passed. `git diff --check -- .` and staged diff check: DIFF CHECK PASS.
+No P0.6 WoW runtime qualification has occurred; actual metadata recovery,
+sale, and freed slots remain RUNTIME PENDING.
 
 ## P0.5.1 active-aggressor containment checkpoint (2026-10-08)
 
