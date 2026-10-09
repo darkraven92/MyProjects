@@ -1,10 +1,230 @@
 # R0.1 unattended maintenance / connection audit
 
+## R0.1b.2 live Glue/UI source research (2026-10-09)
+
+Starting HEAD `72267d4ba0fc303c976834da057134fd51bf00f4` verified on
+`codex/r01b2-live-glue-observer`; worktree initially clean. The checkpoint's
+R0.1b.1 **RUNTIME PASS** remains limited to the normal read-only lifecycle and
+cooperative shutdown recorded below. R0.1b.2's **live-state qualification gate
+is INCOMPLETE / SOURCE GAP**: no new live UI field passed the identity/lifetime
+gate. This checkpoint adds reproducible offline binary checks, separate explicit
+unknown dialog fields and regression coverage, not a qualified live Glue reader.
+
+### SOURCE VERIFIED — exact local assets and control flow
+
+Inspected `/home/ludvig/Games/WoW Vanilla/WoW.exe` directly. SHA256 matches
+`b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`;
+PE32 i386 image base remains `0x400000`. Disassembly and extraction artifacts
+are under ignored `build/r01b2-research/`. All addresses below are image VAs.
+The executable was not launched, attached to, patched or called for research.
+No credentials or account configuration were read.
+
+Read the installed `Data/interface.MPQ`, `Data/patch.MPQ` and `Data/patch-2.MPQ`
+using mpyq 0.2.5 installed only into the ignored research directory. Checked
+each named asset in all three archives: patch-2 overrides AccountLogin.lua;
+the other assets below are absent from patch-2 and supplied by patch.MPQ.
+The older interface.MPQ copies differ and were not used as the current source.
+The four previously recorded Lua hashes are reproduced exactly:
+
+| Effective asset | Archive | SHA256 |
+| --- | --- | --- |
+| GlueParent.lua | patch.MPQ | `78e8976a42de4ca5015555031abb54c48dd6f08eb424d42ddbacce732b9e6ccd` |
+| GlueDialog.lua | patch.MPQ | `f5bcc69ac824030b1e05cd2bda7dd1197603b8a45cac3e8046038d7d1248c8b9` |
+| CharacterSelect.lua | patch.MPQ | `972bbcb0072750e3827a0b5e725b1ad46891c916fdb4bb88cf56400da69960bc` |
+| AccountLogin.lua | patch-2.MPQ | `d7824475393e7b0e21ff19477a83c0f35d0b9849b59571fbdc0b0bbacafe921e` |
+| GlueParent.xml | patch.MPQ | `431a30df7b1e5fca0fc9692a567adb24b70a4a14744b3b4afbaad61f3be4be06` |
+| GlueDialog.xml | patch.MPQ | `20adcaf153f8dc4335f3008fca3acce37cf7b744715a544985ec38c6f53b6b6d` |
+| GlueXML.toc | patch.MPQ | `d7442ddfc49c133aec865d4b6aa2b0c553a9689dbf419c4c91cd676cafca3d95` |
+
+Source conclusions (Lua line numbers refer to those exact extracted files):
+
+- **Existing server predicate and historical buffer preserved.** Registration
+  `0x8374a0` → `0x46d380` still tests `[singleton+0x1b00]` via getter
+  `0x5ab490` / `0xC28128`. `SetCurrentScreen` still copies to `0xB41478` through
+  `0x46b860`. Neither predicate establishes current Glue visibility.
+- **Current and pending names have different, incomplete semantics.**
+  GlueParent.lua 23–24 initializes both globals to nil. Lines 32–60 hide named
+  frames, show the selected frame, call SetCurrentScreen, then assign
+  CURRENT_GLUE_SCREEN. Lines 109–120 set PENDING_GLUE_SCREEN for the
+  login→character-select fade and later consume it, but do not clear it.
+  A pending name can survive completion; its presence is not proof of an active
+  transition. Neither string replaces a current native frame/lifetime proof.
+- **Dialog type survives hiding.** GlueParent.lua 100–102 handles
+  DISCONNECTED_FROM_SERVER by selecting login and requesting the DISCONNECTED
+  dialog. GlueDialog.lua 147 assigns `.which` before Show at 181. CLOSE_STATUS_DIALOG
+  hides the frame at 212–213; OnHide at 217–219 is empty; OnClick hides before
+  executing type-specific behavior at 221–234. None clears `.which` on hiding.
+  GlueDialog.xml 30 defines an initially hidden child of GlueParent. A stored
+  DISCONNECTED type alone is therefore insufficient to prove a visible dialog.
+  Its OnShow also calls StatusDialogClick (Lua 35–47); executing an apparently
+  UI-only callback would not preserve this observer's action-free contract.
+- **Prior login/character-select provenance preserved.** AccountLogin.lua
+  25–47 clears password text on show; 95–104 submits edit-box values through
+  DefaultServerLogin and clears password text again. No values were accessed.
+  CharacterSelect.lua 43–54 uses IsConnectedToServer at character select;
+  356–359 invokes EnterWorld. The native EnterWorld callback at `0x46d3c0`
+  delegates to `0x46b500`, with selected-index/count checks and server-predicate
+  check at `0x46b55f`. These are action implementations, not observation APIs.
+- **Lua state pointer does not establish readiness or generation.**
+  `0x7039e0` calls state creation at `0x6f6d20`, publishes the pointer to
+  `0xCEEF74` at `0x7039ed`, then continues initialization. `0x703ba0` calls
+  state close `0x6f6f80` before clearing `0xCEEF74` at `0x703bab`.
+  `0x703b80` closes/recreates that state. Glue setup calls this reset at
+  `0x46a87b`; FrameXML setup calls it at `0x48fe97` before loading
+  `Interface\\FrameXML\\FrameXML.toc`, and another call exists at `0x491231`.
+  Getter `0x7040d0` simply returns the shared pointer. It is not Glue-specific.
+- **Native visibility semantics are qualified only for an already qualified
+  native frame object.** Registration pairs at `0x878fd0`/`0x878fd8` map
+  IsVisible/IsShown to `0x7758d0`/`0x775990`. These callbacks extract a native
+  object from Lua table slot 0, validate its type through a virtual call, then
+  test different DWORDs: `+0xd4` at `0x775955` versus `+0xd0` at `0x775a15`.
+  This does not locate or validate the current GlueParent/GlueDialog object.
+  Other registered object classes use different field offsets; there is no
+  universal guessed frame pointer/visibility offset in the observer.
+- **The existing native name lookup is not read-only.** GlueParent's name is
+  passed to lookup `0x76c760` from `0x46ac3a`. Lookup obtains the shared Lua
+  state, pushes a name through `0x6f3890` → `0x6f3840`, then accesses globals,
+  extracts the object and checks its type. The push path writes a value and
+  advances the Lua stack at `0x6f387b`–`0x6f3885`. Calling it would violate the
+  no-client-memory-writes boundary. At `0x46ac1d`–`0x46ac44`, `0xCF0C10` is
+  lazily filled from an increment of `0xCEEF6C` and passed as a lookup/type
+  validation argument; these values are not qualified interpreter generations.
+- **Loading candidate is not a complete loading discriminator.** Research
+  followed LoadingScreen.cpp references and the query `0x407e70`, used by Glue
+  update at `0x46c1c1`. It only tests whether handle `0x882BE0` is nonzero.
+  Setup at `0x406800` and cleanup at `0x407e80` manage that handle; `0x4083c0`
+  separately changes a flag on it. Handle existence alone has not been proven
+  equivalent to a currently visible loading screen or an exclusive lifecycle
+  phase. No loading address or classifier is added to production.
+
+`tools/connection_client_audit.py` now verifies 14 exact additional binary
+signature regions and the relevant visibility registration names **offline**.
+These anchor the research paths above; they are not runtime read addresses or
+permission to call any function. Against the exact local client it reports:
+
+```text
+sourceSignatures=PASS
+glueResearchSignatures=PASS
+liveGlueQualified=False
+runtimeQualified=False
+reconnectImplemented=False
+```
+
+Repeat with `python3 tools/connection_client_audit.py '/home/ludvig/Games/WoW Vanilla/WoW.exe'`.
+Extracted Blizzard assets, disassembly, and research dependencies remain ignored;
+no MPQ/client installation files are modified or committed.
+
+### RUNTIME OBSERVED — inherited qualification only
+
+R0.1b.1 observed `lastGlueScreen=charselect` while actually in world, server
+connection remaining yes across manager_missing/active_guid_missing, and the
+same player GUID returning with new manager/local-player addresses. Its exact
+observations and RUNTIME PASS are retained below. No new WoW run or live Glue
+memory sampling was performed for R0.1b.2; none of the binary findings above is
+promoted into new RUNTIME PASS evidence.
+
+### INFERRED — rejected promotion paths
+
+A pointer equal before and after a multi-field read could still overlap
+initialization/teardown or address reuse. Stable bytes alone do not prove that
+the current Lua globals and native frames belong to a live Glue generation.
+The proven reset/publication order makes this a relevant lifetime risk, not
+evidence that a torn read occurred during the qualified R0.1b.1 session.
+The lazy lookup token appears to be a type identifier; no generation semantics
+are assigned to it. Loading-related handle/state candidates remain research
+leads, not production facts. Absence of a candidate signal is not proof of
+connected, disconnected, hidden Glue, or completed loading.
+
+### UNKNOWN / SOURCE GAP — runtime decision
+
+No generation-safe read-only binding from the current interpreter to named
+Glue frames and globals was established. A native callback's verified layout
+does not supply this missing binding. A future reader needs exact table/object
+identity, initialization/teardown and mutation protection, and field-specific
+visibility semantics without invoking Lua or modifying its stack. A separate
+source-qualified loading lifecycle predicate is also still missing.
+
+Accordingly `glueVisibility`, `currentGlueScreen`, `pendingGlueScreen`,
+`dialogVisible`, `dialogType`, `dialogState`, `loading`, `glueGeneration`,
+`disconnectConfirmed` and `actionEligibility` all remain explicitly `unknown`.
+The observer now prints separate `dialogVisible=unknown dialogType=unknown`
+and `liveGlueReason=source_gap_identity_and_lifetime`; its read set is unchanged.
+There are no new production offsets, frame scans, native calls, hooks, Lua
+execution, gameplay controllers, client-memory writes or actions. Existing
+world/server/historical-screen evidence, sparse logging and stop handling are
+preserved. No credentials, character selection, reconnect, retry/backoff or
+restart implementation exists. R0.1b.2 is not claimed complete as a live reader.
+
+### R0.1b.2 tests and validation
+
+Tests extend the existing evidence matrix across world validity/stages, signature
+validity, known/unknown server predicate and historical names. All live fields
+must remain unknown, including during the observed loading stage or when the
+server predicate is false. Unchanged samples remain suppressed; unknown samples
+replace prior success. Existing native-reader fixtures retain missing/changed
+owner, connection, screen and signature failures. New offline-audit tests reject
+changed, truncated and missing research signatures and assert all live/runtime/
+reconnect qualification flags stay false. A transitive local-include boundary
+test checks the entire observer dependency closure for action adapters/input/
+Lua/dispatcher APIs, in addition to the existing pre-controller entry guards.
+
+Focused tests and exact-client offline audit: **PASS**.
+`python3 tools/validate.py --jobs 4`: **PASS**, 105 C++ tests; failures=[];
+42 audit Python tests, 13 QuestDB Python tests, SQL and all 10 Lua fixtures pass.
+Report: `/tmp/wow-validation-bo7otml5/results.json`.
+`cmake --build build`: **PASS**, including the separate requested build after
+validation. `git diff --check`: **PASS**. `git status --short` reviewed: six
+modified project files, no generated research artifacts staged and no commit.
+Runtime of the added log fields: **PENDING**. These checks do not close the
+live Glue/UI source gate or upgrade any reconnect qualification.
+
+### Exact manual runtime procedure — normal lifecycle only
+
+Use a fresh GUI/client in the existing configured Wine prefix:
+
+```sh
+env WOW_INTERNAL_CONNECTION_MODE=observe wine ./build/wow_gui.exe
+```
+
+Use **Start WoW** to retain the injection handle and inherit the environment;
+manually enter the intended character using the ordinary client UI, then
+**Start Bot**. Require `CONNECTION OBSERVE CONFIG mode=observe`; retain complete
+`build/wow-internal.log` and `build/wow-internal.lifecycle.log` with the DLL
+session identity and manual timestamps of each visible phase.
+
+1. **Normal in-world:** record `worldSnapshot=valid`, `worldStage=complete`,
+   player GUID, manager, localPlayer and independently read serverConnected.
+   Historical charselect is allowed. Require all live fields listed above to
+   be unknown, including the two separate dialog fields and the source-gap
+   reason. Verify stable samples stop logging while the GUI heartbeat advances.
+2. **Normal logout to character select:** manually logout. Record visible UI
+   time, world-unavailable stage(s), server predicate and historical name.
+   `manager_missing` must not imply disconnect, current charselect visibility,
+   or safe action eligibility. Require `inputOwner=none commands=none`.
+3. **Normal Enter World/loading:** manually choose the same character and click
+   Enter World. Record the visible loading interval and sampled world stages.
+   `active_guid_missing` must not set `loading=yes` or confirm disconnect;
+   loading and live Glue fields remain unknown. A transition between polls may
+   be missed; do not invent evidence for it.
+4. **Same-character world return:** require a fresh valid snapshot with the
+   original GUID, record the new manager/localPlayer pointers, and verify no
+   gameplay owner starts. This remains world recovery, not reconnect success.
+
+Throughout, check for no GRIND, MOVEMENT INTENT, CombatController, AFK PROTECTION,
+VENDOR, Death14 or QuestPolicy activity and no bot-generated input, Lua or UI
+action. Finally press **Stop Bot** and require the observer's session-stop,
+runtime-detached and DLL-unload markers while WoW remains running. These checks
+qualify the action-free observer/log extension only; they cannot qualify a live
+disconnect dialog, a loading classifier, Glue lifetime or safe login actions.
+Do not deliberately disconnect the network or provide credentials to this tool.
+
+**SOURCE GAP — RECONNECT NOT IMPLEMENTED**
+
 ## R0.1b.1 read-only lifecycle observer (2026-10-09)
 
 Starting restored HEAD: `a329e0bfead01999c7d7938081dc2b1c4e8ab477`, branch
-`codex/r01b-connection-observer`, initially clean worktree. This section is
-the current checkpoint; the earlier sections below retain their historical
+`codex/r01b-connection-observer`, initially clean worktree. This section records
+the qualified observer checkpoint; the earlier sections below retain their historical
 validation and runtime status.
 
 User-reported restored baseline: Arch Linux, Wine Staging 11.19, MinGW i686,

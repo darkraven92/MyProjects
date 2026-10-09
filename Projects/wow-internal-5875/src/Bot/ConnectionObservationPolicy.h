@@ -55,8 +55,10 @@ namespace Bot
                 " serverConnected=" + (known ? (connection.serverConnected ? "yes" : "no") : "unknown") +
                 " lastGlueScreen=" + (connection.signaturesKnown ? connection.lastGlueScreen : "unknown") +
                 " glueScreenSemantics=historical glueVisibility=unknown dialogState=unknown"
+                " dialogVisible=unknown dialogType=unknown"
                 " loading=unknown currentGlueScreen=unknown pendingGlueScreen=unknown"
                 " glueGeneration=unknown disconnectConfirmed=unknown actionEligibility=unknown"
+                " liveGlueReason=source_gap_identity_and_lifetime"
                 " processAlive=yes decision=observe_only inputOwner=none commands=none"
                 " sourceReason=" + connection.reason;
         }

@@ -26,6 +26,8 @@ int main()
     Has(fields, "lastGlueScreen=charselect glueScreenSemantics=historical");
     Has(fields, "glueVisibility=unknown");
     Has(fields, "dialogState=unknown");
+    Has(fields, "dialogVisible=unknown dialogType=unknown");
+    Has(fields, "liveGlueReason=source_gap_identity_and_lifetime");
     Has(fields, "loading=unknown");
     Has(fields, "currentGlueScreen=unknown pendingGlueScreen=unknown glueGeneration=unknown");
     Has(fields, "disconnectConfirmed=unknown actionEligibility=unknown");
@@ -83,4 +85,34 @@ int main()
     assert(tracker.Observe(connected, world, fields));
     ++world.localPlayer;
     assert(tracker.Observe(connected, world, fields));
+
+    // R0.1b.2 research did not qualify a live frame or lifetime reader.
+    // Exhaust existing evidence combinations: none may manufacture Glue,
+    // loading or disconnect-dialog evidence. In particular, active_guid_missing
+    // was observed DURING loading, but is not itself a loading classifier.
+    for (bool valid : {false, true})
+    for (bool signatures : {false, true})
+    for (bool serverKnown : {false, true})
+    for (bool serverConnected : {false, true})
+    for (const char* screen : {"unknown", "login", "charselect", "movie"})
+    for (const char* stage : {"complete", "manager_missing", "active_guid_missing",
+                             "manager_root_unreadable", "player_snapshot_unreadable"})
+    {
+        ConnectionEvidence5875 sample{signatures, serverKnown, serverConnected, screen,
+            signatures ? "read_only_api_predicate" : "signature_mismatch"};
+        const ConnectionWorldObservation snapshot{valid, stage, 123, 456, 789};
+        ConnectionObservationTracker sparse;
+        assert(sparse.Observe(sample, snapshot, fields));
+        for (const char* field : {"glueVisibility", "dialogState", "dialogVisible", "dialogType",
+                                 "loading", "currentGlueScreen", "pendingGlueScreen",
+                                 "glueGeneration", "disconnectConfirmed", "actionEligibility"})
+            Has(fields, (std::string(field) + "=unknown").c_str());
+        Has(fields, "inputOwner=none commands=none");
+        assert(!sparse.Observe(sample, snapshot, fields));
+        // A fresh unknown sample always loses any prior qualified predicate.
+        sparse.Observe({}, snapshot, fields);
+        Has(fields, "sourceVerified=no serverConnected=unknown lastGlueScreen=unknown");
+        Has(fields, "dialogVisible=unknown dialogType=unknown");
+        assert(!sparse.Observe({}, snapshot, fields));
+    }
 }

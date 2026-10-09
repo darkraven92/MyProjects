@@ -58,3 +58,25 @@ class ConnectionObserverBoundaryTest(unittest.TestCase):
                           "WriteProcessMemory", "SendInput", "EnterWorld(",
                           "DefaultServerLogin(", "HoldPosition("):
             self.assertNotIn(forbidden, source)
+
+    def test_observer_transitive_dependencies_have_no_action_adapter(self):
+        pending = [ROOT / "src/Bot/ConnectionLifecycleObserver5875.h"]
+        visited = set()
+        while pending:
+            path = pending.pop().resolve()
+            if path in visited:
+                continue
+            visited.add(path)
+            source = path.read_text()
+            # Check the whole local include closure, not just Run's direct
+            # includes. Logging/IPC writes are allowed; client/input writes,
+            # dispatcher hooks, Lua execution and command adapters are not.
+            for forbidden in ("GameThreadDispatcher", "ExecuteLua", "ExecuteScript",
+                              "WriteProcessMemory", "SendInput", "keybd_event", "mouse_event",
+                              "SetWindowsHookEx", "SetWindowLongPtr", "PostMessage", "SendMessage",
+                              "DefaultServerLogin", "GlueDialog_OnClick", "EnterWorld("):
+                self.assertNotIn(forbidden, source, str(path.relative_to(ROOT)))
+            for include in re.findall(r'#include "([^"]+)"', source):
+                pending.append(path.parent / include)
+        self.assertFalse(any("Controller" in p.name for p in visited))
+        self.assertTrue(any(p.name == "ConnectionEvidence5875.h" for p in visited))
