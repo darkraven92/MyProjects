@@ -198,9 +198,9 @@ including safety-owner priority before post-kill retirement; these are not
 full controller execution tests. Static tests/build do not qualify live routing
 or AFK delivery.
 
-Final static/build validation: `python3 tools/validate.py --jobs 4` —
+Final static/build validation after parallel audit corrections: `python3 tools/validate.py --jobs 4` —
 **PASS: 108 C++ tests; failures=[]**, including the Python/Lua suites and
-MinGW DLL build. Report: `/tmp/wow-validation-ixdhq764/results.json` (local,
+MinGW DLL build. Report: `/tmp/wow-validation-ohk53k2d/results.json` (local,
 temporary artifact). `cmake --build build` and `git diff --check` also pass.
 No WoW runtime was performed and no commit was created.
 
