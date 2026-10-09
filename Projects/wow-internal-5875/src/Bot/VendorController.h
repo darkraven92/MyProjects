@@ -1,6 +1,7 @@
 #pragma once
 #include "EquipmentDurabilityProbe.h"
 #include "QuestMaintenancePolicy.h"
+#include "AutomaticVendorEpisodePolicy.h"
 
 #include "AutonomousMaintenancePolicy.h"
 #include "AutoSellItemPolicy.h"
@@ -39,24 +40,6 @@
 
 namespace Bot
 {
-    enum class VendorState
-    {
-        Idle,
-        PreparingHubSelection,
-        SelectingHub,
-        ReturningHomeForSearch,
-        SearchingVendor,
-        NavigatingVendor,
-        NavigatingVendorAnchor,
-        DirectVendorApproach,
-        WaitingForMerchant,
-        Selling,
-        Maintaining,
-        ReturningToGrind,
-        Done,
-        Failed
-    };
-
     class VendorController
     {
     private:
@@ -183,6 +166,8 @@ namespace Bot
         bool bagPressureTrigger_ = false;
         bool bagPressureSatisfied_ = true;
         ServiceHubBackoffPolicy localBackoff_{};
+        AutomaticVendorEpisodePolicy automaticEpisode_{};
+        MaintenanceNeed automaticEpisodeNeed_{};
         ServiceHubBackoffPolicy* sharedBackoff_ = nullptr;
         ServiceHubBackoffPolicy& CandidateBackoff()
         { return sharedBackoff_ ? *sharedBackoff_ : localBackoff_; }
@@ -190,6 +175,7 @@ namespace Bot
         {
             if (!entry) return;
             rejectedServiceEntries_.insert(entry);
+            automaticEpisode_.Failure();
             CandidateBackoff().Reject(entry, tick, QuestMaintenancePolicy::RetryTicks);
             Debug::Logger::Info("VENDOR CANDIDATE BACKOFF entry=" + std::to_string(entry) +
                 " reason=" + reason + " untilTick=" +
@@ -1255,6 +1241,18 @@ namespace Bot
             if (selectedHubIndex_ >= tripCandidates_.size())
                 return false;
             const auto& candidate = tripCandidates_[selectedHubIndex_];
+            if (automaticEpisode_.Active())
+            {
+                const auto previous = automaticEpisode_.Candidate();
+                automaticEpisode_.Select(candidate.entry);
+                Debug::Logger::Info("VENDOR EPISODE candidate=" + std::to_string(candidate.entry) +
+                    " attempt=" + std::to_string(automaticEpisode_.Attempts()) +
+                    " episodeAgeTicks=" + std::to_string(automaticEpisode_.Age(tick)) +
+                    " failures=" + std::to_string(automaticEpisode_.Failures()) +
+                    " previous=" + std::to_string(previous) +
+                    " next=" + std::to_string(candidate.entry) +
+                    " reason=lowest_reachable_nav_cost");
+            }
             vendorEntry_ = candidate.entry;
             vendorGuid_ = candidate.live ? candidate.guid : 0;
             if (candidate.live &&
@@ -2066,6 +2064,51 @@ namespace Bot
         }
 
     public:
+        const AutomaticVendorEpisodePolicy& AutomaticEpisode() const { return automaticEpisode_; }
+        const MaintenanceNeed& AutomaticEpisodeNeed() const { return automaticEpisodeNeed_; }
+        void BeginAutomaticEpisode(std::uint64_t tick, const MaintenanceNeed& need, bool bags)
+        {
+            if (!automaticEpisode_.Begin(tick)) return;
+            automaticEpisodeNeed_ = need;
+            rejectedServiceEntries_.clear();
+            Debug::Logger::Info("VENDOR EPISODE state=started reason=" +
+                std::string(bags ? "bag_pressure" : need.repair ? "repair" : need.food ? "food" : "drink") +
+                " attempt=1 tick=" + std::to_string(tick) +
+                " maxAttemptTicks=" + std::to_string(AutomaticVendorEpisodePolicy::MaximumAttemptTicks));
+        }
+        bool RetryAutomaticEpisode(std::uint64_t tick)
+        {
+            if (!automaticEpisode_.Retry(tick)) return false;
+            Debug::Logger::Info("VENDOR EPISODE state=retry attempt=" +
+                std::to_string(automaticEpisode_.Attempts()) + " tick=" + std::to_string(tick) +
+                " episodeAgeTicks=" + std::to_string(automaticEpisode_.Age(tick)));
+            return true;
+        }
+        void ExhaustAutomaticEpisode(std::uint64_t tick)
+        {
+            if (!automaticEpisode_.Exhaust(tick)) return;
+            const bool penalizeCandidate = vendorEntry_ != 0 &&
+                AutomaticVendorEpisodePolicy::RejectCandidateOnExpiry(state_);
+            if (penalizeCandidate)
+                BackOffCandidate(vendorEntry_, tick, "automatic_episode_age_budget");
+            Debug::Logger::Info("VENDOR EPISODE state=exhausted reason=attempt_age_budget"
+                " attempts=" + std::to_string(automaticEpisode_.Attempts()) +
+                " candidateAttempts=" + std::to_string(automaticEpisode_.Candidates()) +
+                " candidateChanges=" + std::to_string(automaticEpisode_.Changes()) +
+                " failures=" + std::to_string(automaticEpisode_.Failures()) +
+                " vendorState=" + StateNameInternal(state_) +
+                " candidatePenalized=" + (penalizeCandidate ? "yes" : "no") +
+                " episodeAgeTicks=" + std::to_string(automaticEpisode_.Age(tick)) +
+                " decision=maintenance_wait");
+        }
+        void CompleteAutomaticEpisode(std::uint64_t tick)
+        {
+            if (automaticEpisode_.Active())
+                Debug::Logger::Info("VENDOR EPISODE state=completed episodeAgeTicks=" +
+                    std::to_string(automaticEpisode_.Age(tick)) + " reason=verified_maintenance");
+            automaticEpisode_.Complete();
+            automaticEpisodeNeed_ = {};
+        }
         void SetCandidateBackoff(ServiceHubBackoffPolicy* backoff) { sharedBackoff_ = backoff; }
         void ObserveWorld(const Objects::WorldState& world)
         {
@@ -2092,7 +2135,7 @@ namespace Bot
             bool bagPressureTrigger = false,
             bool conservativeQuestSales = false)
         {
-            if (state_ != VendorState::Idle)
+            if (state_ != VendorState::Idle || automaticEpisode_.Expired(tick))
                 return false;
 
             grindHome_ = grindHome;
@@ -2140,7 +2183,7 @@ namespace Bot
             foodPurchases_ = 0;
             drinkPurchases_ = 0;
             serviceCandidatesTried_ = 0;
-            rejectedServiceEntries_.clear();
+            if (!automaticEpisode_.Active()) rejectedServiceEntries_.clear();
             CandidateBackoff().Prune(tick);
             maintenanceAtStart_ = MaintenanceSnapshot{};
             lastMaintenanceSnapshot_ = MaintenanceSnapshot{};
@@ -2914,7 +2957,9 @@ namespace Bot
             repairUnavailableHere_ = false;
             foodUnavailableHere_ = false;
             drinkUnavailableHere_ = false;
-            rejectedServiceEntries_.clear();
+            // A controller reset (including combat preemption) does not erase
+            // failures or refill the enclosing automatic maintenance episode.
+            if (!automaticEpisode_.Active()) rejectedServiceEntries_.clear();
             maintenanceUnmet_ = false;
             lastMaintenanceStepTick_ = 0;
             repairActions_ = 0;

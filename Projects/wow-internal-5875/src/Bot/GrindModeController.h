@@ -665,6 +665,36 @@ namespace Bot
                 combat.State() == CombatState::PostKillDelay;
         }
 
+        // Called only at a maintenance ownership boundary, after defense has
+        // had priority. Controller Reset deliberately retains the episode.
+        void EnterVendorEpisodeWait(const Objects::WorldState& world, std::uint64_t tick)
+        {
+            vendor_.ExhaustAutomaticEpisode(tick);
+            vendor_.Reset(); // destroys all route/probe followers
+            ResetApproach();
+            ResetRoam();
+            firstAid_.Abort("automatic vendor episode exhausted");
+            firstAidIdleSinceTick_ = 0;
+            const bool urgent = AutonomousMaintenancePolicy::Evaluate(maintenance_).urgentRepair;
+            const bool bagPressure = bags_.valid && bags_.freeSlots <= VendorTriggerFreeSlots;
+            const auto previousRetryAt = maintenanceSuppressedUntil_;
+            maintenanceSuppressedUntil_ = tick + (urgent ? UrgentMaintenanceRetryBackoffTicks :
+                bagPressure ? BagPressureVendorRetryBackoffTicks : MaintenanceRetryBackoffTicks);
+            if (state_ == GrindModeState::WaitingForManualVendor && unattendedMaintenanceWait_.Active())
+                maintenanceSuppressedUntil_ = std::max(tick, unattendedMaintenanceWait_.RetryAt());
+            else if (state_ != GrindModeState::Vendoring && previousRetryAt != 0)
+                maintenanceSuppressedUntil_ = std::max(tick, previousRetryAt);
+            unattendedMaintenanceWait_.FailedTrip(maintenanceSuppressedUntil_);
+            maintenanceBlockedLogged_ = false;
+            nextBagProbeTick_ = tick + BagProbeIntervalTicks;
+            const bool held = MovementController::HoldPosition(world.player);
+            SetState(GrindModeState::WaitingForManualVendor);
+            Debug::Logger::Info("MAINTENANCE WAIT state=entered reason=vendor_episode_exhausted"
+                " navigationCancelled=yes holdIssued=" + std::string(held ? "yes" : "no") +
+                " retryAtTick=" + std::to_string(maintenanceSuppressedUntil_) +
+                " decision=await_verified_maintenance_or_bounded_retry");
+        }
+
         void ProbeBags(std::uint64_t tick)
         {
             if (tick < nextBagProbeTick_)
@@ -739,6 +769,22 @@ namespace Bot
             const bool foodWasRequired =
                 AutonomousMaintenancePolicy::Evaluate(maintenance_).food;
             maintenance_ = next;
+            // A preempted trip may be resolved by ordinary loot/manual service.
+            // Do not carry its old deadline into a later, unrelated need. This
+            // never bypasses an active bag wait's two-read release gate.
+            if (vendor_.AutomaticEpisode().Active() &&
+                state_ != GrindModeState::Vendoring && !unattendedMaintenanceWait_.Active() &&
+                AutomaticVendorEpisodePolicy::RequirementsSatisfied(
+                    bags_.valid, bags_.freeSlots, VendorTriggerFreeSlots,
+                    next, vendor_.AutomaticEpisodeNeed()))
+            {
+                GrindBagMonitor::Snapshot resolvedBags{};
+                if (GrindBagMonitor::Read(resolvedBags) &&
+                    AutomaticVendorEpisodePolicy::RequirementsSatisfied(
+                        resolvedBags.valid, resolvedBags.freeSlots, VendorTriggerFreeSlots,
+                        next, vendor_.AutomaticEpisodeNeed()))
+                    vendor_.CompleteAutomaticEpisode(tick);
+            }
             const std::string readinessState =
                 maintenance_.inventoryPendingItems > 0 ? "inventory_pending" :
                 maintenance_.metadataPendingItems > 0 ? "metadata_pending" :
@@ -1729,9 +1775,22 @@ namespace Bot
                     combat.Update(world, tick);
                     return;
                 }
+                combat.RetireExpiredPostKillDelayForMaintenance(tick);
+                if (!vendor_.AutomaticEpisode().Waiting() && vendor_.AutomaticEpisode().Expired(tick))
+                {
+                    EnterVendorEpisodeWait(world, tick);
+                    return;
+                }
                 const bool freshBagRead = tick >= nextBagProbeTick_;
                 ProbeBags(tick);
-                ProbeMaintenance(tick);
+                const bool serviceProofRequired = vendor_.AutomaticEpisode().ServiceProofRequired();
+                // Never let a stale pre-trip maintenance snapshot release the
+                // exhausted service-search latch. Ordinary bag waits are unchanged.
+                if (serviceProofRequired && freshBagRead) maintenance_.valid = false;
+                ProbeMaintenance(tick, serviceProofRequired && freshBagRead);
+                const bool releaseAllowed = !serviceProofRequired ||
+                    AutomaticVendorEpisodePolicy::RequirementsSatisfied(bags_.valid, bags_.freeSlots,
+                        VendorTriggerFreeSlots, maintenance_, vendor_.AutomaticEpisodeNeed());
                 if (unattendedMaintenanceWait_.Active())
                 {
                     const auto previousProof = unattendedMaintenanceWait_.SpaceObservations();
@@ -1739,7 +1798,7 @@ namespace Bot
                         tick, freshBagRead, bags_.valid, bags_.freeSlots,
                         VendorTriggerFreeSlots,
                         CombatSafeForVendor(combat) || combat.State() == CombatState::Idle,
-                        vendorAutomationEnabled_);
+                        vendorAutomationEnabled_ && vendor_.AutomaticEpisode().CanRetry(), releaseAllowed);
                     if (previousProof != unattendedMaintenanceWait_.SpaceObservations())
                         Debug::Logger::Info("MAINTENANCE BAG PROOF tick=" + std::to_string(tick) +
                             " fresh=" + (freshBagRead ? "yes" : "no") +
@@ -1751,12 +1810,14 @@ namespace Bot
                             std::to_string(unattendedMaintenanceWait_.Retries()) +
                             " tick=" + std::to_string(tick) +
                             " retryAtTick=" + std::to_string(unattendedMaintenanceWait_.RetryAt()) +
-                            " reason=automatic_full_bag_retry");
+                            " reason=" + std::string(serviceProofRequired ? "bounded_vendor_episode_retry" : "automatic_full_bag_retry"));
                         vendor_.ObserveWorld(world);
                         const Navigation::NavPoint resume{
                             world.player.x, world.player.y, world.player.z};
-                        if (vendor_.Start(world, resume, tick,
-                                AutonomousMaintenancePolicy::Evaluate(maintenance_), true))
+                        if (vendor_.RetryAutomaticEpisode(tick) &&
+                            vendor_.Start(world, resume, tick,
+                                AutonomousMaintenancePolicy::Evaluate(maintenance_),
+                                !serviceProofRequired || !bags_.valid || bags_.freeSlots <= VendorTriggerFreeSlots))
                             SetState(GrindModeState::Vendoring);
                         else
                         {
@@ -1772,12 +1833,14 @@ namespace Bot
                         maintenanceBlockedLogged_ = true;
                         Debug::Logger::Info("MAINTENANCE WAIT state=MaintenanceBlocked"
                             " reason=retry_exhausted_or_automation_disabled"
-                            " decision=await_fresh_bag_space");
+                            " decision=" + std::string(serviceProofRequired ?
+                                "await_verified_maintenance_and_bag_space" : "await_fresh_bag_space"));
                     }
                     if (decision != MaintenanceWaitDecision::Resume)
                         return;
                     Debug::Logger::Info("MAINTENANCE WAIT state=recovered"
                         " reason=two_fresh_bag_space_observations");
+                    if (serviceProofRequired) vendor_.CompleteAutomaticEpisode(tick);
                     unattendedMaintenanceWait_.Reset();
                     maintenanceBlockedLogged_ = false;
                     // Any remaining maintenance request follows the ordinary
@@ -1911,6 +1974,12 @@ namespace Bot
                     Debug::Logger::Info("MAINTENANCE WAIT state=preempted reason=direct_aggressor");
                     return;
                 }
+                combat.RetireExpiredPostKillDelayForMaintenance(tick);
+                if (vendor_.AutomaticEpisode().Expired(tick))
+                {
+                    EnterVendorEpisodeWait(world, tick);
+                    return; // no vendor Update, selection or reacquisition this tick
+                }
                 vendor_.Update(world, tick);
 
                 if (vendor_.Failed())
@@ -2013,6 +2082,17 @@ namespace Bot
                         return;
                     }
                     const bool maintenanceUnmet = vendor_.MaintenanceUnmet();
+                    // A retry may have started with incomplete inventory
+                    // metadata. Its terminal flag alone cannot prove that the
+                    // original episode's service request was satisfied.
+                    MaintenanceSnapshot completedMaintenance{};
+                    if (!maintenanceUnmet &&
+                        VendorController::ProbeMaintenance(completedMaintenance) &&
+                        AutomaticVendorEpisodePolicy::RequirementsSatisfied(
+                            postTripBagsKnown, postTripBags.freeSlots,
+                            VendorTriggerFreeSlots, completedMaintenance,
+                            vendor_.AutomaticEpisodeNeed()))
+                        vendor_.CompleteAutomaticEpisode(tick);
                     ++vendorTrips_;
                     maintenanceBlockedLogged_ = false;
                     vendor_.Reset();
@@ -2151,6 +2231,13 @@ namespace Bot
                 }
                 if (!ManualVendorModePolicy::MayStartVendor(vendorDecision))
                     return;
+
+                vendor_.BeginAutomaticEpisode(tick, maintenanceNeed, bagPressure);
+                if (vendor_.AutomaticEpisode().Expired(tick))
+                {
+                    EnterVendorEpisodeWait(world, tick);
+                    return;
+                }
 
                 ResetApproach();
                 ResetRoam();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CombatSelectionTimeoutPolicy.h"
+#include "MaintenanceCombatHandoffPolicy.h"
 
 #include "AutoAttackController.h"
 #include "CombatLivenessPolicy.h"
@@ -3456,6 +3457,18 @@ namespace Bot
         }
 
     public:
+        // The maintenance owner does not run Update (which could acquire a
+        // target). Retire only the elapsed delay; all real combat states and
+        // pending corpse ownership remain authoritative.
+        void RetireExpiredPostKillDelayForMaintenance(std::uint64_t tick)
+        {
+            if (!MaintenanceCombatHandoffPolicy::RetireDelay(
+                    state_ == CombatState::PostKillDelay, tick, nextAcquireTick_,
+                    lockedGuid_ != 0, HasDeferredCorpseLootPending())) return;
+            SetState(CombatState::AcquiringTarget);
+            Debug::Logger::Info("COMBAT MAINTENANCE HANDOFF reason=expired_post_kill_delay"
+                " decision=retire_delay_without_acquisition tick=" + std::to_string(tick));
+        }
         bool Start(
             std::uint64_t tick = 0)
         {

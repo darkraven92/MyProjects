@@ -1,5 +1,258 @@
 # R0.1 unattended maintenance / connection audit
 
+## Automatic vendor episode / AFK incident (2026-10-09)
+
+Starting branch `codex/vendor-afk-long-navigation`, clean checkpoint
+`e1f938f0372551701256bb6fe8922c136286f411`. Read the complete capture
+`runtime-captures/vendor-afk-2026-10-09/wow-internal.log`: 28,187 lines,
+2,506,205 bytes, SHA256
+`2241aaae32dd590379b437ae3e53395d01a0ce81dee660389532d68c15d30e9c`.
+This section supplements the historical incidents below. The incident proves
+the old behavior only; the implementation described here is **RUNTIME PENDING**.
+The committed living-water egress and full-bag two-read fix are retained.
+
+### RUNTIME OBSERVED — complete episode chronology
+
+The session spans monotonic 20749417 through 21575159 (~13m46s). There are
+**seven vendor controller starts**, six direct-aggressor preemptions and six
+two-read bag releases, rather than one uninterrupted vendor trip. All starts
+request food, with bag pressure, repair and drink false. No completed vendor
+trip or verified AFK input delivery is established.
+
+| Capture lines | Observed sequence |
+| --- | --- |
+| 5472–10547 | First three starts (5472, 7604, 9388) select 3166. Their navigation intents last 9, 39 and 25 ticks. Direct aggressors preempt each; bag-space proof releases each wait. |
+| 10566–15382 | Fourth start selects 3166, 3165, 3168, 3167, 3163, 6928, 3881, 3164 and 6027. Merchant UI opens four times. Entries 3166/3165/3168/3167 report no usable food. Other failures include candidate failure, bounded local recovery unavailable, replan budget exhausted and surface recovery exhausted. Nine candidate failures are recorded before 3882 is selected. |
+| 15439–17537 | Entry 3882 has selected route cost 1409.503. Intent 18 starts at tick 1292 near (315.343,-4800.490), destination (-560.125,-4217.200). It is released at tick 1830, age 538, near (-500.234,-4677.820), with 62 commands and 12 logged replans. The release result is `owner_released`, followed by direct-aggressor preemption, **not arrival or a final navigation failure**. Local recovery activity precedes the release. |
+| 19286–21811 | Bag proof releases the wait; fifth start at 19303 selects 3933, 3187, 7952, 3186, then 5942. First four candidates fail local/surface recovery. 5942's intent 23 lasts 117 ticks before another combat preemption. |
+| 19980 / 20844 / 21664 | Native inputAge 240046 → DUE (`movement_or_transport_flags`); 270108 → OVERDUE (`combat_or_ability_owner`); 300140 → THRESHOLD CROSSED (`movement_or_transport_flags`). At threshold, Grind is Vendoring, vendor is NavigatingVendorAnchor, combat is PostKillDelay with locked GUID zero. |
+| 23332–24410 | Sixth start at 23349 follows bag-proof release, selects 5942, fails with replan budget exhausted after a 70-tick intent, then selects 10369. Combat preempts that next 23-tick intent. |
+| 25863–28184 | Seventh start at 25880 follows another bag-proof release. It selects 10369, later rejects it, then selects 3882 with route cost 795.731. Final intent 28 lasts 214 ticks until user stop; it is not evidence of arrival or completion. |
+
+The capture has 22 selected-hub events and 15 candidate backoffs. There are
+no `VENDOR: FAILED` terminal records: candidate failures are handled inside
+the trips, and combat preempts six trips. The offline reliability audit's
+terminal-vendor-failure count therefore must not be read as zero navigation
+failures. No world gap, water block or death-recovery incident appears here.
+
+At line 21662, AFK is authoritatively observed as `known=yes active=yes
+clientActive=yes`, not merely inferred from the threshold or candidate flag.
+The native input clock also changed earlier: line 211 reports 20735865 and
+line 21662 reports 21094506. The capture does not attribute that advance to
+bot AFK input, CTM or a user action. InputAge must not be described as rising
+continuously from session start. An earlier ordinary Grind route was rejected
+with `water_traversal_disabled` (2357/2378); this was not a swimming incident.
+
+### SOURCE VERIFIED — audit answers and root cause
+
+1. **Why hubs change:** `StartAlternateServiceSearch` rejects the current
+   entry after unusable service or failed navigation/interaction, increments
+   its per-trip candidate-failure count and prepares another selection.
+   Food availability is learned at the merchant; generic merchant capability
+   alone does not establish usable food stock.
+2. **Existing bounds:** route/expanded/full-map planning uses finite tile
+   lists (two tiles per incremental step). Selection probes disable full-map
+   fallback and shortlist at most four candidates. Generic routes have a
+   2000-unit stage/path limit, 1700-unit long-stage target and at most eight
+   long stages; ordinary replan budget is four, with separately bounded
+   recovery mechanisms. These are not a cumulative intent wall-clock bound
+   (the capture's 12 logged replans are not 12 ordinary budget allowances).
+   Surface attempts remain four; last-safe backtracks two. Vendor direct
+   approach has eight moves, three no-progress moves and three local probes;
+   interaction has five attempts, MerchantFrame wait 60 ticks, metadata wait
+   240 ticks, search waits 80/48 ticks. A trip has ten candidate failures,
+   but no cumulative trip age limit. The failed full-bag wait has two extra
+   retries and existing 480/2400-tick cooldowns.
+3. **Episode-wide bound:** absent at the starting checkpoint. The supervisor's
+   240-tick vendor-owner watchdog watches *lack of progress*: owner state,
+   progress serial and physical progress can refresh it. Planning has a
+   separate four-minute watchdog deferral; strategic outcome monitoring is
+   also not a vendor episode lifetime limit, and kills refresh outcomes.
+4. **Immediate distant alternates:** yes, after the hold/preparation/probe
+   updates, without a maintenance cooldown between failed candidates.
+5. **Failure memory:** per-trip rejected entries were cleared by Reset/Start.
+   Entry backoff lasts 2400 ticks and survives Reset. Combat preemption does
+   not prove a candidate bad and did not blacklist it. This explains reuse
+   of preempted 3166, 5942, 10369 and 3882 without claiming catalogue errors.
+6. **Ranking:** known/persisted/live-observed hubs merge with the build-5875
+   service catalogue, filtered by map/faction and service suitability. The
+   nearest spawn per entry is considered. Shortlisting uses Euclidean
+   distance; final selection uses the greater of Euclidean distance and
+   probed route length, preferring navigable over direct fallback candidates.
+   Discovery has no geographic radius or qualified food-inventory metadata.
+   Long routes are allowed source behavior; this log does not justify a
+   merchant-coordinate correction, new radius or catalogue rewrite.
+7. **Vendoring plus PostKillDelay:** `CombatSafeForVendor` permits that state.
+   Once Vendoring owns updates, it calls vendor Update instead of combat
+   Update, which normally advances the four-tick post-target delay.
+8. **Stale ownership:** the initial delay is intentional, but an expired,
+   unlocked delay surviving throughout vendor navigation is stale. WorldMonitor
+   maps this non-idle/non-acquiring combat state to an AFK combat blocker.
+   SharedAfk logs the native movement rejection when present, otherwise the
+   policy combat blocker; neither means an AFK pulse was delivered. Vendor
+   ownership independently remains an AFK blocker even after retiring delay.
+9. **Why it survives AFK milestones:** there was no absolute vendor attempt
+   deadline shared across navigation intents. Combat preemption also resets
+   trip candidate accounting; two free-bag observations correctly release
+   the bag wait even though food is still missing, enabling a fresh food
+   trip. AFK Due/Overdue/threshold are observations, not route cancellation
+   triggers, and cannot authorize unsafe input.
+
+**SOURCE ROOT CAUSE:** finite local navigation/search budgets did not compose
+into a persistent automatic maintenance attempt bound. The observed restart
+path could refill trip state without finishing the food request. The stale
+delay is a separate ownership defect. **INFERRED:** these paths contributed
+to continued routing and AFK starvation; neither sole causation by vendoring
+nor an incorrect native movement guard is established.
+
+### Implementation and ownership
+
+`AutomaticVendorEpisodePolicy` is opted into only by automatic Grind
+maintenance. `Begin` is idempotent while active. Its new explicit
+`MaximumAttemptTicks=480` is an absolute **monitor-tick** budget (~120 seconds
+at nominal cadence), chosen on the existing 480-tick maintenance/global
+recovery scale. No previous source constant promised a maximum total trip
+duration: this is a new conservative policy, not a recovered client fact or
+a derivation from the native 300000-ms AFK threshold. It includes planning,
+candidate switches, interaction and return navigation. It allows short local
+trips but may stop a legitimate long journey or slow full-map initialization.
+Live usefulness at this bound remains to be qualified. It is not a hard
+wall-clock deadline if the worker or synchronous client call stalls.
+
+The policy and rejected-entry set survive VendorController Reset/Start,
+combat preemption, fallback changes, new movement intents and robustness
+resets. Known failures remain excluded for the whole active episode even if
+their ordinary timed backoff expires. Quest/manual callers do not opt in;
+their selection behavior is unchanged. Ranking, data and navigation budgets
+are unchanged. Preemption alone still does not reject a candidate.
+
+Ownership is now: automatic maintenance → persistent episode → vendor
+selection/navigation/transaction → either verified completion, or bounded
+expiry → destroy vendor route/probe followers → hold current position →
+WaitingForManualVendor. Direct aggressors retain priority before expiry
+handling; world/death/water owners remain outside and above this path. The
+first subsequent eligible maintenance update enforces expiry. Expiry cannot
+call vendor Update or reacquire a route in the same tick. `holdIssued` remains
+dispatch evidence, not measured stillness or native input-clock advancement.
+
+The wait preserves two extra retries and 480-tick bag/urgent or 2400-tick
+ordinary cooldowns. Expiry while already waiting or returning from an ordinary
+failure backoff preserves its established retry deadline rather than imposing
+a second cooldown. Rejected retry starts retain the existing 480-tick retry
+path. Only the wait's explicit retry starts a fresh 480-tick attempt;
+the episode also caps total attempts at three so a reset of bag-wait accounting
+cannot create nested unlimited retries. After exhaustion, free bags alone
+cannot erase an unfinished service-search episode: a separate service-proof
+latch requires fresh satisfaction of originally requested services plus the
+existing two fresh bag reads >1. Unrequested food/repair/drink needs cannot
+extend the hold; a bag-only request needs only its two fresh bag observations,
+even if unrelated service metadata is unavailable. Each contributing scheduled
+bag read also refreshes maintenance evidence; unavailable requested-service
+evidence fails closed. World gaps invalidate
+partial bag proof as before. Exhausted retries remain MaintenanceBlocked with
+no ordinary acquisition. This deliberately scopes the extra release gate to
+the new exhausted-service episode; an ordinary full-bag wait still releases
+on bag proof alone. Successful completed maintenance clears the episode;
+an existing bag lock still requires its two subsequent scheduled reads.
+Completion checks a fresh maintenance snapshot against the original request,
+including known durability for repair. A retry's terminal flag alone is not
+proof. Outside a vendor/bag-wait owner, newly verified maintenance and a fresh
+bag read can also close a preempted episode (for example after acquiring food),
+so its old deadline does not affect a later unrelated maintenance need.
+
+The separate combat handoff retires only an elapsed PostKillDelay with no
+locked GUID and no deferred corpse work. It changes state to AcquiringTarget
+without running combat Update, acquiring a target, resetting a target, or
+sending input. Real combat/recovery states and the unexpired delay are retained.
+
+Read-only parallel review (Runtime Forensics, Source Architecture Audit and
+Test/Regression Audit) confirmed the chronology and identified two corrections
+made by the coordinator. The episode proof predicate now checks only originally
+requested services, leaving manual-mode semantics untouched. Expiry during
+ReturningToGrind/Done still ends the attempt and cancels navigation, but does
+not reject or back off the merchant whose service completed. Only unfinished
+candidate/service work receives the expiry penalty. `vendorState` and
+`candidatePenalized` report that distinction. The existing VendorState enum
+was extracted unchanged into a portable header so tests use production states.
+
+Sparse telemetry: `VENDOR EPISODE state=started`, selected candidate with
+previous/next, attempt, failures and episode age; `state=exhausted` with attempt,
+candidate-change/failure counts; cancellation/hold and retry deadline in
+`MAINTENANCE WAIT`; `state=retry`, `state=completed`; and
+`COMBAT MAINTENANCE HANDOFF reason=expired_post_kill_delay`. Existing per-candidate
+backoff logs supply each failure reason. No per-tick episode log is added.
+
+### Validation and supervised runtime acceptance
+
+Focused tests cover short success, alternates, retained age through repeated
+starts/candidate changes, exact expiry, cooldowns, at most two additional
+attempts, terminal no-spin, fresh service/bag proof, unknown/world-gap proof,
+controller Reset/Start wiring, no same-tick reacquisition and the isolated
+post-kill handoff. Existing navigation, water, death and AFK tests remain
+required. Additional executable policy sequences cover repeated aggressor
+interruptions and bag release without deadline refill, rejected retry startup,
+successful retry followed by fresh bag proof, return-versus-outbound expiry,
+and original bag-only/food-only requests with newly appearing unrelated needs.
+Windows-bound controller wiring remains covered by narrow source contracts,
+including safety-owner priority before post-kill retirement; these are not
+full controller execution tests. Static tests/build do not qualify live routing
+or AFK delivery.
+
+Final static/build validation: `python3 tools/validate.py --jobs 4` —
+**PASS: 108 C++ tests; failures=[]**, including the Python/Lua suites and
+MinGW DLL build. Report: `/tmp/wow-validation-ixdhq764/results.json` (local,
+temporary artifact). `cmake --build build` and `git diff --check` also pass.
+No WoW runtime was performed and no commit was created.
+
+1. Preserve the previous complete log. Use the rebuilt DLL and the existing
+   configured client/Wine prefix. Start the normal GUI from this directory:
+   `env -u WOW_INTERNAL_CONNECTION_MODE -u WOW_INTERNAL_WATER_MODE -u WOW_INTERNAL_AFK_MODE wine ./build/wow_gui.exe`.
+   Choose normal Grind with automatic vendor enabled. Confirm AFK protect
+   mode, alive/world-valid state, and record revision/session/GUID.
+2. Supervise a **natural** maintenance occurrence. Do not manufacture vendor
+   failure, water, death, network loss or AFK input. Preserve the complete
+   session, including candidate probes, movement intent releases, native
+   inputAge/blockers and shutdown. If nothing occurs, leave status pending.
+3. **Success path:** require episode started, a reasonable selected route,
+   matching merchant UI, verified maintenance result, episode completed and
+   ordinary Grind resume. Merchant opening or dispatch alone is insufficient.
+   If a prior bag lock exists, require two distinct subsequent fresh bag
+   observations >1 before resume.
+4. **Bounded failure path:** if natural failures/alternates or a long trip
+   reach expiry, require one exhausted transition, route/probe cancellation,
+   hold dispatch followed by measured stopped state, maintenance wait and no
+   same-tick or ongoing automatic candidate route. Correlate candidate changes
+   and elapsed age to the original attempt; combat interruptions must not
+   create another `state=started`. Observe existing cooldown-qualified retries
+   only, at most two extra attempts, each finite. If exhausted, require
+   MaintenanceBlocked; free slots without satisfied service must not restart
+   food search. Natural verified maintenance plus two fresh bag reads may
+   release the hold. Do not change bags/services just to force this test.
+5. Where post-kill handoff naturally occurs, require the handoff event after
+   the delay deadline with no locked target. Vendor remains AFK-blocking;
+   real aggressors must still preempt for defense. Keep the full blocker
+   chronology rather than expecting an AFK pulse during active navigation.
+6. A naturally stopped, safe wait reaching Due may qualify AFK separately:
+   require authoritative native input-clock advancement and verification.
+   CTM/hold/AFK dispatch alone is insufficient. Unsafe movement, swimming,
+   combat, recovery, UI and unknown evidence must still block. Thresholds
+   remain Due 240000, Overdue 270000, native 300000 ms.
+7. Stop normally; retain logs through detach/unload. If unsafe routing or
+   unintended ownership appears, stop the bot and preserve the evidence.
+
+**UNKNOWN / RUNTIME PENDING:** real short-trip success under the cap, bounded
+alternate/exhaustion and retry sequences, combat-preemption persistence,
+service-latch release, live expired-delay handoff, and safe stopped-wait AFK
+delivery. No runtime PASS is claimed. `runtime_reliability_audit.py` is
+unchanged and does not automatically qualify the new episode; inspect these
+explicit transitions alongside its summary. Generic connection qualification
+and reconnect flags remain false; live disconnect-dialog visibility, Glue
+lifetime and safe reconnect eligibility remain source gaps.
+
+WATER EMERGENCY EGRESS — RUNTIME PENDING
+
+SOURCE GAP — RECONNECT NOT IMPLEMENTED
+
 ## R0.1 maintenance runtime preparation (2026-10-09)
 
 Branch `codex/r01-maintenance-runtime`; starting checkpoint
