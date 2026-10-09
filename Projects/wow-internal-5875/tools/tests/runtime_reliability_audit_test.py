@@ -56,6 +56,52 @@ class RuntimeReliabilityAuditTest(unittest.TestCase):
         self.assertEqual(report["confirmedDisconnects"], 0)
         self.assertEqual(report["reconnectAttempts"], 0)
 
+    def test_two_vendor_trips_are_not_conflated(self):
+        report = audit([
+            "DISCONNECT DIAGNOSTIC utc=2026-10-08T22:05:02Z snapshot=valid",
+            "GRIND 14G.1 VENDOR: START",
+            "GRIND 14G.1 VENDOR: interaction issued entry=3167 distance=0.431 attempt=2/5",
+            "GRIND 14G.1 VENDOR: MerchantFrame open.",
+            "GRIND 14G.1 VENDOR: FAILED",
+            "Reason: NavMesh return from vendor to grind home failed.",
+            "GRIND 14G.2: bags used=16 free=0 total=16",
+            "GRIND 14G.1 VENDOR: START",
+            "GRIND 14G.1 VENDOR: interaction issued entry=3167 distance=0.498 attempt=5/5",
+            "GRIND 14G.1 VENDOR: FAILED",
+            "Reason: MerchantFrame did not open after bounded interaction retries.",
+        ])
+        first, second = report["vendorTrips"]
+        self.assertTrue(first["merchantOpenObserved"])
+        self.assertFalse(second["merchantOpenObserved"])
+        self.assertEqual(first["failureReason"], "return_navigation_failed")
+        self.assertEqual(second["failureReason"], "merchant_frame_not_open")
+        self.assertEqual(second["interactions"][0]["distance"], 0.498)
+        self.assertIsNone(report["timeline"][0]["utc"])
+        self.assertEqual(report["timeline"][0]["precedingUtc"], "2026-10-08T22:05:02Z")
+
+    def test_missing_flags_cannot_be_backfilled(self):
+        report = audit(["AFK RECONCILIATION movementFlags=0x0",
+                        "AFK PRODUCTION DEFER reason=movement_or_transport_flags",
+                        "AFK PROTECTION afkRawFlags=0x2"])
+        self.assertEqual(report["movementSamples"], [dict(line=1, raw=0, precedingUtc=None)])
+
+    def test_passive_recovery_and_explicit_success_separate(self):
+        report = audit(["DISCONNECT DIAGNOSTIC snapshot=unavailable",
+                        "DISCONNECT DIAGNOSTIC snapshot=valid incidentAgeMs=25494129",
+                        "CONNECTION EVIDENCE serverConnection=no lastGlueScreen=login",
+                        "CONNECTION LIFECYCLE event=reconnect_verified"])
+        self.assertEqual(report["passiveWorldRecoveries"], 1)
+        self.assertEqual(report["reconnectSuccesses"], 1)
+        self.assertEqual(report["confirmedDisconnects"], 0)
+
+    def test_report_does_not_echo_free_text(self):
+        report = audit(["GRIND 14G.1 VENDOR: START",
+                        "GRIND 14G.1 VENDOR: FAILED", "Reason: password=secret",
+                        "GRIND 14G.2: bags used=2 free=32 total=34",
+                        "GRIND 14G.2: bags used=2 free=32 total=34"])
+        self.assertNotIn("secret", json.dumps(report))
+        self.assertEqual(len(report["bagObservations"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

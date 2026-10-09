@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Svea Rike — C port preview</title>
+<style>
+  body { margin: 0; background: #000; color: #bbb; font: 14px sans-serif; text-align: center; }
+  canvas { display: block; margin: 0 auto; width: min(100vw, 640px); height: auto; image-rendering: pixelated; touch-action: none; }
+  p { max-width: 640px; margin: 12px auto; padding: 0 12px; }
+</style>
+<canvas id="game" width="640" height="480" aria-label="Svea Rike strategy, events, crossbow and Linné"></canvas>
+<p id="status" role="status">Loading original artwork…</p>
+<p><a href="?minigame=armborst">Play crossbow</a> · <a href="?minigame=linne">Play Linné</a> · <a href="./">Return to the menu</a></p>
+<p>Verified campaign route: five consecutive turns, 1523–1548, with culture/science
+hiring, a mine upgrade, crossbow reward, artillery and retreat (<a href="?seed=4">start that game</a>).
+Quick battles also resolve territory and losses (<a href="?seed=3">Tre Rosor war route</a>).
+STRID supports deployment, movement, attacks and artillery. Battle outcomes and retreat return to the campaign.
+The full campaign, battle sound/presentation, eight other minigames and save/load remain unfinished.</p>
+<p><label for="port-progress">New-game scene: 4 of 6 checkpoints</label><br>
+<progress id="port-progress" value="4" max="6">4 of 6</progress><br>
+Original text rendering and remaining initialization/parity checks are pending.
+Original text values and field positions are connected; canvas glyphs are still missing.
+Province controls, annual events and first-turn settlement now work.
+Troop dismissal, resuming after food shortages and person hiring are connected.
+Culture develops the estate; scientists enable mine upgrades.
+Neighbor shields open diplomacy and trade: upgrades, relation spending and
+buy/sell orders now connect to turn-end settlement.
+Quick battles return to the turn after original casualty and reward calculations.
+This measures the current milestone, not the full game.</p>
+<p><label for="battle-progress">Manual battles: 8 of 10 checkpoints</label><br>
+<progress id="battle-progress" value="8" max="10">8 of 10</progress><br>
+Deployment, movement, attacks, both sides' artillery, retreat and campaign results work.
+Browser tests complete a defeat and resume the turn; a separate C fixture reaches victory.
+Battle sound, original fields and full original-game comparison remain.
+These checkpoints differ in size and do not measure total game progress.</p>
+<p><label for="crossbow-progress">Crossbow contest: 5 of 6 checkpoints</label><br>
+<progress id="crossbow-progress" value="5" max="6">5 of 6</progress><br>
+Original artwork, aiming/scoring, sound and earned rewards returning to strategy work.
+Original numeric text and timing/parity verification remain.</p>
+<p><label for="linne-progress">Linné memory game: 5 of 6 checkpoints</label><br>
+<progress id="linne-progress" value="5" max="6">5 of 6</progress><br>
+Six plant/name pairs, original artwork, time limits and four sounds work.
+Browser completion is tested; strategy rewards are tested with a historical C fixture.
+Original numeric text and original-runtime comparison remain. This is a minigame milestone, not total progress.</p>
+<script type="module" src="menu.js"></script>
+</html>

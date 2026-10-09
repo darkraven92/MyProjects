@@ -1,0 +1,784 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Svea menu integration test</title>
+<iframe src="../web/" width="680" height="620"></iframe>
+<script type="module">
+import { verifyAudio } from './audio_test.js';
+const checks = [];
+const assert = (condition, name) => { if (!condition) throw new Error(name); checks.push(name); };
+try {
+  await verifyAudio(assert);
+  const expected = await (await fetch('/expected.json')).json();
+  const frame = document.querySelector('iframe');
+  for (let i = 0; i < 500; ++i) {
+    if (frame.contentDocument?.documentElement?.dataset.ready) break;
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+  let doc = frame.contentDocument;
+  assert(doc.documentElement.dataset.ready === 'true', 'Actual browser frontend loaded C/WebAssembly');
+  assert(doc.documentElement.dataset.catalogCounts === '32,33,27,24' &&
+    doc.documentElement.dataset.sciencePeriod6 === '1', 'Original person/event catalogs available in C/WebAssembly');
+  let canvas = doc.querySelector('canvas');
+  let context = canvas.getContext('2d');
+  const fields = () => JSON.parse(canvas.dataset.fieldText);
+  const hash = async name => {
+    const pixels = context.getImageData(0, 0, 640, 480).data;
+    const digest = await crypto.subtle.digest('SHA-256', pixels);
+    const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    assert(expected[name] && hex === expected[name], `${name}: browser pixels match native C byte-for-byte`);
+  };
+  // Synthetic events cannot create native pointer capture. Stub only that DOM API;
+  // event listeners, coordinate mapping, Wasm calls and rendering remain real.
+  canvas.setPointerCapture = () => {};
+  canvas.releasePointerCapture = () => {};
+  const event = (type, x, y) => {
+    const rect = canvas.getBoundingClientRect();
+    canvas.dispatchEvent(new frame.contentWindow.PointerEvent(type, {
+      pointerId: 1, button: 0, clientX: rect.left+x*rect.width/640,
+      clientY: rect.top+y*rect.height/480
+    }));
+  };
+  const click = (x,y) => { event('pointerdown',x,y); event('pointerup',x,y); };
+  await hash('menu');
+  event('pointerdown',520,25); await hash('menu-pressed');
+  event('pointerup',100,100); await hash('menu');
+  click(530,410); assert(canvas.dataset.screen === '2', 'Credits screen');
+  click(100,100); assert(canvas.dataset.screen === '3', 'Credits follow-up');
+  click(100,100); assert(canvas.dataset.screen === '0', 'Return to menu');
+  click(520,25); await hash('setup');
+  assert(canvas.dataset.family === '3', 'Default family is Eka');
+  [60,170,280,400,520].forEach((x,i) => {
+    click(x,100); assert(canvas.dataset.family === String(i+1), `Select family ${i+1}`);
+  });
+  await hash('setup-family5');
+  click(300,440);
+  assert(canvas.dataset.screen === '5', 'Confirmation opens original welcome screen');
+  const homes = [6,4,1,2,3], silver = [1000,1000,1000,1250,1100];
+  for (let i=0;i<5;++i) {
+    await new Promise(resolve => { frame.onload=resolve; frame.src=`../web/?family-test=${i}&seed=1`; });
+    doc = frame.contentDocument;
+    for (let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+      await new Promise(resolve => setTimeout(resolve,30));
+    assert(doc.documentElement.dataset.ready === 'true', `Reload frontend for family ${i+1}`);
+    canvas = doc.querySelector('canvas'); context = canvas.getContext('2d');
+    canvas.setPointerCapture = () => {}; canvas.releasePointerCapture = () => {};
+    click(520,25); click([60,170,280,400,520][i],100); click(300,440);
+    assert(canvas.dataset.screen === '5', `Family ${i+1} welcome`);
+    assert(canvas.dataset.familyHead === `Ture Gustafsson ${['Tre Rosor','Brahe','Eka','Grip','Sture'][i]}` &&
+      canvas.dataset.randomCalls === '17' && canvas.dataset.headType === '1' && canvas.dataset.points === '0',
+      `Family ${i+1} seeded genealogy and random-consumption order`);
+    assert(canvas.dataset.area === String(homes[i]) && canvas.dataset.year === '1523', `Family ${i+1} province/year`);
+    assert(canvas.dataset.silver === String(silver[i]) &&
+      canvas.dataset.crops === String(i===1?150:100) && canvas.dataset.metal === String(i===1?150:100), `Family ${i+1} resources`);
+    assert(canvas.dataset.farmingLevel === String(i===2?3:1) &&
+      canvas.dataset.farmingIndex === String(i===2?2:1), `Family ${i+1} farm levels`);
+    await hash(`welcome-family${i+1}`);
+    event('pointerdown',390,395); await hash(`welcome-pressed-family${i+1}`);
+    event('pointerup',300,300); assert(canvas.dataset.screen === '5', 'Welcome release outside cancels');
+    click(390,395); assert(canvas.dataset.screen === '4', `Family ${i+1} strategy scene`);
+    assert(fields()[130]==='1523' && fields()[131]===String(silver[i]) &&
+      fields()[132]===String(i===1?150:100) && fields()[133]===String(i===1?150:100),
+      `Family ${i+1} original resource fields use live C state`);
+    assert(canvas.dataset.yearFont==='Arial' && canvas.dataset.yearGeometry==='236,31,58,22,18,22,17,3342336',
+      `Family ${i+1} original Year geometry, color and font retained`);
+    await hash(`strategy-family${i+1}`);
+    event('pointermove',120,370); assert(canvas.dataset.hoverArea === '1', 'Original Uppland hit region');
+    assert(fields()[207]==='Uppland' && canvas.dataset.mapFont==='MS Sans Serif','Original MapInfo text follows rollover');
+    event('pointermove',115,277); assert(canvas.dataset.hoverArea === '23', 'Original overlap order');
+    click(479,317);
+    assert(canvas.dataset.screen==='14','Original estate panel opens');
+    await hash(`hq-family${i+1}`);
+    click(403,280);
+    assert(doc.querySelector('#status').textContent.includes('not implemented'),'Unported estate controls remain explicit');
+    event('pointerdown',404,401);await hash(`hq-pressed-family${i+1}`);event('pointerup',100,100);
+    assert(canvas.dataset.screen==='14','Estate OK release outside cancels');
+    click(495,280);assert(canvas.dataset.screen==='15','Estate opens original culture and science panel');
+    assert(fields()[140]===' ' && fields()[141]===' ' && fields()[144]===' ' && fields()[183]===' ',
+      'Original empty list and selection fields contain one space');
+    await hash(`culture-empty-family${i+1}`);
+    assert(canvas.dataset.cultureAvailable==='0' && canvas.dataset.scienceAvailable==='0','A new game has no available people');
+    click(320,120);click(510,120);
+    assert(canvas.dataset.cultureSelected==='0' && canvas.dataset.scienceSelected==='0','Empty lists cannot select a person');
+    click(371,407);assert(canvas.dataset.armyError==='1' && canvas.dataset.cultureResult==='1','Empty hire displays original error modal');
+    click(371,436);assert(canvas.dataset.screen==='15','Hiring error blocks panel exit');
+    click(420,294);click(371,436);assert(canvas.dataset.screen==='14','Culture and science OK returns to estate');
+    click(404,401);assert(canvas.dataset.screen==='4','Estate OK returns to province');
+    for(let kind=0;kind<2;++kind) {
+      const name=kind?'mine':'farm',screen=kind?'9':'8';
+      click(kind?301:452,kind?143:190);
+      assert(canvas.dataset.screen===screen, `Open original ${name} panel`);
+      await hash(`${name}-family${i+1}`);
+      assert(canvas.dataset[kind?'miningBanner':'farmBanner']===String(kind?[4,7,10,5,7][i]:[10,10,24,12,12][i]),
+        `${name} banner uses original province production`);
+      event('pointerdown',402,219); await hash(`${name}-pressed-family${i+1}`);
+      event('pointermove',100,100); event('pointerup',100,100);
+      assert(canvas.dataset.armyError==='0', `${name} upgrade release outside cancels`);
+      click(402,219);
+      assert(canvas.dataset.armyError==='1' && canvas.dataset.armyResult===String(kind?5:4) &&
+        canvas.dataset.silver===String(silver[i]), `${name} unmet prerequisites leave resources unchanged`);
+      click(404,401); assert(canvas.dataset.screen===screen, `${name} error blocks panel exit`);
+      click(420,294); assert(canvas.dataset.armyError==='0', `${name} error dismissed`);
+      event('pointerdown',404,401); event('pointercancel',404,401); event('pointerup',404,401);
+      assert(canvas.dataset.screen===screen, `${name} OK pointer cancellation`);
+      click(404,401); assert(canvas.dataset.screen==='4', `${name} OK returns to province`);
+    }
+    click(327,260);
+    assert(canvas.dataset.screen === '6' && canvas.dataset.tax === '1', 'Town opens city/tax panel');
+    await hash(`city-family${i+1}`);
+    click(515,290);
+    assert(canvas.dataset.tax === '2' && canvas.dataset.unrest === '5', 'Tax increase recalculates unrest');
+    assert(canvas.dataset.incomeBanner === String(i<2?6:8), 'Income banner uses original rounding');
+    await hash(`city-tax2-family${i+1}`);
+    event('pointerdown',382,290); event('pointermove',700,290);
+    assert(canvas.dataset.tax === '2', 'Dragging does not commit tax before release');
+    event('pointerup',700,290);
+    assert(canvas.dataset.tax === '5' && canvas.dataset.unrest === String(i===0?26:30), 'Drag clamps to tax five with family troop effect');
+    await hash(`city-tax5-family${i+1}`);
+    event('pointerdown',492,290); event('pointermove',0,290); event('pointercancel',0,290);
+    assert(canvas.dataset.tax === '5', 'Pointer cancellation preserves committed tax');
+    event('pointerdown',497,290); event('pointermove',350,290); event('pointerup',350,290);
+    assert(canvas.dataset.tax === '1', 'Slider preserves grab offset and clamps at left');
+    click(322,290); assert(canvas.dataset.tax === '1', 'Tax decrease clamps to one');
+    event('pointerdown',390,448); await hash(`city-ok-pressed-family${i+1}`);
+    event('pointerup',390,448); assert(canvas.dataset.screen === '4', 'City OK returns to province');
+    assert(canvas.dataset.year === '1523' && canvas.dataset.silver === String(silver[i]), 'Tax changes do not advance time or award income');
+    const startSilver=silver[i], startMetal=i===1?150:100;
+    click(349,379); assert(canvas.dataset.screen === '7', 'Regiment opens military panel');
+    await hash(`army-family${i+1}`);
+    event('pointerdown',480,194); await hash(`army-infantry-pressed-family${i+1}`);
+    event('pointermove',100,100); event('pointerup',100,100);
+    assert(canvas.dataset.silver === String(startSilver), 'Recruitment release outside cancels');
+    click(480,194);
+    assert(canvas.dataset.silver === String(startSilver-25) && canvas.dataset.infantry === String(i===0?3000:1000), 'Recruit 1000 infantry for 25 silver');
+    if(i!==0) {
+      click(480,253); assert(canvas.dataset.armyError === '1' && canvas.dataset.armyResult === '4', 'Cavalry requires barracks');
+      click(480,194); assert(canvas.dataset.silver === String(startSilver-25), 'Error modal blocks underlying purchases');
+      click(420,294); assert(canvas.dataset.armyError === '0', 'Error OK dismisses modal');
+    }
+    click(390,142);
+    if(i===0) {
+      assert(canvas.dataset.armyResult === '8' && canvas.dataset.armyError === '1', 'Tre Rosor next upgrade requires a smithy');
+      click(420,294);
+    } else assert(canvas.dataset.silver === String(startSilver-125) && canvas.dataset.metal === String(startMetal-25), 'Barracks costs 100 silver and 25 metal');
+    assert(canvas.dataset.militaryLevel === '2', 'Regiment now at level 2');
+    click(480,253);
+    assert(canvas.dataset.cavalry === String(i===0?3000:1000) && canvas.dataset.silver === String(startSilver-(i===0?125:225)), 'Recruit cavalry for 100 silver');
+    click(480,314);
+    assert(canvas.dataset.armyError === '1' && canvas.dataset.armyResult === '6', 'Artillery requires an owned smithy');
+    await hash(`army-error-family${i+1}`);
+    click(420,294); await hash(`army-upgraded-family${i+1}`);
+    const inf=Number(canvas.dataset.infantry),cav=Number(canvas.dataset.cavalry),silverNow=canvas.dataset.silver;
+    click(393,372);assert(canvas.dataset.screen==='12','Military panel opens original troop dismissal');
+    await hash(`dismiss-family${i+1}`);
+    event('pointerdown',452,251);event('pointerup',100,100);
+    assert(canvas.dataset.dismissHomeInfantry==='0','Dismissal arrow release outside cancels');
+    click(452,251);
+    assert(canvas.dataset.dismissHomeInfantry==='1000' && canvas.dataset.infantry===String(inf),'Dismissal remains provisional');
+    click(355,251);assert(canvas.dataset.dismissHomeInfantry==='0','Left arrow reverses selection');
+    click(452,251);click(449,322);click(449,392);
+    assert(canvas.dataset.dismissHomeInfantry==='1000' && canvas.dataset.dismissHomeCavalry==='1000' &&
+      canvas.dataset.dismissHomeArtillery==='0','Select available regiments only');
+    await hash(`dismiss-selected-family${i+1}`);
+    event('pointerdown',403,441);event('pointercancel',403,441);event('pointerup',403,441);
+    assert(canvas.dataset.screen==='12' && canvas.dataset.infantry===String(inf),'Cancelled dismissal OK does not commit');
+    click(403,441);
+    assert(canvas.dataset.screen==='7' && canvas.dataset.infantry===String(inf-1000) &&
+      canvas.dataset.cavalry===String(cav-1000) && canvas.dataset.silver===silverNow,'OK dismisses selected troops without refund');
+    click(393,372);
+    assert(canvas.dataset.dismissHomeInfantry==='0' && canvas.dataset.dismissHomeCavalry==='0','Reopening starts an empty dismissal list');
+    click(403,441);assert(canvas.dataset.infantry===String(inf-1000),'Second confirmation cannot dismiss twice');
+    click(470,450); assert(canvas.dataset.screen === '4', 'Military OK returns to province');
+    await hash(`strategy-upgraded-family${i+1}`);
+  }
+  await new Promise(resolve => { frame.onload=resolve; frame.src='../web/?minigame=armborst&seed=1'; });
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Crossbow browser preview loaded');
+  canvas=doc.querySelector('canvas'); context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{}; canvas.releasePointerCapture=()=>{};
+  const waitPhase=async phase=>{
+    for(let n=0;n<500 && canvas.dataset.crossbowPhase!==String(phase);++n)
+      await new Promise(resolve=>setTimeout(resolve,20));
+    assert(canvas.dataset.crossbowPhase===String(phase),`Crossbow reaches phase ${phase}`);
+  };
+  await hash('crossbow-intro');
+  assert(canvas.dataset.crossbowSamples==='3' && canvas.dataset.linneSamples==='4' && canvas.dataset.battleSamples==='12' && canvas.dataset.audioSamples==='19',
+    'Seven original PCM samples decoded at their original rate and length');
+  event('pointerdown',320,432);event('pointercancel',320,432);event('pointerup',320,432);
+  assert(canvas.dataset.crossbowPhase==='0','Cancelled play button stays at instructions');
+  click(320,432); await waitPhase(3); await hash('crossbow-ready');
+  event('pointerdown',300,300);event('pointermove',337,287);
+  assert(canvas.dataset.crossbowBowX==='320' && canvas.dataset.crossbowBowY==='499','Crossbow drag uses relative start position');
+  await hash('crossbow-aim');
+  event('pointercancel',337,287); event('pointerup',337,287);
+  assert(canvas.dataset.crossbowBolts==='5' && canvas.dataset.crossbowRandomCalls==='3','Cancelled aim does not shoot or consume randomness');
+  event('pointerdown',300,300);event('pointermove',337,287);event('pointerup',337,287);
+  await waitPhase(3); await hash('crossbow-hit');
+  assert(canvas.dataset.crossbowBolts==='4' && canvas.dataset.crossbowScore==='5','Seeded shot hits five-point silhouette');
+  for(let shot=1;shot<15;++shot) {
+    const x=300+230-Number(canvas.dataset.crossbowStartX);
+    const y=300+465-Number(canvas.dataset.crossbowStartY);
+    event('pointerdown',300,300); event('pointermove',x,y); event('pointerup',x,y);
+    await waitPhase(shot===14?10:3);
+    assert(canvas.dataset.crossbowScore==='5',`Edge shot ${shot+1} misses without adding score`);
+  }
+  assert(canvas.dataset.crossbowRound==='3' && canvas.dataset.crossbowBolts==='0' &&
+    canvas.dataset.crossbowResult==='0' && canvas.dataset.crossbowRandomCalls==='76',
+    'Fifteen-shot contest completes with original RNG consumption and result tier');
+  const soundEvents=canvas.dataset.soundEvents.split(',').map(Number);
+  assert(soundEvents.length===30 && soundEvents.filter(x=>x===31).length===15 &&
+    soundEvents.filter(x=>x===32).length===1 && soundEvents.filter(x=>x===33).length===14,
+    'Original channel-1 wind/hit/miss sounds scheduled once for each shot');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=8';});
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Load normal strategy game for full turn');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  const waitFor=async(predicate,name,maxWait=10000)=>{
+    for(let n=0;n<maxWait/20 && !predicate();++n) await new Promise(resolve=>setTimeout(resolve,20));
+    assert(predicate(),name);
+  };
+  click(520,25);click(300,440);click(390,395);
+  event('pointerdown',600,435);event('pointercancel',600,435);event('pointerup',600,435);
+  assert(canvas.dataset.screen==='4' && canvas.dataset.year==='1523' && canvas.dataset.randomCalls==='17',
+    'Cancelling hourglass leaves the turn and RNG unchanged');
+  click(600,435);
+  assert(canvas.dataset.screen==='11' && canvas.dataset.turnRequest==='1','Hourglass starts original annual delay');
+  click(327,260);assert(canvas.dataset.screen==='11','Province controls blocked during a turn');
+  await waitFor(()=>canvas.dataset.turnRequest==='2' && canvas.dataset.turnImage==='1','Stream original commander event in 1524');
+  assert(canvas.dataset.year==='1524' && canvas.dataset.turnRecord==='1' && canvas.dataset.turnKind==='2','Original weighted draw selects Jakob Bagge');
+  await hash('turn-commander');
+  event('pointerdown',441,430);event('pointercancel',441,430);event('pointerup',441,430);
+  assert(canvas.dataset.turnRequest==='2','Cancelled event OK leaves the event open');
+  click(441,430);
+  assert(canvas.dataset.screen==='10' && canvas.dataset.turnCrossbow==='1','Event enters real crossbow minigame on strategy RNG');
+  click(320,432);
+  const windMod=[[2,0],[1,1],[0,1],[-1,1],[-2,0],[-1,-1],[0,-2],[1,-1]];
+  for(let shot=0;shot<15;++shot) {
+    await waitPhase(3);
+    const [wx,wy]=windMod[Number(canvas.dataset.crossbowWind)-1];
+    const x=300+320-wx*8-Number(canvas.dataset.crossbowStartX);
+    const y=300+Math.trunc((264-wy*8+1730)/4)-Number(canvas.dataset.crossbowStartY);
+    event('pointerdown',300,300);event('pointermove',x,y);event('pointerup',x,y);
+    assert(canvas.dataset.crossbowPhase!=='3',`Strategy contest shot ${shot+1} released`);
+  }
+  await waitFor(()=>canvas.dataset.screen==='11' && canvas.dataset.turnRequest==='4','Completed contest returns to original reward dialog');
+  assert(canvas.dataset.turnScore==='10' && canvas.dataset.silver==='2000','Earned tier ten awards 1000 silver once');
+  await hash('turn-crossbow-result');
+  await new Promise(resolve=>setTimeout(resolve,150));
+  assert(canvas.dataset.silver==='2000','Waiting at the reward dialog cannot duplicate silver');
+  click(420,294);
+  await waitFor(()=>canvas.dataset.screen==='4','Finish five-year settlement and return to strategy');
+  assert(canvas.dataset.year==='1528' && canvas.dataset.turn==='2' && canvas.dataset.silver==='2050' &&
+    canvas.dataset.crops==='124' && canvas.dataset.metal==='110','Original first-turn income and crossbow reward preserved');
+  await hash('turn-complete');
+  click(327,260);assert(canvas.dataset.screen==='6','Province controls work again after settlement');
+  click(390,448);click(349,379);click(489,372);
+  assert(canvas.dataset.screen==='13' && canvas.dataset.commanderAvailable==='0' && canvas.dataset.commanderOwned==='1',
+    'Crossbow winner already employs Bagge as the original reward');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=65';});
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Load normal seeded game for paid commander hiring');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  click(520,25);click(300,440);click(390,395);click(600,435);
+  await waitFor(()=>canvas.dataset.turnRequest==='2' && Number(canvas.dataset.turnImage)>0,'Ordinary first turn introduces Berent von Melen');
+  assert(canvas.dataset.turnKind==='2' && canvas.dataset.turnRecord==='2','Original event selects commander two');
+  click(441,430);await waitFor(()=>canvas.dataset.screen==='4','Settle turn without a minigame');
+  click(349,379);click(489,372);
+  assert(canvas.dataset.screen==='13' && canvas.dataset.commanderAvailable==='1' && canvas.dataset.commanderSelected==='0',
+    'Commander from the actual turn is available in the original hiring panel');
+  await hash('commanders-available');
+  click(392,408);
+  assert(canvas.dataset.armyError==='1' && canvas.dataset.commanderResult==='1','Hiring requires a selected commander');
+  await hash('commanders-error');
+  click(435,100);assert(canvas.dataset.commanderSelected==='0','Hiring error blocks underlying selection');
+  click(420,294);click(435,100);
+  assert(canvas.dataset.commanderSelected==='2' && canvas.dataset.commanderName==='Berent von Melen' &&
+    canvas.dataset.commanderLevel==='1' && canvas.dataset.commanderPrice==='200','Select original rank-one commander for 200 silver');
+  event('pointerdown',392,408);await hash('commanders-hire-pressed');event('pointerup',100,100);
+  assert(canvas.dataset.silver==='1050' && canvas.dataset.commanderOwned==='0','Hiring release outside cancels payment');
+  const hireRandom=canvas.dataset.randomCalls;
+  click(392,408);
+  assert(canvas.dataset.armyError==='0' && canvas.dataset.commanderSelected==='0' &&
+    canvas.dataset.commanderAvailable==='0' && canvas.dataset.commanderOwned==='1','Hiring moves the commander to the employed list');
+  assert(canvas.dataset.silver==='850' && canvas.dataset.crops==='124' && canvas.dataset.metal==='110' &&
+    canvas.dataset.randomCalls===hireRandom,'Hiring charges original price once without consuming resources or randomness elsewhere');
+  await hash('commanders-hired');
+  click(392,408);assert(canvas.dataset.armyError==='1' && canvas.dataset.silver==='850','Repeated hire cannot charge twice');
+  click(420,294);click(392,437);assert(canvas.dataset.screen==='7','Commander OK returns to military panel');
+  click(489,372);assert(canvas.dataset.commanderAvailable==='0' && canvas.dataset.commanderOwned==='1','Employment persists after reopening');
+  click(392,437);click(470,450);assert(canvas.dataset.screen==='4','Return to province after hiring');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=4';});
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Load ordinary seed-four game for culture and science progression');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  click(520,25);click(300,440);click(390,395);
+  const personKinds=[0,3,-1,1];
+  for(let step=0;step<4;++step) {
+    click(600,435);
+    if(step!==2) {
+      await waitFor(()=>canvas.dataset.turnRequest==='2' && Number(canvas.dataset.turnImage)>0,`Turn ${step+1} event image loads`);
+      assert(canvas.dataset.turnKind===String(personKinds[step]) && canvas.dataset.turnRecord==='1',`Turn ${step+1} follows original seeded event`);
+      click(441,430);
+    }
+    await waitFor(()=>canvas.dataset.screen==='4',`Turn ${step+1} settles normally`);
+    assert(canvas.dataset.turn===String(step+2),`Turn counter advances to ${step+2}`);
+    if(step===0) {
+      click(479,317);click(495,280);click(320,120);click(510,120);
+      assert(canvas.dataset.cultureSelected==='1' && canvas.dataset.cultureName==='Johannes Magnus' && canvas.dataset.culturePrice==='200',
+        'Select original culture arrival; empty science list preserves selection');
+      event('pointerdown',371,407);await hash('culture-hire-pressed');event('pointercancel',371,407);event('pointerup',371,407);
+      assert(canvas.dataset.silver==='1050','Cancelled culture hire does not pay');
+      const cultureRandom=canvas.dataset.randomCalls;
+      click(371,407);
+      assert(canvas.dataset.cultureOwned==='1' && canvas.dataset.cultureAvailable==='0' && canvas.dataset.cultureSelected==='0' &&
+        canvas.dataset.silver==='850','Culture hire costs 200 and clears the selection');
+      assert(canvas.dataset.randomCalls===cultureRandom && canvas.dataset.hqLevel==='1','Culture hire uses no randomness and estate growth waits for settlement');
+      click(371,436);click(404,401);
+    }
+    if(step===1) {
+      assert(canvas.dataset.hqLevel==='2','Employed culture rank raises the estate at the next settlement');
+      click(479,317);await hash('hq-culture-level2');click(404,401);
+    }
+  }
+  assert(canvas.dataset.year==='1543' && canvas.dataset.silver==='1000' && canvas.dataset.scienceLevel==='0','Four normal turns leave the expected resources');
+  click(479,317);click(495,280);click(510,120);
+  assert(canvas.dataset.scienceSelected==='1' && canvas.dataset.scienceName==='Willem Boy' && canvas.dataset.sciencePrice==='200' &&
+    canvas.dataset.scienceRank==='1' && canvas.dataset.scienceLevel==='0',
+    'Select the original forced turn-four scientist');
+  assert(fields()[183]==='Willem Boy' && fields()[184]==='Rang: 1' && fields()[185]==='Pris: 200' && fields()[144]===' ',
+    'Original science name, Swedish rank/price fields and cleared culture selection come from C');
+  click(371,407);
+  assert(canvas.dataset.silver==='800' && canvas.dataset.scienceOwned==='1' && canvas.dataset.scienceSelected==='0' &&
+    canvas.dataset.scienceRank==='0' && canvas.dataset.scienceLevel==='1',
+    'Hiring Willem Boy supplies one science rank');
+  assert(fields()[131]==='800' && fields()[141]===' ' && fields()[143]==='Willem Boy' && fields()[183]===' ',
+    'Purchase updates resource, available, employed and selected original fields together');
+  await hash('science-employed');
+  click(371,436);click(404,401);click(301,143);click(402,219);
+  assert(canvas.dataset.armyError==='0' && canvas.dataset.miningLevel==='2' && canvas.dataset.miningBanner==='20',
+    'Employed scientist enables the actual mine upgrade and raises production');
+  assert(canvas.dataset.silver==='700' && canvas.dataset.crops==='196' && canvas.dataset.metal==='115' && canvas.dataset.year==='1543',
+    'Mine upgrade charges original costs without advancing time');
+  await hash('science-mine-upgraded');
+  // Continue the same unmodified seed-4 game into its fifth turn and buy guns
+  // through the real smithy prerequisite, then play its natural commander event.
+  click(404,401);click(349,379);click(480,194);click(480,314);
+  assert(canvas.dataset.armyError==='0' && canvas.dataset.infantry==='1000' &&
+    canvas.dataset.artillery==='1000' && canvas.dataset.silver==='425',
+    'The constructed smithy permits an original 1000-man artillery purchase');
+  click(470,450);click(45,412);click(466,438);
+  for(let n=0;n<4;++n) click(103,356);
+  click(326,438);click(600,435);let artilleryRouteShots=0;
+  const artilleryRouteDeadline=performance.now()+60000;
+  while((canvas.dataset.screen==='11' || canvas.dataset.screen==='10') && performance.now()<artilleryRouteDeadline) {
+    if(canvas.dataset.screen==='10') {
+      assert(canvas.dataset.crossbowPhase==='0','Fifth-turn commander arrival opens the original crossbow contest');
+      click(320,432);
+      for(let shot=0;shot<15;++shot) {
+        await waitPhase(3);
+        const [wx,wy]=windMod[Number(canvas.dataset.crossbowWind)-1];
+        const x=300+320-wx*8-Number(canvas.dataset.crossbowStartX);
+        const y=300+Math.trunc((264-wy*8+1730)/4)-Number(canvas.dataset.crossbowStartY);
+        event('pointerdown',300,300);event('pointermove',x,y);event('pointerup',x,y);++artilleryRouteShots;
+      }
+      await waitFor(()=>canvas.dataset.screen==='11' && canvas.dataset.turnRequest==='4','Fifth-turn contest returns its earned reward');
+      assert(canvas.dataset.turnScore==='10','Fifth-turn contest earns tier ten');click(420,294);
+    } else if(canvas.dataset.turnRequest==='2') {
+      await waitFor(()=>Number(canvas.dataset.turnImage)>0,'Load the fifth-turn event image');click(441,430);
+    } else await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert(artilleryRouteShots===15 && canvas.dataset.screen==='20' && canvas.dataset.year==='1548' && canvas.dataset.randomCalls==='206',
+    'Normal fifth-turn events and diplomacy reach war with the expected RNG');
+  click(400,400);if(JSON.parse(canvas.dataset.war).phase===4) click(395,444);click(400,431);
+  const swedBattle=()=>JSON.parse(canvas.dataset.battle);
+  await waitFor(()=>canvas.dataset.screen==='21' && swedBattle().loaded===1,'Load the purchased Swedish artillery into the battlefield');
+  assert(swedBattle().swedes===6,'The purchased infantry is split into its original six groups');
+  await hash('swedish-artillery-deploy');
+  assert(canvas.dataset.soundEvents.endsWith(',2154') && canvas.dataset.sound1Loop==='true' && canvas.dataset.sound2Events==='',
+    'Original forest ambience starts on channel 1 when battlefield assets are ready');
+  const infantrySquares=[[67,303],[103,324],[139,345],[175,366],[212,387],[247,408]];
+  for(let n=0;n<6;++n) {
+    const u=swedBattle().units[n];event('pointerdown',u.x,u.y-15);event('pointerup',...infantrySquares[n]);
+  }
+  assert(swedBattle().phase===9 && swedBattle().officerX===10 && swedBattle().officerY===336,
+    'The original officer enters before Swedish troop actions');
+  await hash('swedish-officer-walk');
+  click(600,440);assert(swedBattle().enemyTurn===0,'Officer movement blocks the end-turn control');
+  await waitFor(()=>swedBattle().phase===5,'Officer reaches the loaded Swedish cannon');
+  assert(swedBattle().officerX===106 && swedBattle().officerY===404 && swedBattle().swedishReload===4,
+    'Officer stands at the original one-cannon position');
+  await hash('swedish-artillery-aim');
+  click(600,440);click(0,0);assert(swedBattle().phase===5 && canvas.dataset.randomCalls==='208','Invalid cannon targets spend no randomness');
+  const swedTarget=swedBattle().units[6];event('pointermove',swedTarget.x,swedTarget.y);
+  assert(swedBattle().sight===39,'Original artillery sight tracks the enemy square');
+  await hash('swedish-artillery-target');click(swedTarget.x,swedTarget.y);
+  assert(swedBattle().phase===8 && swedBattle().gunSide===0 && swedBattle().swedishReload===1 && canvas.dataset.randomCalls==='210',
+    'Swedish shot uses both original random draws and starts reloading');
+  await hash('swedish-artillery-shot');
+  assert(canvas.dataset.sound2Events==='2172' && canvas.dataset.sound2Loop==='false' && canvas.dataset.sound1Loop==='true',
+    'Swedish cannon plays the original effect without interrupting ambience');
+  await waitFor(()=>swedBattle().units[6].troops===549,'Swedish cannon reduces 670 cavalry to 549');
+  assert(swedBattle().units[6].actions===1,'Swedish artillery causes no counterattack');
+  await waitFor(()=>swedBattle().phase===9 && swedBattle().swedishArtillery===5,'Officer leaves after the shot');
+  await waitFor(()=>swedBattle().phase===2,'Officer departure releases the Swedish troop turn');
+  assert(swedBattle().officerX===-1000 && swedBattle().used===0 && swedBattle().units[0].actions===1 && canvas.dataset.turnActive==='1',
+    'Troop actions reset after artillery without settling the campaign');
+  await hash('swedish-artillery-complete');
+  click(40,440);
+  const retreat=JSON.parse(canvas.dataset.war);
+  assert(canvas.dataset.screen==='20' && retreat.phase===7 && retreat.retreated===1 && retreat.applied===1,
+    'Manual retreat returns directly to the campaign result screen');
+  assert(retreat.lostInfantry===4 && retreat.lostCavalry===0 && retreat.lostArtillery===0 &&
+    canvas.dataset.randomCalls==='211' && canvas.dataset.turnActive==='1',
+    'Retreat counts division losses, keeps Swedish artillery and applies prestige once');
+  await hash('manual-retreat-result');
+  assert(canvas.dataset.soundEvents.endsWith(',2154,-3') && canvas.dataset.sound1FadeSeconds==='0.25' && canvas.dataset.sound2Events==='2172',
+    'Retreat dispatches one 15-tick background fade and leaves the cannon channel alone');
+  click(400,394);
+  await waitFor(()=>canvas.dataset.screen==='4','Manual retreat resumes and settles the fifth campaign turn');
+  assert(canvas.dataset.year==='1548' && canvas.dataset.turn==='6' && canvas.dataset.turnActive==='0' &&
+    canvas.dataset.silver==='574' && canvas.dataset.crops==='219' && canvas.dataset.metal==='135' && canvas.dataset.randomCalls==='226',
+    'Five consecutive normal turns settle through manual battle with original economy and RNG');
+  await hash('manual-retreat-settled');
+  // A real first-turn arrival verifies a non-ASCII person name end-to-end.
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=20';});
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Load real seed-20 route for original accented name');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  click(520,25);click(300,440);click(390,395);click(600,435);
+  await waitFor(()=>canvas.dataset.turnRequest==='2' && canvas.dataset.turnImage!=='0',
+    'Original first-turn culture event arrives in seed 20');
+  assert(canvas.dataset.year==='1526' && canvas.dataset.turnKind==='0' && canvas.dataset.turnRecord==='2' &&
+    doc.querySelector('#status').textContent.includes('Laurentius Andreæ'),
+    'Person event uses original Windows-1252 name rather than MacRoman substitution');
+  click(441,430);await waitFor(()=>canvas.dataset.screen==='4','Seed-20 first turn settles normally');
+  click(479,317);click(495,280);
+  assert(fields()[140]==='Laurentius Andreæ','Original available-person field retains accented name');
+  click(320,120);
+  assert(fields()[144]==='Laurentius Andreæ' && fields()[145]==='Rang: 1' && fields()[146]==='Pris: 200' &&
+    canvas.dataset.cultureName==='Laurentius Andreæ','Selection and original detail fields agree on accented name');
+  click(371,407);
+  assert(fields()[142]==='Laurentius Andreæ' && fields()[140]===' ' && fields()[144]===' ' && fields()[131]==='850',
+    'Hiring transfers accented name to employed list and clears original selection fields');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?minigame=linne';});
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Linne browser preview loaded');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  await hash('linne-intro');
+  event('pointerdown',320,432);event('pointercancel',320,432);event('pointerup',320,432);
+  assert(canvas.dataset.linnePhase==='0','Linne cancelled play remains at instructions');
+  const started=performance.now();click(320,432);await hash('linne-watch');
+  assert(canvas.dataset.sound2Events==='1030' && canvas.dataset.sound2Loop==='true','Original Linne background loops on channel 2');
+  click(108,87);assert(canvas.dataset.linneFlower==='0','Study phase blocks flower selection');
+  await waitFor(()=>canvas.dataset.linnePhase==='2','Linne enters timed matching phase');
+  assert(performance.now()-started>=4900,'Original five-second study interval elapsed');
+  await hash('linne-play');
+  event('pointerdown',108,87);event('pointerup',0,0);
+  assert(canvas.dataset.linneFlower==='0','Linne release outside cancels selection');
+  click(108,87);assert(canvas.dataset.linneFlower==='1','Original flower silhouette selects pair 1');
+  await hash('linne-selected');
+  click(391,433);
+  assert(canvas.dataset.linneAttempts==='1' && canvas.dataset.linneScore==='0' && canvas.dataset.linneFlower==='0',
+    'Wrong pair counts one attempt and clears selections');
+  await hash('linne-mismatch');
+  const flowers=[[108,87],[218,215],[113,206],[102,330],[211,345],[208,89]];
+  const names=[[113,417],[391,433],[206,435],[484,431],[297,435],[575,426]];
+  for(let pair=0;pair<6;++pair) {
+    click(...names[pair]);assert(canvas.dataset.linneName===String(pair+1),`Select original name ${pair+1} first`);
+    click(...flowers[pair]);
+    assert(canvas.dataset.linneScore===String(pair+1) && canvas.dataset.linneAttempts===String(pair+2),`Complete original plant pair ${pair+1}`);
+    if(!pair) await hash('linne-first-pair');
+    click(...flowers[pair]);assert(canvas.dataset.linneFlower==='0',`Matched flower ${pair+1} cannot be selected again`);
+  }
+  await waitFor(()=>canvas.dataset.linnePhase==='3','All six pairs open original result panel');
+  await hash('linne-success');
+  assert(canvas.dataset.linneSuccess==='1' && canvas.dataset.linneMatched==='63','Six correct pairs succeed within twelve attempts');
+  const linneSounds=canvas.dataset.soundEvents.split(',').map(Number);
+  assert(linneSounds.filter(x=>x===1029).length===14 && linneSounds.at(-1)===1031,
+    'Original click and success samples replace only channel 1');
+  assert(canvas.dataset.sound2Events==='1030,-2' && canvas.dataset.sound2Loop==='false',
+    'Result clears looping background without interrupting its current iteration');
+  event('pointerdown',320,286);event('pointerup',0,0);
+  assert(canvas.dataset.linnePhase==='3','Cancelled result OK preserves Linne result');
+  click(320,286);
+  assert(canvas.dataset.linnePhase==='4' && canvas.dataset.linneResult==='8','Seven attempts return original result tier eight');
+  await hash('linne-done');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=1';});
+  doc=frame.contentDocument;
+  for(let n=0;n<500 && !doc.documentElement.dataset.ready;++n)
+    await new Promise(resolve=>setTimeout(resolve,30));
+  assert(doc.documentElement.dataset.ready==='true','Load normal game for diplomacy route');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  const diplomacy=()=>JSON.parse(canvas.dataset.diplomacy);
+  click(520,25);click(300,440);click(390,395);
+  for(const [x,y] of [[45,412],[116,438],[164,433],[182,321]]) {
+    event('pointerdown',x,y);event('pointerup',0,0);
+    assert(canvas.dataset.screen==='4','Cancelled neighbor hotspot stays on strategy');
+    click(x,y);assert(canvas.dataset.screen==='17','Original foreign-country hotspot opens neighbors');
+    await hash('neighbors');
+    assert(fields()[319]==='2000' && fields()[328]==='3750','Original neighboring troop fields reflect country IDs');
+    assert(diplomacy().map(c=>c.name).join(',')==='Danmark,Kejsarstaterna,Polen,Ryssland',
+      'Country names match original IDs despite different panel column order');
+    click(323,438);assert(canvas.dataset.screen==='4','Neighbors OK returns to strategy');
+  }
+  click(45,412);event('pointerdown',466,438);await hash('neighbors-diplomacy-pressed');event('pointerup',0,0);
+  assert(canvas.dataset.screen==='17','Diplomacy entry release outside cancels');
+  click(466,438);assert(canvas.dataset.screen==='18','Original DIPLOMATI button opens diplomacy panel');
+  await hash('diplomacy');
+  const diplomacyCalls=canvas.dataset.randomCalls;
+  event('pointerdown',103,204);await hash('diplomacy-upgrade-pressed');event('pointercancel',103,204);event('pointerup',103,204);
+  assert(diplomacy()[0].level===1 && canvas.dataset.silver==='1000','Cancelled diplomacy upgrade consumes nothing');
+  click(103,204);assert(diplomacy()[0].level===2 && canvas.dataset.silver==='900','Original emissary costs 100 silver');
+  await hash('diplomacy-upgraded');
+  click(103,204);assert(canvas.dataset.armyError==='1' && canvas.dataset.diplomacyResult==='4','Consul requires estate level two');
+  await hash('diplomacy-error');
+  click(248,204);click(326,438);
+  assert(canvas.dataset.armyError==='1' && canvas.dataset.screen==='18' && canvas.dataset.silver==='900',
+    'Diplomacy error blocks upgrades and exit');
+  click(420,294);assert(canvas.dataset.armyError==='0','Original error OK dismisses diplomacy warning');
+  event('pointerdown',103,328);await hash('diplomacy-improve-pressed');event('pointerup',0,0);
+  assert(diplomacy()[0].queued===0,'Cancelled relation adjustment reserves no silver');
+  click(103,328);click(103,328);
+  assert(diplomacy()[0].queued===-200 && diplomacy()[0].relation===0 && canvas.dataset.silver==='700',
+    'Reserve 200 silver while relation remains unchanged until settlement');
+  assert(fields()[304]==='200' && fields()[305]==='0','Original peace and war amount fields preserve sign semantics');
+  await hash('diplomacy-reserved');
+  click(103,356);assert(diplomacy()[0].queued===-100 && canvas.dataset.silver==='800','Opposite button refunds 100 silver');
+  click(103,328);
+  for(const [country,x] of [[2,536],[3,392],[4,248]]) {
+    click(x,356);assert(diplomacy()[country-1].queued===100 && canvas.dataset.silver==='600',`War spending uses original country ${country} channel`);
+    click(x,328);assert(diplomacy()[country-1].queued===0 && canvas.dataset.silver==='700',`Reverse country ${country} spending without changing Denmark`);
+  }
+  assert(canvas.dataset.randomCalls===diplomacyCalls && canvas.dataset.year==='1523','Diplomacy purchases do not advance time or RNG');
+  click(177,438);assert(canvas.dataset.screen==='17','Diplomacy GRANNLAND returns to neighbors');click(466,438);
+  assert(diplomacy()[0].queued===-200 && canvas.dataset.silver==='700','Relations reservation persists across panel navigation');
+  click(326,438);click(600,435);
+  await waitFor(()=>canvas.dataset.screen==='4','Diplomacy spending completes a real five-year turn');
+  assert(canvas.dataset.year==='1528' && canvas.dataset.silver==='750' && canvas.dataset.crops==='124' && canvas.dataset.metal==='110',
+    'Reserved silver is not charged twice and original income settles once');
+  click(45,412);await hash('neighbors-after-diplomacy');click(466,438);await hash('diplomacy-after-turn');
+  assert(diplomacy()[0].queued===0 && diplomacy()[0].relation>=-2 && diplomacy()[0].relation<=-1,
+    'End-turn applies original randomized relation effect and clears the reservation');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=1&trade-test=1';});
+  doc=frame.contentDocument;
+  await waitFor(()=>doc.documentElement.dataset.ready==='true','Trade route loads C/WebAssembly');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  click(520,25);click(300,440);click(390,395);click(45,412);click(175,438);
+  const trade=()=>JSON.parse(canvas.dataset.trade);
+  assert(canvas.dataset.screen==='19' && trade()[0].capacity===10,'HANDEL opens original four-country order panel');
+  await hash('trade');
+  assert(fields()[170]==='1.0' && fields()[174]==='3.0' && fields()[159]==='10' && fields()[255]==='0',
+    'Original initial prices, capacities and order fields come from C');
+  const tradeCalls=canvas.dataset.randomCalls;
+  for(const [country,cx] of [[1,104],[2,536],[3,392],[4,248]]) for(let kind=0;kind<2;++kind) {
+    const y=kind?344:268;
+    click(cx-58,y);assert(trade()[country-1][kind?'metal':'crops']===-1 && +canvas.dataset.silver===1000-(kind?3:1),
+      `Country ${country} ${kind?'metal':'crops'} buy reserves the original price`);
+    click(cx+58,y);assert(trade()[country-1][kind?'metal':'crops']===0 && canvas.dataset.silver==='1000',
+      `Country ${country} ${kind?'metal':'crops'} reverse refunds its reservation`);
+  }
+  event('pointerdown',103,195);await hash('trade-upgrade-pressed');event('pointerup',0,0);
+  assert(trade()[0].level===2 && canvas.dataset.silver==='900' && canvas.dataset.metal==='75',
+    'Original trade upgrade commits on release outside the button');
+  await hash('trade-upgraded');
+  click(103,195);assert(canvas.dataset.armyError==='1' && canvas.dataset.tradeResult==='4','Trading house requires estate level two');
+  await hash('trade-error');
+  click(162,268);click(326,438);
+  assert(canvas.dataset.armyError==='1' && canvas.dataset.screen==='19' && trade()[0].crops===0,'Trade error blocks orders and exit');
+  click(420,294);
+  event('pointerdown',107,268);event('pointermove',142,268);
+  assert(trade()[0].crops===25 && trade()[0].cropX===139 && canvas.dataset.crops==='100' && fields()[132]==='75' && fields()[255]==='25',
+    'Trade drag preserves grab offset, clamps capacity and previews reserved goods');
+  await hash('trade-drag-preview');event('pointercancel',142,268);event('pointerup',142,268);
+  assert(trade()[0].crops===0 && trade()[0].cropX===104 && canvas.dataset.crops==='100','Cancelled browser drag preserves resources and order');
+  for(let i=0;i<10;++i) click(162,268);
+  for(let i=0;i<5;++i) click(46,344);
+  assert(trade()[0].crops===10 && trade()[0].metal===-5 && canvas.dataset.silver==='885' && canvas.dataset.crops==='90' && canvas.dataset.metal==='75',
+    'Selling ten crops and buying five metal reserves only their original resources');
+  await hash('trade-reserved');
+  click(469,438);assert(canvas.dataset.screen==='18','Trade opens diplomacy');click(469,438);
+  assert(canvas.dataset.screen==='19' && trade()[0].crops===10 && trade()[0].metal===-5,'Orders survive diplomacy navigation');
+  click(176,438);assert(canvas.dataset.screen==='17','Trade opens neighbors');click(175,438);
+  assert(canvas.dataset.screen==='19' && canvas.dataset.randomCalls===tradeCalls,'Trade navigation and orders consume no RNG');
+  click(326,438);click(600,435);
+  await waitFor(()=>canvas.dataset.screen==='4','Trade orders finish a real five-year turn');
+  assert(canvas.dataset.year==='1528' && canvas.dataset.silver==='945' && canvas.dataset.crops==='114' && canvas.dataset.metal==='90',
+    'Trade delivers five metal and crop proceeds once, alongside original income');
+  click(45,412);click(175,438);await hash('trade-after-turn');
+  assert(trade()[0].crops===0 && trade()[0].metal===0 && fields()[170].length===4,'Settlement clears orders and updates two-decimal prices');
+  event('pointerdown',162,268);
+  await waitFor(()=>trade()[0].crops>=3,'Holding a trade arrow repeats at original tick intervals');event('pointerup',0,0);
+  const held=trade()[0].crops;
+  await new Promise(resolve=>setTimeout(resolve,220));assert(trade()[0].crops===held,'Release outside stops arrow repeat');
+  event('pointerdown',trade()[0].cropX+3,268);event('pointermove',107,0);event('pointerup',107,0);
+  assert(trade()[0].crops===0 && canvas.dataset.crops==='114','Dragging back to center commits a refund outside the original row');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=3&war-test=1';});
+  doc=frame.contentDocument;
+  await waitFor(()=>doc.documentElement.dataset.ready==='true','War route loads C/WebAssembly');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  click(520,25);click(60,100);click(300,440);click(390,395);
+  click(45,412);click(466,438);for(let i=0;i<4;++i) click(103,356);
+  click(326,438);click(600,435);
+  for(let i=0;i<300 && canvas.dataset.screen!=='20';++i) {
+    if(canvas.dataset.turnRequest==='2' && canvas.dataset.turnImage!=='0') click(441,430);
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  const war=()=>JSON.parse(canvas.dataset.war);
+  assert(canvas.dataset.screen==='20' && war().phase===0 && war().country===1 && war().attacking===1,
+    'Normal Tre Rosor game reaches a declared war against Denmark');
+  assert(canvas.dataset.turnRequest==='5' && canvas.dataset.turnActive==='1','War UI keeps the real turn suspended');
+  await hash('war-declare');
+  event('pointerdown',400,372);await hash('war-quick-pressed');event('pointerup',0,0);
+  assert(war().phase===0,'Release outside cancels choosing quick battle');
+  click(400,372);assert(war().phase===4 && war().area===17,'Quick battle selects original first enemy province');
+  await hash('war-target');const warCalls=canvas.dataset.randomCalls;
+  click(340,122);assert(war().area===18,'Target list uses original province order');click(340,108);
+  click(395,444);assert(war().phase===5 && war().regiment===6,'Confirm Skåne and select Nyland regiment');
+  await hash('war-regiment');
+  event('pointerdown',400,431);event('pointercancel',400,431);event('pointerup',400,431);
+  assert(war().phase===5 && canvas.dataset.randomCalls===warCalls,'Cancelled regiment confirmation consumes no battle randomness');
+  click(400,431);assert(war().phase===6 && war().won===1 && canvas.dataset.randomCalls==='29','Original quick-battle formula resolves victory');
+  assert(war().applied===0 && war().regiments===1,'Casualties and territory wait for result presentation');
+  await hash('war-quick');
+  click(400,394);assert(war().phase===7 && war().applied===1 && war().territory===17 && war().regiments===2,
+    'Victory adds Skåne once in original acquisition order');
+  assert(war().lostInfantry===520 && war().lostCavalry===780 && war().enemyLostArtillery===500 && canvas.dataset.randomCalls==='35',
+    'Original casualties, artillery loss, province development and prestige draws apply');
+  await hash('war-victory');
+  await new Promise(resolve=>setTimeout(resolve,60));assert(canvas.dataset.randomCalls==='35' && war().wins===1,'Idle result does not apply rewards twice');
+  click(400,394);
+  assert(canvas.dataset.screen==='4' && canvas.dataset.year==='1528' && canvas.dataset.silver==='688' && canvas.dataset.crops==='123' && canvas.dataset.metal==='111',
+    'War completes and settlement includes both provinces and surviving troops');
+  assert(canvas.dataset.randomCalls==='57','Complete war route preserves Windows RNG draw order');
+  await hash('war-settled');
+  await new Promise(resolve=>{frame.onload=resolve;frame.src='../web/?seed=3&manual-test=1';});
+  doc=frame.contentDocument;
+  await waitFor(()=>doc.documentElement.dataset.ready==='true','Manual battle route loads C/WebAssembly');
+  canvas=doc.querySelector('canvas');context=canvas.getContext('2d');
+  canvas.setPointerCapture=()=>{};canvas.releasePointerCapture=()=>{};
+  click(520,25);click(60,100);click(300,440);click(390,395);
+  click(45,412);click(466,438);for(let i=0;i<4;++i) click(103,356);
+  click(326,438);click(600,435);
+  for(let i=0;i<300 && canvas.dataset.screen!=='20';++i) {
+    if(canvas.dataset.turnRequest==='2' && canvas.dataset.turnImage!=='0') click(441,430);
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert(canvas.dataset.screen==='20','Normal game reaches manual battle choice');
+  click(400,400);click(395,444);click(400,431);
+  const battle=()=>JSON.parse(canvas.dataset.battle);
+  assert(canvas.dataset.screen==='21' && battle().phase===1,'STRID opens original deployment scene');
+  await waitFor(()=>battle().loaded===1,'Original battlefield and both troop casts streamed to C');
+  assert(battle().swedes===6 && battle().placed===0 && canvas.dataset.randomCalls==='24',
+    'Original army division and two battlefield background draws');
+  await hash('battle-deploy');
+  event('pointerdown',65,100);assert(battle().drag===0,'First cavalry group can be dragged');
+  event('pointermove',200,200);await hash('battle-drag');
+  event('pointercancel',200,200);event('pointerup',139,345);
+  assert(battle().placed===0 && battle().drag===-1 && battle().units[0].x===65,'Cancelling a drag restores staging position');
+  event('pointerdown',65,100);event('pointerup',0,0);
+  assert(battle().placed===0,'Drop outside the original board is rejected');
+  event('pointerdown',65,100);event('pointerup',139,345);
+  assert(battle().placed===1 && battle().units[0].square===3,'Drop on original square three places the first group');
+  event('pointerdown',100,100);event('pointerup',139,345);
+  assert(battle().placed===1 && battle().units[1].placed===0,'An occupied starting square rejects another group');
+  const deployTargets=[[175,366],[212,387],[67,303],[103,324],[247,408]];
+  for(let n=1;n<6;++n) {
+    event('pointerdown',65+n*35,100);assert(battle().drag===n,`Drag original group ${n+1}`);
+    event('pointerup',...deployTargets[n-1]);
+  }
+  assert(battle().phase===2 && battle().placed===6 && battle().profile===4 && battle().row===7,
+    'Complete deployment selects original center-cavalry enemy formation');
+  assert(battle().units[6].square===53 && canvas.dataset.randomCalls==='24',
+    'Enemy formation placement consumes no extra random draws');
+  assert(canvas.dataset.infantry==='2000' && canvas.dataset.cavalry==='2000' && canvas.dataset.turnActive==='1',
+    'Deployment leaves campaign troops intact and the real turn pending');
+  await hash('battle-ready');
+  assert(canvas.dataset.soundEvents==='2154' && canvas.dataset.sound1Loop==='true',
+    'Seed-3 battle loops the original SKOG.AIF background');
+  click(139,330);assert(battle().selected===0,'Select a deployed cavalry group');
+  event('pointermove',175,324);assert(battle().hover===10,'Hover original forward square ten');
+  await hash('battle-selected');
+  const cavalryStart=performance.now();click(175,324);
+  assert(battle().phase===3 && battle().walking===0 && battle().units[0].actions===0 && battle().used===1,
+    'Cavalry movement consumes one action and starts original film-loop animation');
+  await hash('battle-cavalry-walk-start');
+  assert(canvas.dataset.sound2Events==='2179','Cavalry movement dispatches the original horse steps');
+  click(212,370);assert(battle().selected===-1,'Movement animation blocks other troop commands');
+  await new Promise(resolve=>setTimeout(resolve,250));
+  assert(battle().phase===3 && battle().units[0].square===3,'Logical square waits for completion of cavalry movement');
+  await waitFor(()=>battle().phase===2,'Cavalry animation completes');
+  assert(performance.now()-cavalryStart>=1000 && battle().units[0].square===10,
+    'Cavalry completes its original 18 four-tick movement steps');
+  await hash('battle-cavalry-moved');
+  click(175,285);assert(battle().selected===-1,'An exhausted cavalry group cannot act twice');
+  click(67,288);assert(battle().selected===3,'Select a deployed infantry group');
+  const infantryStart=performance.now();click(103,282);
+  assert(battle().phase===3 && battle().walking===3,'Infantry starts its original movement sequence');
+  await hash('battle-infantry-walk-start');
+  assert(canvas.dataset.sound2Events==='2179,2171','Infantry movement replaces horse steps on channel 2');
+  await waitFor(()=>battle().phase===2,'Infantry animation completes');
+  assert(performance.now()-infantryStart>=1300 && battle().units[3].square===8 && battle().used===2,
+    'Infantry completes its original 22 four-tick movement steps');
+  await hash('battle-infantry-moved');
+  click(600,440);assert(battle().phase===4 && battle().used===2,'Original end-turn control starts the enemy phase');
+  await waitFor(()=>battle().phase===8,'Enemy artillery begins its original shot');
+  assert(battle().gun===0 && battle().gunSide===1 && battle().target===5 && battle().enemyReload===1,
+    'Enemy gun targets the tied strongest infantry and begins reloading');
+  assert(battle().units[6].square===53 && battle().units[5].troops===666 && canvas.dataset.randomCalls==='26',
+    'Artillery draws twice before damage and before enemy troop movement');
+  assert(canvas.dataset.sound2Events==='2179,2171,2172','Enemy artillery plays the same original technology-one cannon effect');
+  click(600,440);assert(battle().phase===8,'Artillery animation blocks extra commands');
+  await waitFor(()=>battle().units[5].troops===456,'Artillery damage reaches the original target');
+  assert(battle().units[5].actions===1,'An artillery target does not counter or spend an action');
+  await waitFor(()=>battle().phase===2 && battle().round===2,'Enemy gun and troop actions return to player round two',12000);
+  assert(battle().units[6].square===46 && battle().enemyReload===1 && battle().used===0 && battle().units[3].actions===1,
+    'Enemy troops move after artillery and Swedish actions reset for the next round');
+  assert(canvas.dataset.randomCalls==='27' && canvas.dataset.turnActive==='1',
+    'Enemy round consumes the original decision draw and leaves campaign settlement pending');
+  await hash('battle-round-two');
+  for(let round=2;canvas.dataset.screen==='21' && round<20;++round) {
+    assert(battle().phase===2,'Swedish control returns between enemy turns');
+    click(600,440);
+    await waitFor(()=>canvas.dataset.screen!=='21' || battle().phase===2,'Enemy resolves movement and combat',15000);
+  }
+  const defeat=JSON.parse(canvas.dataset.war);
+  assert(canvas.dataset.screen==='20' && defeat.phase===7 && defeat.won===0 && defeat.retreated===0 && defeat.applied===1,
+    'Normal manual combat reaches defeat and applies its result to the campaign');
+  assert(defeat.lostInfantry===1280 && defeat.lostCavalry===335 && defeat.lostArtillery===0 &&
+    defeat.enemyLostInfantry===491 && defeat.enemyLostCavalry===0 && defeat.fee===-500 && canvas.dataset.randomCalls==='40',
+    'Combat losses, compensation and prestige follow the source-derived native route');
+  await hash('manual-defeat-result');
+  const combatSounds=canvas.dataset.sound2Events.split(',').map(Number);
+  assert(canvas.dataset.soundEvents==='2154,-3' && canvas.dataset.sound1FadeSeconds==='0.25' &&
+    combatSounds.includes(2176) && combatSounds.every(id=>[2171,2179,2172,2176,2181,2183].includes(id)),
+    'Completed combat dispatches original movement/weapons and a single background fade');
+  click(400,394);await waitFor(()=>canvas.dataset.screen==='4','Defeated army returns to campaign settlement');
+  assert(canvas.dataset.year==='1528' && canvas.dataset.turn==='2' && canvas.dataset.silver==='138' &&
+    canvas.dataset.crops==='108' && canvas.dataset.metal==='104' && canvas.dataset.infantry==='720' &&
+    canvas.dataset.cavalry==='1665' && canvas.dataset.randomCalls==='64' && canvas.dataset.turnActive==='0',
+    'Full manual defeat settles once with surviving troops and original economy');
+  await hash('manual-defeat-settled');
+  await fetch('/result', {method:'POST', body:JSON.stringify({passed:true,checks,userAgent:navigator.userAgent})});
+} catch (error) {
+  await fetch('/result', {method:'POST', body:JSON.stringify({passed:false,checks,error:String(error)})});
+}
+</script>

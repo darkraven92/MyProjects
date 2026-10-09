@@ -111,6 +111,12 @@ namespace Bot
                 return false;
 
             snapshot.classToken = text.substr(0, first);
+            const auto raceSeparator=snapshot.classToken.find('~');
+            if(raceSeparator!=std::string::npos)
+            {
+                snapshot.raceToken=snapshot.classToken.substr(raceSeparator+1);
+                snapshot.classToken.resize(raceSeparator);
+            }
 
             try
             {
@@ -289,6 +295,7 @@ namespace Bot
                 "if n==nil then n=0 end; "
                 "local _,ct=UnitClass('player'); "
                 "if ct==nil then ct='UNKNOWN' end; "
+                "local rt='UNKNOWN'; if UnitRace then local _,r=UnitRace('player'); rt=r or rt; end; "
                 "local lvl=UnitLevel('player'); "
                 "if lvl==nil then lvl=0 end; "
                 "for i=1,n do "
@@ -307,7 +314,7 @@ namespace Bot
                 "end; "
                 "end; "
                 "WOW_INTERNAL_QUEST_PLANNER_STATE="
-                "ct..'^'..lvl..'^'..n..'^'..table.concat(out,';')";
+                "ct..'~'..rt..'^'..lvl..'^'..n..'^'..table.concat(out,';')";
 
             using DoStringFunction =
                 bool (__fastcall*)(

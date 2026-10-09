@@ -44,5 +44,9 @@ namespace Bot
         virtual ObjectiveExecutorState State() const = 0;
 
         virtual const char* StateName() const = 0;
+
+        // Optional normalized failure evidence. Executors without a stable
+        // reason fail closed for planner difficulty accounting.
+        virtual const char* FailureReason() const { return nullptr; }
     };
 }

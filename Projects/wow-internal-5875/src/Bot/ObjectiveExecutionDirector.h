@@ -3,8 +3,13 @@
 #include "CollectItemFromMobExecutor.h"
 #include "CollectWorldItemExecutor.h"
 #include "IObjectiveExecutor.h"
+#include "ObjectiveAnchorSelectionPolicy.h"
 #include "InteractGameObjectExecutor.h"
 #include "UseItemOnUnitExecutor.h"
+#include "SummonedQuestObjectiveExecutor.h"
+#include "MultiLocationItemUseExecutor.h"
+#include "TalkToNpcExecutor.h"
+#include "ExploreObjectiveExecutor.h"
 
 #include "../Debug/Logger.h"
 
@@ -45,7 +50,48 @@ namespace Bot
             haveResolvedProfile_ = true;
             catalogueProfile_ = &profile;
 
+            if (resolvedProfile_.preferNearestObjectiveAnchor)
+            {
+                const auto selection = ObjectiveAnchorSelectionPolicy::Select(
+                    resolvedProfile_, world.player.x, world.player.y,
+                    world.player.z);
+                if (!selection.valid)
+                {
+                    Debug::Logger::Info(
+                        "QUEST 16B ANCHOR questId=" +
+                        std::to_string(profile.questId) +
+                        " result=unavailable reason=" + selection.reason);
+                    haveResolvedProfile_ = false;
+                    catalogueProfile_ = nullptr;
+                    return false;
+                }
+                resolvedProfile_.destination =
+                    resolvedProfile_.searchDestinations[selection.index];
+                Debug::Logger::Info(
+                    "QUEST 16B ANCHOR questId=" +
+                    std::to_string(profile.questId) +
+                    " selectedIndex=" + std::to_string(selection.index) +
+                    " candidateCount=" +
+                    std::to_string(resolvedProfile_.searchDestinations.size()) +
+                    " directDistance=" +
+                    std::to_string(selection.directDistance) +
+                    " destination=" + resolvedProfile_.destination.label +
+                    " reason=" + selection.reason);
+            }
+
             std::unique_ptr<IObjectiveExecutor> candidate{};
+
+            if (resolvedProfile_.objective.type == QuestObjectiveType::ExploreOrAreaTrigger)
+            {
+                auto executor = std::make_unique<ExploreObjectiveExecutor>();
+                if (executor->Supports(resolvedProfile_)) candidate = std::move(executor);
+            }
+
+            if (resolvedProfile_.objective.type == QuestObjectiveType::TalkToNpc)
+            {
+                auto executor = std::make_unique<TalkToNpcExecutor>();
+                if (executor->Supports(resolvedProfile_)) candidate = std::move(executor);
+            }
 
             {
                 auto executor = std::make_unique<CollectItemFromMobExecutor>();
@@ -63,6 +109,20 @@ namespace Bot
             if (candidate == nullptr)
             {
                 auto executor = std::make_unique<UseItemOnUnitExecutor>();
+                if (executor->Supports(resolvedProfile_))
+                    candidate = std::move(executor);
+            }
+
+            if (candidate == nullptr)
+            {
+                auto executor = std::make_unique<SummonedQuestObjectiveExecutor>();
+                if (executor->Supports(resolvedProfile_))
+                    candidate = std::move(executor);
+            }
+
+            if (candidate == nullptr)
+            {
+                auto executor = std::make_unique<MultiLocationItemUseExecutor>();
                 if (executor->Supports(resolvedProfile_))
                     candidate = std::move(executor);
             }

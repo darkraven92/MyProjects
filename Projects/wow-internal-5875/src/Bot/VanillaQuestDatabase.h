@@ -1,8 +1,11 @@
 #pragma once
 
 #include "QuestPlannerTypes.h"
+#include "ObjectiveAnchorSelectionPolicy.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
@@ -37,6 +40,8 @@ namespace Bot
             std::string targetName{};
             std::string supportNote{};
             std::deque<std::string> objectiveTargetNames{};
+            bool graphMetadataRead = false;
+            bool enrichmentOnly = false;
         };
 
         bool attempted_ = false;
@@ -65,6 +70,9 @@ namespace Bot
             // Phase 13B prefers the complete Durotar zone pack. Keep the
             // historic Valley filename as a compatibility fallback for older
             // installs and diagnostics.
+            paths.emplace_back("data/questdb/runtime/early_horde.tsv");
+            paths.emplace_back("../data/questdb/runtime/early_horde.tsv");
+            paths.emplace_back("../../data/questdb/runtime/early_horde.tsv");
             paths.emplace_back("data/questdb/runtime/durotar.tsv");
             paths.emplace_back("../data/questdb/runtime/durotar.tsv");
             paths.emplace_back("../../data/questdb/runtime/durotar.tsv");
@@ -91,6 +99,7 @@ namespace Bot
                     const std::string projectDir = DirectoryName(buildDir);
                     if (!projectDir.empty())
                     {
+                        paths.push_back(projectDir + "\\data\\questdb\\runtime\\early_horde.tsv");
                         paths.push_back(
                             projectDir +
                             "\\data\\questdb\\runtime\\durotar.tsv");
@@ -168,6 +177,7 @@ namespace Bot
             if (value == "CollectItemFromMob") return QuestObjectiveType::CollectItemFromMob;
             if (value == "CollectWorldItem") return QuestObjectiveType::CollectWorldItem;
             if (value == "UseItemOnUnit") return QuestObjectiveType::UseItemOnUnit;
+            if (value == "ExploreOrAreaTrigger") return QuestObjectiveType::ExploreOrAreaTrigger;
             if (value == "InteractGameObject") return QuestObjectiveType::InteractGameObject;
             if (value == "TravelReport") return QuestObjectiveType::TravelReport;
             return QuestObjectiveType::Unknown;
@@ -273,6 +283,7 @@ namespace Bot
                         std::max(0, ParseInt(fields[11])));
                     p.objective.requiredCount = std::max(1, ParseInt(fields[12], 1));
                     p.databaseDerived = true;
+                    p.sourceObjectiveCount = p.expectedObjectiveCount;
                     p.gameObjectType = ParseInt(fields[16], -1);
                     p.gameObjectLootId = static_cast<std::uint32_t>(
                         std::max(0, ParseInt(fields[17])));
@@ -327,6 +338,137 @@ namespace Bot
                     continue;
 
                 auto* owned = it->second;
+                if (fields[0] == "U")
+                {
+                    if (fields.size()!=3 || fields[2]!="ambiguous_creature_credit")
+                    { lastError_="invalid semantic ambiguity record"; return false; }
+                    owned->profile.semanticAmbiguous=true;
+                    continue;
+                }
+                if (fields[0] == "A")
+                {
+                    if (fields.size()!=9 || owned->profile.areaTriggers.size()>=8)
+                    { lastError_="invalid area trigger record"; return false; }
+                    for (std::size_t i=2;i<fields.size();++i)
+                    {
+                        if (i<5)
+                        {
+                            int value=0;
+                            const auto& f=fields[i];
+                            const auto parsed=std::from_chars(f.data(),f.data()+f.size(),value);
+                            if(parsed.ec!=std::errc{} || parsed.ptr!=f.data()+f.size() || value<0)
+                            { lastError_="invalid trigger identity"; return false; }
+                        }
+                        else
+                        {
+                            char* end=nullptr;
+                            float value=std::strtof(fields[i].c_str(),&end);
+                            if(end==fields[i].c_str() || *end || !std::isfinite(value))
+                            { lastError_="invalid trigger geometry"; return false; }
+                        }
+                    }
+                    QuestAreaTrigger trigger;
+                    trigger.id=ParseInt(fields[2]); trigger.build=ParseInt(fields[3]);
+                    trigger.center=DestinationFrom(fields,4,"SQL/DBC verified quest trigger");
+                    trigger.radius=ParseFloat(fields[8]);
+                    trigger.center.arrivalDistance=std::min(3.5f,trigger.radius*0.5f);
+                    trigger.clientGeometryVerified=true;
+                    owned->profile.areaTriggers.push_back(trigger);
+                    if (owned->profile.objective.type==QuestObjectiveType::ExploreOrAreaTrigger)
+                    {
+                        if (!owned->profile.destination.valid) owned->profile.destination=trigger.center;
+                        owned->profile.searchDestinations.push_back(trigger.center);
+                        owned->profile.preferNearestObjectiveAnchor=true;
+                    }
+                    continue;
+                }
+                if (fields[0] == "GC" && fields.size() == 4)
+                {
+                    const int index = ParseInt(fields[2], -1);
+                    if (index < 0 || static_cast<std::size_t>(index) >= owned->profile.objectives.size())
+                    { lastError_ = "invalid gossip objective index"; return false; }
+                    owned->profile.objectives[index].gossipCreditText = fields[3];
+                    if (index == 0) owned->profile.gossipCreditText = fields[3];
+                    continue;
+                }
+
+                if (fields[0] == "H" && fields.size() == 3 && fields[2] == "enrichment_only")
+                {
+                    owned->enrichmentOnly = true;
+                    continue;
+                }
+                if (fields[0] == "N")
+                {
+                    if (fields.size() != 16 || owned->profile.sourceMetadata)
+                    { lastError_ = "invalid enriched metadata record"; return false; }
+                    QuestSourceMetadata m;
+                    std::optional<int>* values[] = {&m.method, &m.flags, &m.specialFlags, &m.exclusiveGroup,
+                        &m.requiredSkill, &m.requiredSkillValue, &m.startScript, &m.completeScript,
+                        &m.reputationObjective, &m.timeLimit, &m.rewardOrRequiredMoney, &m.breadcrumb};
+                    for (std::size_t i = 0; i < 12; ++i)
+                    {
+                        if (fields[i + 2] == "-") continue;
+                        int value = 0;
+                        const auto& f = fields[i + 2];
+                        const auto parsed = std::from_chars(f.data(), f.data() + f.size(), value);
+                        if (parsed.ec != std::errc{} || parsed.ptr != f.data() + f.size())
+                        { lastError_ = "invalid enriched metadata number"; return false; }
+                        *values[i] = value;
+                    }
+                    owned->profile.sourceMetadata = m;
+                    owned->profile.exclusiveGroup = m.exclusiveGroup;
+                    owned->profile.relationshipMetadataKnown = true;
+                    owned->profile.giverIsGameObject = fields[14] == "gameobject";
+                    owned->profile.turnInIsGameObject = fields[15] == "gameobject";
+                    continue;
+                }
+                if (fields[0] == "R" && fields.size() >= 4)
+                {
+                    if (fields[2] == "exclusive")
+                        owned->profile.exclusivePeers.push_back(ParseInt(fields[3]));
+                    else if (fields[2] == "area")
+                        owned->profile.areaTriggerIds.push_back(ParseInt(fields[3]));
+                    else if (fields.size() >= 5 && (fields[2]=="active" || fields[2]=="rewarded"))
+                    {
+                        QuestPrerequisiteClause clause;
+                        clause.requiresActive = fields[2] == "active";
+                        clause.resolved = fields[3] == "resolved";
+                        for (std::size_t i = 4; i < fields.size(); ++i)
+                            clause.allOf.push_back(ParseInt(fields[i]));
+                        owned->profile.prerequisiteAlternatives.push_back(std::move(clause));
+                    }
+                    else { lastError_="unknown relationship record"; return false; }
+                    continue;
+                }
+
+                if (fields[0] == "M")
+                {
+                    if (fields.size() != 8 || owned->graphMetadataRead)
+                    {
+                        lastError_ = "invalid quest metadata record";
+                        return false;
+                    }
+                    int values[6]{};
+                    for (std::size_t i = 0; i < 6; ++i)
+                    {
+                        const auto& field = fields[i + 2];
+                        const auto parsed = std::from_chars(field.data(), field.data() + field.size(), values[i]);
+                        if (parsed.ec != std::errc{} || parsed.ptr != field.data() + field.size())
+                        {
+                            lastError_ = "invalid numeric quest metadata";
+                            return false;
+                        }
+                    }
+                    owned->graphMetadataRead = true;
+                    auto& p = owned->profile;
+                    p.requiredRaceMask = static_cast<std::uint32_t>(values[0]);
+                    p.requiredClassMask = static_cast<std::uint32_t>(values[1]);
+                    p.maximumLevel = values[2];
+                    p.zoneOrSort = values[3];
+                    p.requiredCondition = values[4];
+                    p.nextQuestId = values[5];
+                    continue;
+                }
 
                 if (fields[0] == "O")
                 {
@@ -399,17 +541,23 @@ namespace Bot
 
                     if (fields[0] == "G")
                     {
-                        owned->profile.giverDestination = DestinationFrom(
+                        const auto destination = DestinationFrom(
                             fields,
                             2,
                             "QuestDB giver spawn");
+                        if(owned->profile.giverDestinations.size()<ObjectiveAnchorSelectionPolicy::MaximumCandidates)
+                            owned->profile.giverDestinations.push_back(destination);
+                        if(!owned->profile.giverDestination.valid) owned->profile.giverDestination=destination;
                     }
                     else if (fields[0] == "T")
                     {
-                        owned->profile.turnInDestination = DestinationFrom(
+                        const auto destination = DestinationFrom(
                             fields,
                             2,
                             "QuestDB turn-in spawn");
+                        if(owned->profile.turnInDestinations.size()<ObjectiveAnchorSelectionPolicy::MaximumCandidates)
+                            owned->profile.turnInDestinations.push_back(destination);
+                        if(!owned->profile.turnInDestination.valid) owned->profile.turnInDestination=destination;
                     }
                     else if (fields[0] == "D")
                     {
@@ -455,7 +603,7 @@ namespace Bot
                         step.destination = step.searchDestinations.front();
                 }
 
-                profiles_.push_back(owned->profile);
+                if (!owned->enrichmentOnly) profiles_.push_back(owned->profile);
             }
 
             loadedPath_ = path;
@@ -495,6 +643,13 @@ namespace Bot
         {
             EnsureLoaded();
             return profiles_;
+        }
+
+        const QuestProfile* SourceProfile(int questId)
+        {
+            EnsureLoaded();
+            const auto found = byQuestId_.find(questId);
+            return found == byQuestId_.end() ? nullptr : &found->second->profile;
         }
 
         bool Loaded()

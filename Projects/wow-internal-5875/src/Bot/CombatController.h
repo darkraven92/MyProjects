@@ -9,6 +9,7 @@
 #include "ChaseController.h"
 #include "CombatFacingPolicy.h"
 #include "CombatInitiationPolicy.h"
+#include "CombatTargetConsistencyPolicy.h"
 #include "CombatPositioningPolicy.h"
 #include "FacingController.h"
 #include "GrindTargetPolicy.h"
@@ -21,6 +22,8 @@
 #include "QuestReturnController.h"
 #include "QuestTurnInController.h"
 #include "RecoveryController.h"
+#include "PullSafetyCandidateTelemetry.h"
+#include "SafeTargetSelector.h"
 #include "TargetController.h"
 #include "TargetSelector.h"
 #include "WarriorRotationController.h"
@@ -36,6 +39,8 @@
 #include <cstdint>
 #include <deque>
 #include <iomanip>
+#include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -284,6 +289,16 @@ namespace Bot
 
         std::uint64_t nextAcquireTick_ =
             0;
+
+        bool pullHealthGateLogged_ = false;
+        bool pullDefensiveRecoveryLogged_ = false;
+        bool pullSelectionLogged_ = false;
+        PullSafetyDecision lastPullDecision_ =
+            PullSafetyDecision::NoEligibleCandidate;
+        std::uint64_t lastPullEvaluationTick_ = 0;
+        std::uint32_t lastPullEvaluationEntry_ = 0;
+        std::uint64_t lastPullSelectedGuid_ = 0;
+        std::uint64_t nextPullSafetyLogTick_ = 0;
 
         std::uint64_t warriorOpenerUntilTick_ =
             0;
@@ -1171,6 +1186,9 @@ namespace Bot
 
         std::unordered_map<std::uint64_t, std::uint64_t> recentAggressorUntil_{};
         std::uint64_t currentCombatTick_ = 0;
+        std::uint64_t stateObservedTick_ = 0;
+        std::uint64_t facingDiagnosticGuid_ = 0;
+        int facingDiagnosticDecision_ = -1;
 
         static std::string Hex64(
             std::uint64_t value)
@@ -1900,45 +1918,117 @@ namespace Bot
             const Objects::WorldState& world,
             std::uint64_t tick)
         {
-            TargetCandidate best{};
-            bool bestIsAggressor = false;
-            float bestDistance = SelectorMaxDistance + 1.0f;
-
-            for (const auto& unit : world.units)
-            {
-                if (!IsCombatCandidateUsable(world, &unit))
-                    continue;
-
-                if (!MatchesCurrentCombatPolicy(world, &unit))
-                    continue;
-
-                const bool isAggressor = IsDirectAggressor(world, &unit);
-                if (!isAggressor && IsBlacklisted(unit.guid, tick))
-                    continue;
-
-                if (!best.found ||
-                    (isAggressor && !bestIsAggressor) ||
-                    (isAggressor == bestIsAggressor && unit.distance < bestDistance))
+            const auto snapshot = SafeTargetSelector::Capture(
+                world,
+                [this, &world, tick](const Objects::UnitState& unit)
                 {
-                    best.found = true;
-                    best.unit = unit;
-                    bestIsAggressor = isAggressor;
-                    bestDistance = unit.distance;
-                }
+                    return IsCombatCandidateUsable(world, &unit) &&
+                        MatchesCurrentCombatPolicy(world, &unit) &&
+                        !IsBlacklisted(unit.guid, tick) &&
+                        (unit.targetGuid == 0 ||
+                         unit.targetGuid == world.activePlayerGuid);
+                },
+                [this, &world](const Objects::UnitState& unit)
+                {
+                    return IsDirectAggressor(world, &unit);
+                });
+            const float healthPercent = world.player.valid &&
+                    world.player.maxHealth != 0
+                ? RecoveryController::HealthPercent(world.player)
+                : std::numeric_limits<float>::quiet_NaN();
+            const auto selected = PullSafetyPolicy::Select(
+                snapshot.units, healthPercent);
+            lastPullEvaluationTick_ = tick;
+            lastPullEvaluationEntry_ = plannerQuestTargetActive_
+                ? plannerQuestTargetEntry_ : 0;
+            const auto* unit = snapshot.At(selected.selectedIndex);
+            const std::uint64_t selectedGuid = unit == nullptr ? 0 : unit->guid;
+
+            if (!pullSelectionLogged_ || selected.decision != lastPullDecision_ ||
+                selectedGuid != lastPullSelectedGuid_ ||
+                tick >= nextPullSafetyLogTick_)
+            {
+                pullSelectionLogged_ = true;
+                lastPullDecision_ = selected.decision;
+                lastPullSelectedGuid_ = selectedGuid;
+                nextPullSafetyLogTick_ = tick + 20;
+                if (selected.decision == PullSafetyDecision::NoSafeCandidate)
+                    Debug::Logger::Info(
+                        "PULL SAFETY NO SAFE TARGET candidateCount=" +
+                        std::to_string(selected.candidateCount) +
+                        " rejectedCount=" +
+                        std::to_string(selected.rejectedCount));
+                else if (selected.decision == PullSafetyDecision::Voluntary &&
+                         unit != nullptr)
+                    Debug::Logger::Info(
+                        "PULL SAFETY SELECT guid=" + Hex64(unit->guid) +
+                        " entry=" + std::to_string(unit->entryId) +
+                        " hpPct=" + Float(healthPercent) +
+                        " predictedAdds=" +
+                        std::to_string(selected.selected.predictedAdds) +
+                        " nearestHostileDistance=" +
+                        (std::isfinite(selected.selected.nearestHostileDistance)
+                            ? Float(selected.selected.nearestHostileDistance)
+                            : std::string("none")) +
+                        " candidateCount=" +
+                        std::to_string(selected.candidateCount));
+                else if (selected.decision == PullSafetyDecision::Defensive)
+                    Debug::Logger::Info(
+                        "PULL SAFETY DEFENSIVE aggressors=" +
+                        std::to_string(selected.aggressorCount) +
+                        " selectedGuid=" + Hex64(selectedGuid));
+                PullSafetyCandidateTelemetry::Emit(
+                    snapshot.units, healthPercent, selected, "combat");
             }
 
-            return best;
+            TargetCandidate result{};
+            if (unit != nullptr &&
+                (selected.decision == PullSafetyDecision::Voluntary ||
+                 (selected.decision == PullSafetyDecision::Defensive &&
+                  IsCombatCandidateUsable(world, unit) &&
+                  MatchesCurrentCombatPolicy(world, unit))))
+            {
+                result.found = true;
+                result.unit = *unit;
+            }
+            return result;
         }
 
         bool TryEnterRecovery(
             const Objects::WorldState& world,
             std::uint64_t tick)
         {
-            if (grindModeActive_ && FindBestDirectAggressor(world) != nullptr)
+            if (FindBestDirectAggressor(world) != nullptr)
             {
-                Debug::Logger::Info(
-                    "GRIND 14G.1.2: recovery suppressed while a live mob is targeting the player.");
+                if (!pullDefensiveRecoveryLogged_)
+                {
+                    pullDefensiveRecoveryLogged_ = true;
+                    Debug::Logger::Info(
+                        "PULL SAFETY DEFENSIVE: recovery suppressed while a live mob is targeting the player.");
+                }
                 return false;
+            }
+            pullDefensiveRecoveryLogged_ = false;
+
+            const float hp = RecoveryController::HealthPercent(world.player);
+            if (world.player.valid && world.player.maxHealth != 0 &&
+                world.player.health != 0 &&
+                hp < PullSafetyPolicy::MinimumVoluntaryHealthPercent)
+            {
+                if (!pullHealthGateLogged_)
+                {
+                    pullHealthGateLogged_ = true;
+                    Debug::Logger::Info(
+                        "PULL SAFETY GATE hpPct=" + Float(hp) +
+                        " decision=wait reason=low_health");
+                }
+            }
+            else if (pullHealthGateLogged_ &&
+                     hp >= PullSafetyPolicy::MinimumVoluntaryHealthPercent)
+            {
+                pullHealthGateLogged_ = false;
+                Debug::Logger::Info(
+                    "PULL SAFETY READY hpPct=" + Float(hp));
             }
 
             if (!recovery_.ShouldStart(
@@ -1990,6 +2080,12 @@ namespace Bot
                 )
             );
 
+            Debug::Logger::Info("ACTION LATENCY owner=Combat from=" +
+                std::string(StateNameInternal(state_)) + " to=" + StateNameInternal(newState) +
+                " elapsedTicks=" + std::to_string(currentCombatTick_ >= stateObservedTick_
+                    ? currentCombatTick_ - stateObservedTick_ : 0) +
+                " classification=state_residence_not_command_latency");
+            stateObservedTick_ = currentCombatTick_;
             state_ =
                 newState;
         }
@@ -2992,6 +3088,10 @@ namespace Bot
                     0;
 
                 ++selectedTargetMismatchSnapshots_;
+                if (selectedTargetMismatchSnapshots_ == 1)
+                    Debug::Logger::Info("TARGET CONSISTENCY combat=" + Hex64(lockedGuid_) +
+                        " chase=" + Hex64(chase_.TargetGuid()) + " client=" + Hex64(ClientSelectedGuid(world)) +
+                        " result=await_selected_target_evidence");
 
                 /*
                  * Phase 14G.3.2: the active-target restore command runs before
@@ -3140,6 +3240,25 @@ namespace Bot
                     IsAbilityFacingReady(
                         delta
                     );
+
+            const int diagnosticDecision = facingReady ? 0 : 1;
+            if (facingDiagnosticGuid_ != target.guid || facingDiagnosticDecision_ != diagnosticDecision)
+            {
+                facingDiagnosticGuid_ = target.guid;
+                facingDiagnosticDecision_ = diagnosticDecision;
+                const auto& movement = ClickToMoveController::LastCommand();
+                Debug::Logger::Info("COMBAT FACING targetGuid=" + Hex64(target.guid) +
+                    " distance=" + Float(target.distance) + " yaw=" + Float(world.player.rotation) +
+                    " bearing=" + Float(desired) + " signedError=" +
+                    Float(CombatGeometry::SignedError(world.player.rotation, desired)) +
+                    " decision=" + (facingReady ? "aligned" : "correct") +
+                    " tick=" + std::to_string(tick) + " ctmSerial=" + std::to_string(movement.serial) +
+                    " ctmWriter=" + movement.writer);
+                Debug::Logger::Info("TARGET CONSISTENCY combat=" + Hex64(lockedGuid_) +
+                    " chase=" + Hex64(chase_.TargetGuid()) + " client=" + Hex64(ClientSelectedGuid(world)) +
+                    " autoattackLatched=" + (attackStarted_ ? "yes" : "no") +
+                    " plannerEntry=" + std::to_string(DesiredQuestEntry()));
+            }
 
             if (!facingReady)
             {
@@ -4312,64 +4431,9 @@ namespace Bot
                     return;
                 }
 
-                /*
-                 * Prefer a valid already-selected target.
-                 */
-                if (
-                    ClientSelectedGuid(world) != 0)
-                {
-                    const auto* uiTarget =
-                        TargetSelector::
-                            FindByGuid(
-                                world,
-                                ClientSelectedGuid(world)
-                            );
-
-                    if (
-                        IsCombatCandidateUsable(
-                            world,
-                            uiTarget) &&
-                        MatchesCurrentCombatPolicy(
-                            world,
-                            uiTarget) &&
-                        !IsBlacklisted(
-                            uiTarget->guid,
-                            tick
-                        ))
-                    {
-                        if (!ValidateSelectedGrindTarget(world, *uiTarget, tick))
-                        {
-                            BeginAcquire(tick + 1);
-                            return;
-                        }
-
-                        Debug::Logger::Info(
-                            grindModeActive_
-                                ? "GRIND 14G.2: adopting already-selected validated grind target."
-                                : "QUEST COMBAT: adopting already-selected quest target."
-                        );
-
-                        Debug::Logger::Info(
-                            "Entry: " +
-                            std::to_string(
-                                uiTarget->entryId
-                            ) +
-                            " distance=" +
-                            Float(
-                                uiTarget->distance
-                            )
-                        );
-
-                        StartLockedTarget(
-                            world,
-                            *uiTarget,
-                            tick
-                        );
-
-                        return;
-                    }
-                }
-
+                // A client-selected non-aggressor has no priority over a
+                // safer eligible GUID. Evaluate the whole local candidate set
+                // before accepting an existing UI target or issuing SetTarget.
                 const TargetCandidate candidate =
                     SelectCandidate(
                         world,
@@ -4378,7 +4442,14 @@ namespace Bot
 
                 if (!candidate.found)
                 {
+                    // Packed groups can disperse; defer briefly, then
+                    // re-evaluate rather than permanently blacklisting a GUID
+                    // or scanning the same unsafe set every monitor tick.
+                    if (lastPullDecision_ == PullSafetyDecision::NoSafeCandidate ||
+                        lastPullDecision_ == PullSafetyDecision::WaitForHealth)
+                        nextAcquireTick_ = tick + 4;
                     if (
+                        lastPullDecision_ == PullSafetyDecision::NoEligibleCandidate &&
                         vileFamiliarsActive_ &&
                         !vileFamiliarsComplete_ &&
                         vileFamiliarsTravelComplete_)
@@ -4436,6 +4507,13 @@ namespace Bot
                     CombatState::
                         WaitingForTargetSelection)
             {
+                const TargetCandidate safest = SelectCandidate(world, tick);
+                if (!safest.found ||
+                    safest.unit.guid != pendingTargetGuid_)
+                {
+                    BeginAcquire(tick + 1);
+                    return;
+                }
                 const auto* pending =
                     TargetSelector::
                         FindByGuid(
@@ -5044,6 +5122,22 @@ namespace Bot
 
             const bool wasChasingBeforeUpdate =
                 state_ == CombatState::Chasing;
+
+            // A stale chase must never issue movement for a different GUID.
+            // Re-enter the existing locked-target start path, with its same
+            // validation and failure handling; no new retry budget.
+            if (!CombatTargetConsistencyPolicy::ChaseMatches(lockedGuid_,chase_.TargetGuid()))
+            {
+                Debug::Logger::Info("CONTROL CONFLICT owner=CombatChase combat="+Hex64(lockedGuid_)+
+                    " chase="+Hex64(chase_.TargetGuid())+" command=chase_update result=rejected");
+                AutoAttackController::Stop(); attackStarted_=false;
+                chase_.Stop();
+                MovementController::HoldPosition(world.player);
+                facingStableSnapshots_=0; facingHoldSnapshots_=0;
+                facingDiagnosticGuid_=0;
+                StartChaseForLockedTarget(world,*target,tick);
+                return;
+            }
 
             chase_.Update(
                 world,
@@ -5764,6 +5858,19 @@ namespace Bot
                 return;
             }
 
+            // A planner combat handoff must not resume a suspended legacy
+            // acquisition episode. This is cancellation, not quest acceptance;
+            // the generic discovery owner still requires live-log proof.
+            if (state_ == CombatState::QuestPickup)
+            {
+                questPickup_.Reset();
+                questPickupAttempted_ = true;
+                ResetTargetState();
+                SetState(CombatState::AcquiringTarget);
+                Debug::Logger::Info(
+                    "QUEST OWNERSHIP legacyPickup=cancelled reason=planner_combat_handoff");
+            }
+
             const bool changed =
                 !plannerQuestTargetActive_ ||
                 plannerQuestTargetEntry_ !=
@@ -5847,6 +5954,23 @@ namespace Bot
         {
             return
                 plannerQuestTargetActive_;
+        }
+
+        // Read-only event evidence for planner difficulty accounting. This
+        // does not alter PullSafetyPolicy, ranking, or target ownership.
+        PullSafetyDecision LastPullDecision() const
+        {
+            return lastPullDecision_;
+        }
+
+        std::uint64_t LastPullEvaluationTick() const
+        {
+            return lastPullEvaluationTick_;
+        }
+
+        std::uint32_t LastPullEvaluationQuestEntry() const
+        {
+            return lastPullEvaluationEntry_;
         }
 
         void ApplyQuestState(

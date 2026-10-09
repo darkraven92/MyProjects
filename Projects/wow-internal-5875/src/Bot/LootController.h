@@ -187,6 +187,7 @@ namespace Bot
 
         int lootAttempts_ =
             0;
+        int totalLootAttempts_ = 0;
 
         int closeAttempts_ =
             0;
@@ -1042,6 +1043,7 @@ namespace Bot
                 0;
 
             ++lootAttempts_;
+            ++totalLootAttempts_;
 
             return true;
         }
@@ -1795,6 +1797,7 @@ namespace Bot
                             tick))
                     {
                         ++lootAttempts_;
+                        ++totalLootAttempts_;
 
                         lastLootTick_ =
                             tick;
@@ -2190,6 +2193,11 @@ namespace Bot
         int LootAttempts() const
         {
             return lootAttempts_;
+        }
+
+        int TotalLootAttempts() const
+        {
+            return totalLootAttempts_;
         }
 
         int InitialLootSlots() const

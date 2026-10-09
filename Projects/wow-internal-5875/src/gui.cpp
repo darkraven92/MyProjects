@@ -5,6 +5,7 @@
 #include <tlhelp32.h>
 
 #include "Control/RuntimeControl.h"
+#include "Debug/Logger.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -33,6 +34,7 @@ namespace
         IdCloseWow,
         IdClearLogOnStart,
         IdAutoRefresh,
+        IdVendorAutomation,
         IdWowPath,
         IdLoaderPath,
         IdDllPath,
@@ -70,6 +72,7 @@ namespace
     HWND g_logPath = nullptr;
     HWND g_clearLogOnStart = nullptr;
     HWND g_autoRefresh = nullptr;
+    HWND g_vendorAutomation = nullptr;
 
     HWND g_profileValue = nullptr;
     HWND g_runtimeValue = nullptr;
@@ -570,6 +573,9 @@ namespace
         WriteIniValue(L"paths", L"dll", GetWindowTextString(g_dllPath));
         WriteIniValue(L"paths", L"log", GetWindowTextString(g_logPath));
         WriteIniValue(L"bot", L"mode", SelectedMode() == Control::BotMode::Questing ? L"questing" : L"grind");
+        WriteIniValue(L"bot", L"vendorAutomationEnabled",
+            SendMessageW(g_vendorAutomation, BM_GETCHECK, 0, 0) == BST_CHECKED
+                ? L"1" : L"0");
     }
 
     void LoadConfiguration()
@@ -595,6 +601,10 @@ namespace
 
         const std::wstring mode = ReadIniValue(L"bot", L"mode", L"grind");
         SendMessageW(g_modeCombo, CB_SETCURSEL, mode == L"questing" ? 1 : 0, 0);
+        const std::wstring vendorAutomation =
+            ReadIniValue(L"bot", L"vendorAutomationEnabled", L"0");
+        SendMessageW(g_vendorAutomation, BM_SETCHECK,
+            vendorAutomation == L"1" ? BST_CHECKED : BST_UNCHECKED, 0);
     }
 
     bool TrackedWowProcessAlive()
@@ -641,6 +651,10 @@ namespace
 
         if (exitCode != STILL_ACTIVE)
         {
+            Debug::Logger::Journal("GUI ATTACH targetPid=" +
+                std::to_string(g_wowProcessId) +
+                " result=loader_exited exitCode=" + std::to_string(exitCode) +
+                " runtimeAttached=" + (g_runtimeControl.RuntimeAttached() ? "yes" : "no"));
             g_haveLoaderExit = true;
             g_lastLoaderExit = exitCode;
             CloseHandle(g_loaderProcess);
@@ -1221,6 +1235,9 @@ namespace
 
     void StartBot(HWND owner)
     {
+        Debug::Logger::Journal("GUI ATTACH event=start_button targetPid=" +
+            std::to_string(g_wowProcessId) +
+            " runtimeAttached=" + (g_runtimeControl.RuntimeAttached() ? "yes" : "no"));
         ApplyProfileSelection(false);
         const Control::BotMode selected = SelectedMode();
 
@@ -1252,6 +1269,8 @@ namespace
 
         if (g_runtimeControl.RuntimeAttached())
         {
+            Debug::Logger::Journal("GUI ATTACH result=rejected_already_attached targetPid=" +
+                std::to_string(g_wowProcessId));
             if (g_runtimeControl.UnloadRequested(false) ||
                 g_runtimeControl.RuntimeState() == Control::BotRunState::Unloading)
             {
@@ -1271,6 +1290,8 @@ namespace
         }
 
         SaveConfiguration();
+        g_runtimeControl.RequestVendorAutomation(
+            SendMessageW(g_vendorAutomation, BM_GETCHECK, 0, 0) == BST_CHECKED);
         g_runtimeControl.PrepareForInjection(selected);
 
         const std::wstring loader = GetWindowTextString(g_loaderPath);
@@ -1278,13 +1299,23 @@ namespace
         const std::wstring log = GetWindowTextString(g_logPath);
 
         if (SendMessageW(g_clearLogOnStart, BM_GETCHECK, 0, 0) == BST_CHECKED && !log.empty())
-            DeleteFileW(log.c_str());
+        {
+            const BOOL deleted = DeleteFileW(log.c_str());
+            const DWORD error = deleted ? ERROR_SUCCESS : GetLastError();
+            Debug::Logger::Journal("GUI LOG CLEAR reason=start_bot targetPid=" +
+                std::to_string(g_wowProcessId) +
+                " deleted=" + (deleted ? "yes" : "no") +
+                " error=" + std::to_string(error));
+        }
+        else
+            Debug::Logger::Journal("GUI LOG CLEAR decision=preserve reason=option_unchecked");
 
         HANDLE inheritedWowHandle = nullptr;
         if (!CreateInheritableWowHandle(inheritedWowHandle))
         {
             g_runtimeControl.RequestRun(false);
             const DWORD error = GetLastError();
+            Debug::Logger::Journal("GUI ATTACH result=handle_failed error=" + std::to_string(error));
             MessageBoxW(
                 owner,
                 (L"Unable to duplicate the retained WoW process handle. Win32 error=" +
@@ -1330,6 +1361,7 @@ namespace
         {
             g_runtimeControl.RequestRun(false);
             const DWORD error = GetLastError();
+            Debug::Logger::Journal("GUI ATTACH result=loader_start_failed error=" + std::to_string(error));
             MessageBoxW(owner, (L"Unable to start wow_loader.exe. Win32 error=" + std::to_wstring(error)).c_str(), WindowTitle, MB_ICONERROR);
             return;
         }
@@ -1338,12 +1370,18 @@ namespace
         g_loaderProcess = process.hProcess;
         g_haveLoaderExit = false;
         StartBotRuntimeTimer();
+        Debug::Logger::Journal("GUI ATTACH result=loader_started targetPid=" +
+            std::to_string(g_wowProcessId) + " loaderPid=" +
+            std::to_string(process.dwProcessId));
         SetStatusBarText(L"Injecting bot into the running WoW client...");
         RefreshDashboard(true);
     }
 
     void StopBot()
     {
+        Debug::Logger::Journal("GUI CONTROL event=stop_button targetPid=" +
+            std::to_string(g_wowProcessId) +
+            " runtimeAttached=" + (g_runtimeControl.RuntimeAttached() ? "yes" : "no"));
         if (!g_runtimeControl.RuntimeAttached())
         {
             SetStatusBarText(L"Bot is already stopped - no DLL is injected");
@@ -1370,6 +1408,8 @@ namespace
         const int answer = MessageBoxW(owner, L"Request WoW to close normally?", WindowTitle, MB_YESNO | MB_ICONQUESTION);
         if (answer == IDYES)
         {
+            Debug::Logger::Journal("GUI CONTROL event=close_wow_confirmed targetPid=" +
+                std::to_string(g_wowProcessId));
             if (g_runtimeControl.RuntimeAttached())
             {
                 g_runtimeControl.RequestRun(false);
@@ -1457,6 +1497,10 @@ namespace
         Remember(g_botConfigControls, CreateLabel(window, L"Profile:", 58, 191, 70, 20));
         g_profileValue = CreateLabel(window, L"-", 128, 191, 420, 20);
         Remember(g_botConfigControls, g_profileValue);
+        g_vendorAutomation = CreateButton(window,
+            L"Automatic vendor routing (next Start Bot)",
+            IdVendorAutomation, 58, 216, 410, 22, BS_AUTOCHECKBOX);
+        Remember(g_botConfigControls, g_vendorAutomation);
 
         Remember(g_botConfigControls, CreateGroupBox(window, L"Runtime", 40, 253, 530, 132));
         Remember(g_botConfigControls, CreateLabel(window, L"Bot:", 58, 278, 72, 20));
@@ -1623,6 +1667,12 @@ namespace
 
         LoadConfiguration();
         g_runtimeControl.CreateOwner(SelectedMode(), false);
+        Debug::Logger::Journal("GUI CONTROL event=display_connected runtimeAttached=" +
+            std::string(g_runtimeControl.RuntimeAttached() ? "yes" : "no") +
+            " heartbeat=" + std::to_string(g_runtimeControl.Heartbeat()) +
+            " action=preserve_existing_runtime");
+        g_runtimeControl.RequestVendorAutomation(
+            SendMessageW(g_vendorAutomation, BM_GETCHECK, 0, 0) == BST_CHECKED);
         ApplyProfileSelection(false);
         UpdateMainTabVisibility();
         LayoutControls(window);
@@ -1702,6 +1752,15 @@ namespace
                         StartBot(window);
                         return 0;
 
+                    case IdVendorAutomation:
+                        if (notification == BN_CLICKED)
+                        {
+                            g_runtimeControl.RequestVendorAutomation(
+                                SendMessageW(g_vendorAutomation, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                            SaveConfiguration();
+                        }
+                        return 0;
+
                     case IdStopBot:
                         StopBot();
                         return 0;
@@ -1742,6 +1801,7 @@ namespace
             }
 
             case WM_CLOSE:
+                Debug::Logger::Journal("GUI SESSION STOP reason=window_close runtimeUnloadRequested=no");
                 SaveConfiguration();
                 DestroyWindow(window);
                 return 0;
@@ -1783,6 +1843,8 @@ namespace
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand)
 {
     g_instance = instance;
+    Debug::Logger::SetModule(instance);
+    Debug::Logger::Journal("GUI SESSION START");
 
     INITCOMMONCONTROLSEX commonControls{};
     commonControls.dwSize = sizeof(commonControls);

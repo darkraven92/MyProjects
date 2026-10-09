@@ -84,6 +84,9 @@ namespace
         if (reason && *reason)
             Debug::Logger::Info(reason);
 
+        Debug::Logger::Event(std::string("DLL LIFECYCLE event=unload_requested reason=\"") +
+            (reason ? reason : "unspecified") + "\"");
+
         FreeLibraryAndExitThread(
             module,
             0
@@ -234,6 +237,10 @@ DWORD WINAPI BootstrapThread(
     Debug::Logger::SetModule(
         module
     );
+
+    // Outside DllMain/loader lock. Unexpected process termination may not
+    // produce an unload marker; do not claim that it did.
+    Debug::Logger::Event("DLL LIFECYCLE event=attach source=DLL_PROCESS_ATTACH");
 
     Sleep(500);
 

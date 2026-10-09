@@ -2,6 +2,7 @@
 
 #include "GameThreadDispatcher.h"
 #include "IObjectiveExecutor.h"
+#include "QuestObjectiveDispatchPolicy.h"
 #include "ObjectiveDefensiveCombatGuard.h"
 #include "ValleyOfTrialsProfiles.h"
 
@@ -72,6 +73,7 @@ namespace Bot
         };
 
         ObjectiveExecutorState state_ = ObjectiveExecutorState::Idle;
+        std::string failureReason_{};
         const QuestProfile* profile_ = nullptr;
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> navigator_{};
         ObjectiveDefensiveCombatGuard defense_{};
@@ -606,6 +608,7 @@ namespace Bot
 
         void Fail(const std::string& reason)
         {
+            failureReason_ = reason;
             navigator_.reset();
             Debug::Logger::Info("================================");
             Debug::Logger::Info("OBJECTIVE 12B.2: COLLECT WORLD ITEM FAILED");
@@ -631,7 +634,7 @@ namespace Bot
         bool Supports(const QuestProfile& profile) const override
         {
             return profile.objective.type == QuestObjectiveType::CollectWorldItem &&
-                   profile.objective.objectEntry != 0;
+                   QuestObjectiveDispatchPolicy::SupportsMaterialized(profile);
         }
 
         bool Start(
@@ -990,6 +993,11 @@ namespace Bot
         const char* StateName() const override
         {
             return StateNameInternal(state_);
+        }
+
+        const char* FailureReason() const override
+        {
+            return failureReason_.empty() ? nullptr : failureReason_.c_str();
         }
     };
 }

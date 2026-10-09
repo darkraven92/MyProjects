@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameThreadDispatcher.h"
+#include "CombatGeometry.h"
 
 #include "../Debug/Logger.h"
 #include "../Objects/PlayerSnapshot.h"
@@ -114,17 +115,7 @@ namespace Bot
         static float NormalizeInternal(
             float angle)
         {
-            while (angle < 0.0f)
-            {
-                angle += TwoPi;
-            }
-
-            while (angle >= TwoPi)
-            {
-                angle -= TwoPi;
-            }
-
-            return angle;
+            return CombatGeometry::Normalize(angle);
         }
 
     public:
@@ -304,6 +295,9 @@ namespace Bot
                     player,
                     target
                 );
+
+            if (!std::isfinite(desired) || !std::isfinite(player.rotation))
+                return false;
 
             if (desiredFacingOut != nullptr)
             {

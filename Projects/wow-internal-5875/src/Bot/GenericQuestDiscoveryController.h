@@ -1,4 +1,15 @@
 #pragma once
+#include "QuestGiverOfferCycle.h"
+
+#include "QuestDiscoveryDialogDiagnostics.h"
+
+#include "QuestFocusPolicy.h"
+#include "QuestObjectiveDispatchPolicy.h"
+#include "QuestAcquisitionPolicy.h"
+#include "QuestOfferResolutionPolicy.h"
+#include "ObjectiveDefensiveCombatGuard.h"
+#include "MovementController.h"
+#include <map>
 
 #include "GameThreadDispatcher.h"
 #include "ClickToMoveController.h"
@@ -111,12 +122,25 @@ namespace Bot
         std::string lastDialogResult_{};
 
         std::set<std::uint64_t> checkedGivers_{};
+        QuestGiverOfferCycle offerCycle_{};
         std::set<std::uint32_t> checkedGiverEntries_{};
+        // Failures may skip an actor for this bounded sweep, but only an
+        // observed UI offer list can populate the persistent empty-giver cache.
+        std::set<std::uint32_t> confirmedCheckedGiverEntries_{};
         std::set<int> excludedQuestIds_{};
+        int focusQuestId_ = 0;
         int activeHubUnlockQuestId_ = 0;
         std::string activeHubEvidence_{};
         float auditOriginX_ = 0.0f;
         float auditOriginY_ = 0.0f;
+        float auditOriginZ_ = 0.0f;
+        std::uint64_t acceptedTick_ = 0;
+        bool acceptanceIssued_ = false;
+        bool absentBeforeAcceptance_ = false;
+        bool defenseHeld_ = false;
+        ObjectiveDefensiveCombatGuard defense_{};
+        Objects::PlayerState lastPlayer_{};
+        mutable std::map<int,QuestAcquisitionResult> lastEligibility_{};
         std::uint32_t giverSeedEntry_ = 0;
         const QuestProfile* giverSeedProfile_ = nullptr;
         bool noNearbyOfferLogged_ = false;
@@ -169,10 +193,17 @@ namespace Bot
                 StateNameInternal(next));
 
             state_ = next;
+            Debug::Logger::Info("QUEST PICKUP quest="+std::to_string(selectedProfile_?selectedProfile_->questId:
+                (giverSeedProfile_?giverSeedProfile_->questId:0))+" state="+StateNameInternal(next)+
+                " attempt="+std::to_string(interactionAttempts_));
         }
 
         void Fail(const std::string& reason)
         {
+            if(giverEntry_) checkedGiverEntries_.insert(giverEntry_);
+            if(giverSeedEntry_) checkedGiverEntries_.insert(giverSeedEntry_);
+            if(lastPlayer_.valid) MovementController::HoldPosition(lastPlayer_);
+            giverNavigator_.reset();
             Debug::Logger::Info("================================");
             Debug::Logger::Info("QUEST PLANNER DISCOVERY: FAILED");
             Debug::Logger::Info("Reason: " + reason);
@@ -340,7 +371,8 @@ namespace Bot
 
                 for (const auto& profile : ValleyOfTrialsProfiles::All())
                 {
-                    if (profile.hubUnlockQuestId == 0 ||
+                    if (!QuestFocusPolicy::Allows(focusQuestId_, profile.questId) ||
+                        profile.hubUnlockQuestId == 0 ||
                         !Eligible(profile, snapshot) ||
                         profile.giverEntry != unit.entryId)
                     {
@@ -375,7 +407,8 @@ namespace Bot
 
             for (const auto& profile : ValleyOfTrialsProfiles::All())
             {
-                if (profile.hubUnlockQuestId == 0 ||
+                if (!QuestFocusPolicy::Allows(focusQuestId_, profile.questId) ||
+                    profile.hubUnlockQuestId == 0 ||
                     !Eligible(profile, snapshot) ||
                     !profile.giverDestination.valid ||
                     profile.giverDestination.mapId != KalimdorMapId)
@@ -408,14 +441,67 @@ namespace Bot
 
         bool ProfileEligible(
             const QuestProfile& profile,
-            const QuestPlannerSnapshot& snapshot) const
+            const QuestPlannerSnapshot& snapshot, bool liveOffer=false, bool visibleActor=false,
+            QuestAcquisitionResult* evaluated=nullptr) const
         {
-            if (!Eligible(profile, snapshot) ||
-                !profile.automatable ||
+            if(evaluated) *evaluated=QuestAcquisitionResult::UnknownRestrictions;
+            if (!QuestFocusPolicy::Allows(focusQuestId_, profile.questId) ||
+                !Eligible(profile, snapshot) ||
+                !QuestObjectiveDispatchPolicy::SupportsAllSteps(profile) ||
                 excludedQuestIds_.find(profile.questId) != excludedQuestIds_.end())
             {
+                if(evaluated && excludedQuestIds_.count(profile.questId))
+                    *evaluated=QuestAcquisitionResult::KnownCompleted;
                 return false;
             }
+
+            const auto* node = ValleyOfTrialsProfiles::Graph().Find(profile.questId);
+            if (!node || !node->structurallyValid ||
+                node->classification.support != QuestRuntimeSupport::KnownExecutable)
+                return false;
+            QuestEligibilityContext context;
+            context.level = snapshot.playerLevel;
+            context.classMask = QuestEligibilityPolicy::ClassMask(snapshot.classToken);
+            context.raceMask = QuestAcquisitionPolicy::RaceMask(snapshot.raceToken);
+            context.liveOffer = liveOffer;
+            context.completed = excludedQuestIds_;
+            context.activeHistoryComplete = snapshot.valid;
+            for (const auto& entry : snapshot.quests)
+            {
+                const auto* active = ValleyOfTrialsProfiles::Find(entry, snapshot.classToken, &excludedQuestIds_);
+                if (active) context.activeQuestIds.insert(active->questId);
+                else context.activeHistoryComplete = false;
+                // Ambiguous active titles cannot authorize a duplicate pickup.
+                if(profile.title && entry.title==profile.title) context.active=true;
+            }
+            const auto eligibility=liveOffer
+                ? QuestOfferResolutionPolicy::Evaluate(profile,node,context)
+                : QuestAcquisitionPolicy::Evaluate(profile,node,context,false,visibleActor);
+            if(evaluated) *evaluated=eligibility;
+            if(lastEligibility_.find(profile.questId)==lastEligibility_.end() || lastEligibility_[profile.questId]!=eligibility)
+            {
+                lastEligibility_[profile.questId]=eligibility;
+                Debug::Logger::Info("QUEST DISCOVERY CANDIDATE quest="+std::to_string(profile.questId)+
+                    " giverType=npc giverEntry="+std::to_string(profile.giverEntry)+
+                    " eligibility="+QuestAcquisitionPolicy::Name(eligibility)+
+                    " decision="+(eligibility==QuestAcquisitionResult::EligibleForPickup?"candidate":"skip"));
+                Debug::Logger::Info("QUEST ACQUISITION METADATA quest="+std::to_string(profile.questId)+
+                    " source="+(profile.sourceMetadata?std::string("structured"):std::string("legacy"))+
+                    " minLevel="+std::to_string(profile.minimumLevel)+" playerLevel="+std::to_string(snapshot.playerLevel)+
+                    " requiredRace="+(profile.requiredRaceMask?std::to_string(*profile.requiredRaceMask):"unknown")+
+                    " requiredClass="+(profile.requiredClassMask?std::to_string(*profile.requiredClassMask):"unknown")+
+                    " requiredCondition="+(profile.requiredCondition?std::to_string(*profile.requiredCondition):"unknown")+
+                    " prerequisiteClauses="+std::to_string(profile.prerequisiteAlternatives.size())+
+                    " result="+QuestAcquisitionPolicy::Name(eligibility));
+            }
+            if(eligibility!=QuestAcquisitionResult::EligibleForPickup)
+                return false;
+
+            // Newly generated regional entries without an authored hub gate
+            // are scoped by source-spawn proximity below, not by an unrelated
+            // legacy hub's unlock ID. Explicit authored gates remain intact.
+            if(profile.databaseDerived && !profile.handwrittenOverride && profile.hubUnlockQuestId==0)
+                return true;
 
             // Phase 13A.1 scopes each audit to the hub the player is actually
             // standing in. Completion history is still used to suppress quests
@@ -435,14 +521,17 @@ namespace Bot
             // Hand-authored fallback profiles without a database giver anchor
             // keep their legacy behavior. Database-backed Durotar profiles
             // are spatially scoped to the current hub sweep.
-            if (!profile.giverDestination.valid ||
-                profile.giverDestination.mapId != KalimdorMapId)
+            if (!profile.giverDestination.valid)
             {
                 return true;
             }
+            if(profile.giverDestination.mapId!=KalimdorMapId) return false;
 
-            const float dx = profile.giverDestination.x - auditOriginX_;
-            const float dy = profile.giverDestination.y - auditOriginY_;
+            const auto destination=QuestAcquisitionPolicy::SelectDestination(profile.giverDestination,
+                profile.giverDestinations,auditOriginX_,auditOriginY_,auditOriginZ_);
+            if(!QuestAcquisitionPolicy::ValidDestination(destination)) return false;
+            const float dx = destination.x - auditOriginX_;
+            const float dy = destination.y - auditOriginY_;
             return dx * dx + dy * dy <= ZoneHubAuditRadius * ZoneHubAuditRadius;
         }
 
@@ -452,7 +541,7 @@ namespace Bot
         {
             for (const auto& profile : ValleyOfTrialsProfiles::All())
             {
-                if (profile.giverEntry == giverEntry && ProfileEligible(profile, snapshot))
+                if (profile.giverEntry == giverEntry && ProfileEligible(profile, snapshot, false, true))
                     return true;
             }
             return false;
@@ -506,7 +595,8 @@ namespace Bot
                     continue;
                 }
 
-                if (best == nullptr || unit.distance < best->distance)
+                if (best == nullptr || unit.distance < best->distance ||
+                    (unit.distance==best->distance && unit.guid<best->guid))
                     best = &unit;
             }
 
@@ -520,9 +610,10 @@ namespace Bot
             const Objects::UnitState* best = nullptr;
             for (const auto& unit : world.units)
             {
-                if (!unit.valid || unit.entryId != entryId || unit.guid == 0)
+                if (!unit.valid || !unit.health || unit.entryId != entryId || unit.guid == 0)
                     continue;
-                if (best == nullptr || unit.distance < best->distance)
+                if (best == nullptr || unit.distance < best->distance ||
+                    (unit.distance==best->distance && unit.guid<best->guid))
                     best = &unit;
             }
             return best;
@@ -545,7 +636,7 @@ namespace Bot
                     continue;
                 }
 
-                if (best == nullptr || profile.priority > best->priority)
+                if (best == nullptr || QuestAcquisitionPolicy::Better(profile,*best))
                     best = &profile;
             }
             return best;
@@ -601,14 +692,9 @@ namespace Bot
                 // re-resolving duplicate presentation text from scratch.
                 if (selectedProfile_ != nullptr)
                 {
-                    if (giverEntry_ != 0 && selectedProfile_->giverEntry != giverEntry_)
+                    if(!QuestAcquisitionPolicy::VerifiedAcceptance(*selectedProfile_,entry,giverEntry_,
+                        acceptanceIssued_,absentBeforeAcceptance_))
                         continue;
-
-                    if (selectedProfile_->expectedObjectiveCount >= 0 &&
-                        selectedProfile_->expectedObjectiveCount != entry.objectiveCount)
-                    {
-                        continue;
-                    }
 
                     return selectedProfile_;
                 }
@@ -633,6 +719,14 @@ namespace Bot
             if (!profile.giverDestination.valid)
                 return false;
 
+            const auto destination=QuestAcquisitionPolicy::SelectDestination(profile.giverDestination,
+                profile.giverDestinations,world.player.x,world.player.y,world.player.z);
+            if(!QuestAcquisitionPolicy::ValidDestination(destination)) return false;
+            Debug::Logger::Info("QUEST DISCOVERY SELECT quest="+std::to_string(profile.questId)+
+                " giverEntry="+std::to_string(profile.giverEntry)+" destination="+
+                std::to_string(destination.x)+","+std::to_string(destination.y)+","+std::to_string(destination.z)+
+                " reason=priority_then_nearest_source_spawn_route_validation_required");
+
             giverSeedEntry_ = profile.giverEntry;
             giverSeedProfile_ = &profile;
             giverNavigator_ = std::make_unique<Navigation::GenericNavMeshPathFollower>();
@@ -652,12 +746,12 @@ namespace Bot
                     world.player,
                     tick,
                     Navigation::NavPoint{
-                        profile.giverDestination.x,
-                        profile.giverDestination.y,
-                        profile.giverDestination.z},
-                    profile.giverDestination.mapId,
-                    profile.giverDestination.arrivalDistance > 0.0f
-                        ? profile.giverDestination.arrivalDistance
+                        destination.x,
+                        destination.y,
+                        destination.z},
+                    destination.mapId,
+                    destination.arrivalDistance > 0.0f
+                        ? destination.arrivalDistance
                         : 6.0f,
                     profile.giverDestination.label))
             {
@@ -936,58 +1030,33 @@ namespace Bot
             const QuestPlannerSnapshot& snapshot,
             const std::string& title) const
         {
-            std::vector<const QuestProfile*> candidates;
+            QuestOfferResolutionPolicy resolution;
             for (const auto& profile : ValleyOfTrialsProfiles::All())
             {
-                if (profile.giverEntry != giverEntry_ ||
-                    !ProfileEligible(profile, snapshot) ||
-                    title != profile.title)
+                if (profile.giverEntry != giverEntry_ || !profile.title || title != profile.title)
                 {
                     continue;
                 }
-                candidates.push_back(&profile);
+                QuestAcquisitionResult eligibility;
+                const bool allowed=ProfileEligible(profile,snapshot,true,true,&eligibility);
+                resolution.Observe(profile,eligibility,allowed);
+                Debug::Logger::Info("QUEST OFFER CANDIDATE giver="+std::to_string(giverEntry_)+
+                    " title=\""+title+"\" quest="+std::to_string(profile.questId)+
+                    " eligibility="+QuestAcquisitionPolicy::Name(eligibility)+
+                    " decision="+(allowed?"candidate":"reject")+
+                    " reason="+(allowed?std::string("current_graph_eligible"):
+                        eligibility==QuestAcquisitionResult::EligibleForPickup?std::string("focus_or_hub_scope"):
+                        std::string(QuestAcquisitionPolicy::Name(eligibility))));
             }
-
-            if (candidates.size() <= 1)
-                return candidates.empty() ? nullptr : candidates.front();
-
-            std::vector<const QuestProfile*> remaining;
-            for (const auto* candidate : candidates)
-            {
-                if (excludedQuestIds_.find(candidate->questId) ==
-                    excludedQuestIds_.end())
-                {
-                    remaining.push_back(candidate);
-                }
-            }
-            if (!remaining.empty())
-                candidates = std::move(remaining);
-
-            if (candidates.size() == 1)
-                return candidates.front();
-
-            std::vector<const QuestProfile*> chainSatisfied;
-            for (const auto* candidate : candidates)
-            {
-                const int previous = candidate->previousQuestId < 0
-                    ? -candidate->previousQuestId
-                    : candidate->previousQuestId;
-                if (previous == 0 ||
-                    excludedQuestIds_.find(previous) != excludedQuestIds_.end())
-                {
-                    chainSatisfied.push_back(candidate);
-                }
-            }
-
-            if (chainSatisfied.size() == 1)
-                return chainSatisfied.front();
-
-            Debug::Logger::Info(
-                "QUESTDB 13C.2: AMBIGUOUS LIVE OFFER deferred title=\"" +
-                title + "\" giverEntry=" + std::to_string(giverEntry_) +
-                " candidates=" + std::to_string(candidates.size()) +
-                "; no title-only guess was made.");
-            return nullptr;
+            const auto* resolved=resolution.Resolved();
+            Debug::Logger::Info("QUEST OFFER RESOLUTION giver="+std::to_string(giverEntry_)+
+                " title=\""+title+"\" candidateCount="+std::to_string(resolution.candidateCount)+
+                " eligibleCandidateCount="+std::to_string(resolution.eligibleCount)+
+                " result="+(resolved?"resolved":"rejected")+
+                " quest="+std::to_string(resolved?resolved->questId:0)+
+                " reason="+(resolved?"unique_currently_eligible":
+                    resolution.eligibleCount>1?"ambiguous_eligible_candidates":"no_currently_eligible_candidate"));
+            return resolved;
         }
 
         const QuestProfile* BestMatchingProfile(
@@ -1053,6 +1122,9 @@ namespace Bot
             Debug::Logger::Info("Giver entry=" + std::to_string(giverEntry_) +
                                 " guid=" + Hex64(giverGuid_) +
                                 " distance=" + std::to_string(giver.distance));
+            Debug::Logger::Info("QUEST PICKUP INTERACTION giverEntry=" + std::to_string(giverEntry_) +
+                " attempt=" + std::to_string(interactionAttempts_) +
+                " dispatch=yes gameThread=yes serverResponse=unconfirmed");
             Debug::Logger::Info("================================");
 
             SetState(GenericQuestDiscoveryState::AdvancingDialog);
@@ -1075,7 +1147,8 @@ namespace Bot
             return parts;
         }
 
-        bool RunDialogScript(const std::string& script, std::string& result)
+        bool RunDialogScript(const std::string& script, std::string& result,
+            const char* resultVariable = ResultVariable)
         {
             const auto doStringAddress = LuaDoStringAddress();
             const auto getTextAddress = GetTextAddress();
@@ -1104,7 +1177,7 @@ namespace Bot
                         return;
 
                     const char* raw = getText(
-                        const_cast<char*>(ResultVariable),
+                        const_cast<char*>(resultVariable),
                         0xFFFFFFFFu,
                         0);
 
@@ -1121,6 +1194,20 @@ namespace Bot
 
             result = buffer;
             return true;
+        }
+
+        void LogDialogObservation(const QuestPlannerSnapshot& snapshot, const std::string& result)
+        {
+            std::string detail;
+            if (!RunDialogScript(QuestDiscoveryDialogDiagnostics::Script, detail,
+                    QuestDiscoveryDialogDiagnostics::ResultVariable))
+                detail = "probe=failed";
+            Debug::Logger::Info("QUEST DIALOG STATE giverEntry=" + std::to_string(giverEntry_) +
+                " pickupQuest=" + std::to_string(selectedProfile_ ? selectedProfile_->questId : 0) +
+                " seedQuest=" + std::to_string(giverSeedProfile_ ? giverSeedProfile_->questId : 0) +
+                " playerLevel=" + std::to_string(snapshot.playerLevel) +
+                " attempt=" + std::to_string(interactionAttempts_) +
+                " phase=offer_read result=" + result + " " + detail);
         }
 
         bool CloseQuestPanels()
@@ -1142,6 +1229,7 @@ namespace Bot
             if (selectedProfile_ == nullptr)
             {
                 const std::string script =
+                    "WOW_INTERNAL_DISCOVERY_READ_FINISHED=false; "
                     "WOW_INTERNAL_DISCOVERY_STATE='waiting'; "
                     "local sep=string.char(31); "
                     "local t=GetTitleText(); "
@@ -1154,14 +1242,19 @@ namespace Bot
                     "elseif GossipFrame and GossipFrame:IsVisible() then "
                     "local a={GetGossipAvailableQuests()}; local s='gossip'; "
                     "for i=1,table.getn(a),2 do if a[i] then s=s..sep..a[i]; end; end; "
-                    "WOW_INTERNAL_DISCOVERY_STATE=s; end";
+                    "WOW_INTERNAL_DISCOVERY_STATE=s; end; "
+                    "WOW_INTERNAL_DISCOVERY_READ_FINISHED=true";
 
                 if (!RunDialogScript(script, result))
+                {
+                    LogDialogObservation(snapshot, "read_failed");
                     return false;
+                }
 
                 if (result != lastDialogResult_)
                 {
                     Debug::Logger::Info("QUEST PLANNER DISCOVERY dialog: " + result);
+                    LogDialogObservation(snapshot, result);
                     lastDialogResult_ = result;
                 }
 
@@ -1193,6 +1286,11 @@ namespace Bot
                 {
                     checkedGivers_.insert(giverGuid_);
                     checkedGiverEntries_.insert(giverEntry_);
+                    const bool confirmedEmpty=QuestOfferResolutionPolicy::ConfirmEmpty(offered.size());
+                    if(confirmedEmpty) confirmedCheckedGiverEntries_.insert(giverEntry_);
+                    Debug::Logger::Info("QUEST GIVER AUDIT giverEntry="+std::to_string(giverEntry_)+
+                        " result=no_eligible_live_offer cache="+(confirmedEmpty?"confirmed_empty":"sweep_only")+
+                        " reason="+(confirmedEmpty?"live_empty_list":"unresolved_or_ineligible_live_offers"));
                     Debug::Logger::Info("QUEST PLANNER DISCOVERY: no eligible profiled quest was offered by giver entry=" +
                                         std::to_string(giverEntry_) + ".");
                     CloseQuestPanels();
@@ -1205,6 +1303,10 @@ namespace Bot
                 }
 
                 selectedTitle_ = selectedProfile_->title;
+                absentBeforeAcceptance_=std::none_of(snapshot.quests.begin(),snapshot.quests.end(),
+                    [&](const auto& q){return q.title==selectedTitle_;});
+                Debug::Logger::Info("QUEST OFFER VERIFY quest="+std::to_string(selectedProfile_->questId)+
+                    " result=matched reason=unique_live_title_and_source_giver");
                 Debug::Logger::Info("================================");
                 Debug::Logger::Info("QUEST PLANNER DISCOVERY: PROFILE MATCH");
                 Debug::Logger::Info("QuestId=" + std::to_string(selectedProfile_->questId) +
@@ -1218,6 +1320,9 @@ namespace Bot
             }
 
             const std::string title = LuaSingleQuoted(selectedTitle_);
+            if(std::any_of(snapshot.quests.begin(),snapshot.quests.end(),
+                [&](const auto& q){return q.title==selectedTitle_;}))
+            { Fail("selected offer already became active before acceptance"); return true; }
             const std::string script =
                 "WOW_INTERNAL_DISCOVERY_STATE='waiting'; "
                 "local t=GetTitleText(); "
@@ -1245,6 +1350,31 @@ namespace Bot
 
             if (result == "accept")
             {
+                acceptedTick_=tick; acceptanceIssued_=true;
+                Debug::Logger::Info("QUEST ACCEPT VERIFY quest="+std::to_string(selectedProfile_->questId)+
+                    " result=pending reason=accept_command_requires_live_log");
+                if (selectedProfile_ != nullptr &&
+                    selectedProfile_->objective.type ==
+                        QuestObjectiveType::UseItemAtGameObject)
+                    Debug::Logger::Info(
+                        "QUEST 16D PICKUP questId=" +
+                        std::to_string(selectedProfile_->questId) +
+                        " giverEntry=" + std::to_string(giverEntry_) +
+                        " state=accept_issued_pending_live_log");
+                if (selectedProfile_ != nullptr &&
+                    selectedProfile_->objective.type ==
+                        QuestObjectiveType::UseQuestItemAtLocation)
+                    Debug::Logger::Info(
+                        "QUEST 16C PICKUP questId=" +
+                        std::to_string(selectedProfile_->questId) +
+                        " giverEntry=" + std::to_string(giverEntry_) +
+                        " state=accept_issued_pending_live_log");
+                if (focusQuestId_ > 0)
+                    Debug::Logger::Info(
+                        "QUEST 16A PICKUP questId=" +
+                        std::to_string(selectedProfile_->questId) +
+                        " npcEntry=" + std::to_string(giverEntry_) +
+                        " result=accept_issued_pending_log_confirmation");
                 Debug::Logger::Info("================================");
                 Debug::Logger::Info("QUEST PLANNER DISCOVERY: AcceptQuest() issued.");
                 Debug::Logger::Info("Selected questId=" + std::to_string(selectedProfile_->questId) +
@@ -1291,7 +1421,8 @@ namespace Bot
             const Objects::WorldState& world,
             std::uint64_t tick,
             const std::set<int>& completedQuestIds = {},
-            const std::set<std::uint32_t>& precheckedGiverEntries = {})
+            const std::set<std::uint32_t>& precheckedGiverEntries = {},
+            int focusQuestId = 0)
         {
             if (state_ != GenericQuestDiscoveryState::Idle ||
                 !snapshot.valid ||
@@ -1310,13 +1441,22 @@ namespace Bot
             selectedTitle_.clear();
             lastDialogResult_.clear();
             checkedGivers_.clear();
+            offerCycle_ = {};
             checkedGiverEntries_ = precheckedGiverEntries;
+            confirmedCheckedGiverEntries_ = precheckedGiverEntries;
             excludedQuestIds_ = completedQuestIds;
+            focusQuestId_ = focusQuestId;
             activeHubEvidence_.clear();
             activeHubUnlockQuestId_ =
                 ResolveActiveHubUnlockQuestId(snapshot, world, activeHubEvidence_);
             auditOriginX_ = world.player.x;
             auditOriginY_ = world.player.y;
+            auditOriginZ_ = world.player.z;
+            lastPlayer_=world.player;
+            defense_.Reset(world,"quest discovery");
+            defenseHeld_=false;
+            acceptanceIssued_=false; absentBeforeAcceptance_=false;
+            lastEligibility_.clear();
             giverSeedEntry_ = 0;
             giverSeedProfile_ = nullptr;
             noNearbyOfferLogged_ = false;
@@ -1357,13 +1497,36 @@ namespace Bot
         void Update(
             const QuestPlannerSnapshot& snapshot,
             const Objects::WorldState& world,
+            CombatController& combat,
             std::uint64_t tick)
         {
             if (state_ == GenericQuestDiscoveryState::Idle ||
                 state_ == GenericQuestDiscoveryState::Done ||
-                state_ == GenericQuestDiscoveryState::Failed ||
-                state_ == GenericQuestDiscoveryState::WaitingForQuestLog)
+                state_ == GenericQuestDiscoveryState::Failed)
             {
+                return;
+            }
+
+            if(!snapshot.valid || !world.player.valid || !world.player.health) return;
+            lastPlayer_=world.player;
+            const auto defense=defense_.Update(world,combat,giverNavigator_.get(),0,tick);
+            if(defense!=ObjectiveDefenseUpdate::Clear)
+            {
+                if(!defenseHeld_ && !giverNavigator_) MovementController::HoldPosition(world.player);
+                defenseHeld_=true;
+                if(defense==ObjectiveDefenseUpdate::Failed) Fail("defensive recovery interrupted discovery");
+                return;
+            }
+            defenseHeld_=false;
+            if(state_==GenericQuestDiscoveryState::WaitingForQuestLog)
+            {
+                if(const auto* active=ResolveActivatedProfile(snapshot)) MarkKnownQuestActive(*active,tick);
+                else if(QuestAcquisitionPolicy::AcceptanceExpired(tick,acceptedTick_))
+                {
+                    Debug::Logger::Info("QUEST ACCEPT VERIFY quest="+std::to_string(selectedProfile_?selectedProfile_->questId:0)+
+                        " result=failed reason=live_log_confirmation_timeout");
+                    Fail("quest acceptance was not confirmed by live quest log");
+                }
                 return;
             }
 
@@ -1399,6 +1562,25 @@ namespace Bot
 
             if (state_ == GenericQuestDiscoveryState::FindingNearbyGiver)
             {
+                // Finish the visited actor before choosing another static seed.
+                // The following dialog read resolves offers against the NEW
+                // live snapshot; never reuse pre-accept eligibility or titles.
+                const auto reauditGuid=offerCycle_.TakeReaudit();
+                if (reauditGuid!=0)
+                {
+                    for (const auto& unit : world.units)
+                    {
+                        if (unit.guid!=reauditGuid) continue;
+                        Debug::Logger::Info("QUEST GIVER REAUDIT giverEntry="+
+                            std::to_string(unit.entryId)+" reason=confirmed_acceptance");
+                        if (!StartGiverNavigation(world,unit,tick))
+                            Fail("post-accept giver reread could not start");
+                        return;
+                    }
+                    // Disappearance is not proof that all offers were read.
+                    Fail("post-accept giver unavailable; bounded discovery backoff required");
+                    return;
+                }
                 /*
                  * Phase 13D.5.1: deliberately continue auditing while local
                  * quests are active. MarkKnownQuestActive() returns here after
@@ -1728,6 +1910,7 @@ namespace Bot
                 {
                     if (interactionAttempts_ >= MaximumInteractionAttempts)
                     {
+                        LogDialogObservation(snapshot, "dialog_attempts_exhausted");
                         Debug::Logger::Info(
                             "QUESTDB 12B.6: GIVER CHECK COMPLETE - no usable quest dialog after bounded retries; giverEntry=" +
                             std::to_string(giverEntry_) +
@@ -1770,6 +1953,33 @@ namespace Bot
             const QuestProfile& actualProfile,
             std::uint64_t tick)
         {
+            if (!offerCycle_.Accepted(actualProfile.questId,giverGuid_))
+            {
+                Fail("duplicate acceptance or bounded giver offer sweep exhausted");
+                return;
+            }
+            Debug::Logger::Info("QUEST ACCEPT VERIFY quest="+std::to_string(actualProfile.questId)+
+                " result=confirmed reason=live_quest_log_appearance");
+            if (actualProfile.objective.type ==
+                QuestObjectiveType::UseItemAtGameObject)
+                Debug::Logger::Info(
+                    "QUEST 16D PICKUP questId=" +
+                    std::to_string(actualProfile.questId) +
+                    " giverEntry=" + std::to_string(giverEntry_) +
+                    " state=confirmed_in_live_quest_log");
+            if (actualProfile.objective.type ==
+                QuestObjectiveType::UseQuestItemAtLocation)
+                Debug::Logger::Info(
+                    "QUEST 16C PICKUP questId=" +
+                    std::to_string(actualProfile.questId) +
+                    " giverEntry=" + std::to_string(giverEntry_) +
+                    " state=confirmed_in_live_quest_log");
+            if (focusQuestId_ > 0)
+                Debug::Logger::Info(
+                    "QUEST 16A PICKUP questId=" +
+                    std::to_string(actualProfile.questId) +
+                    " npcEntry=" + std::to_string(giverEntry_) +
+                    " result=confirmed_in_quest_log");
             Debug::Logger::Info("================================");
             Debug::Logger::Info("QUEST PLANNER 11D.2: DISCOVERY/PICKUP PASS");
             Debug::Logger::Info("Planner snapshot now contains questId=" +
@@ -1834,7 +2044,7 @@ namespace Bot
 
         const std::set<std::uint32_t>& CheckedGiverEntries() const
         {
-            return checkedGiverEntries_;
+            return confirmedCheckedGiverEntries_;
         }
 
         bool OwnsControl() const

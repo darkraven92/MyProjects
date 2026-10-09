@@ -1,0 +1,15 @@
+/* Generated KRIG sound cast IDs; script playback uses channels 1/2. */
+enum {
+    SR_KRIG_FOREST=154,
+    SR_KRIG_FOREST2=155,
+    SR_KRIG_WINTER=156,
+    SR_KRIG_WALK=171,
+    SR_KRIG_HORSE_WALK=179,
+    SR_KRIG_HALBERD=176,
+    SR_KRIG_GUNSHOT=184,
+    SR_KRIG_CROSSBOW=181,
+    SR_KRIG_SABRE=182,
+    SR_KRIG_HORSE_KICK=183,
+    SR_KRIG_CANNON12=172,
+    SR_KRIG_CANNON3=177,
+};

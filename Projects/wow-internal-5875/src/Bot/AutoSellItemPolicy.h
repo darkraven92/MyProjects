@@ -50,6 +50,18 @@ namespace Bot
             return Reason(item) == "sell";
         }
 
+        static constexpr bool PlanStillMatches(
+            std::string_view plannedLink, std::uint32_t plannedId,
+            int plannedCount, bool plannedLocked,
+            std::string_view currentLink, std::uint32_t currentId,
+            int currentCount, bool currentLocked)
+        {
+            return !plannedLink.empty() && plannedLink == currentLink &&
+                plannedId != 0 && plannedId == currentId &&
+                plannedCount > 0 && plannedCount == currentCount &&
+                !plannedLocked && !currentLocked;
+        }
+
         // Lua mirrors Reason(), using the shared consumable tooltip function.
         static constexpr const char* LuaDefinition()
         {

@@ -68,10 +68,14 @@ namespace Bot
             return Wow5875::Client::Base() + GetTextRva;
         }
 
+    public:
+        // Shared game-thread bridge for bounded inventory transactions.
+        template<std::size_t ReadbackCapacity=128>
         static bool ExecuteLuaReadback(
             const std::string& script,
             const char* scriptName,
-            std::string& result)
+            std::string& result,
+            const char* resultVariable = ResultVariable)
         {
             const auto doStringAddress = LuaDoStringAddress();
             const auto getTextAddress = GetTextAddress();
@@ -92,7 +96,8 @@ namespace Bot
             const auto getText =
                 reinterpret_cast<GetTextFunction>(getTextAddress);
 
-            char buffer[128]{};
+            static_assert(ReadbackCapacity>=2 && ReadbackCapacity<=65536);
+            char buffer[ReadbackCapacity]{};
             bool onGameThread = false;
             bool luaExecuted = false;
             bool gotText = false;
@@ -109,7 +114,7 @@ namespace Bot
                         return;
 
                     const char* raw = getText(
-                        const_cast<char*>(ResultVariable),
+                        const_cast<char*>(resultVariable),
                         0xFFFFFFFFu,
                         0);
 

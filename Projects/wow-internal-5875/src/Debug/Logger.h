@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include "SessionLog.h"
 
 #include <fstream>
 #include <mutex>
@@ -13,6 +14,9 @@ namespace Debug
     public:
         static void SetModule(HMODULE module)
         {
+            std::lock_guard<std::mutex> lock(Mutex());
+            Identity().moduleBase = reinterpret_cast<std::uintptr_t>(
+                module ? module : GetModuleHandleA(nullptr));
             char modulePath[MAX_PATH] = {};
 
             const DWORD length =
@@ -41,22 +45,51 @@ namespace Debug
         static void Info(const std::string& message)
         {
             std::lock_guard<std::mutex> lock(Mutex());
+            AppendSessionLog(Path(), Identity().Fields(), message);
+        }
 
-            std::ofstream log(
-                Path(),
-                std::ios::out | std::ios::app
-            );
+        // Separate append-only lifecycle journal survives GUI Clear log on
+        // start. GUI and DLL both identify their own PID/session on EVERY
+        // journal entry; a shared file never implies a shared controller.
+        static void Journal(const std::string& message)
+        {
+            std::lock_guard<std::mutex> lock(Mutex());
+            const auto path = std::filesystem::path(Path()).parent_path() /
+                "wow-internal.lifecycle.log";
+            AppendSessionLog(path, Identity().Fields(),
+                message + " " + Identity().Fields() +
+                " monotonicMs=" + std::to_string(GetTickCount64()));
+        }
 
-            if (!log)
-                return;
-
-            log
-                << "[INFO] "
-                << message
-                << '\n';
+        static void Event(const std::string& message)
+        {
+            Info(message + " " + Identity().Fields() +
+                " monotonicMs=" + std::to_string(GetTickCount64()));
+            Journal(message);
         }
 
     private:
+        static LogSessionIdentity& Identity()
+        {
+            static LogSessionIdentity identity = [] {
+                LogSessionIdentity value;
+                value.pid = GetCurrentProcessId();
+                value.startedMs = GetTickCount64();
+                value.threadId = GetCurrentThreadId();
+                FILETIME created{}, exited{}, kernel{}, user{};
+                if (GetProcessTimes(GetCurrentProcess(), &created, &exited,
+                        &kernel, &user))
+                    value.processCreated =
+                        (static_cast<std::uint64_t>(created.dwHighDateTime) << 32) |
+                        created.dwLowDateTime;
+                char executable[MAX_PATH]{};
+                GetModuleFileNameA(nullptr, executable, MAX_PATH);
+                value.process = executable;
+                return value;
+            }();
+            return identity;
+        }
+
         static std::string& Path()
         {
             static std::string path =

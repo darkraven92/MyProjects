@@ -1,0 +1,4 @@
+/build/
+/analysis/
+/web/svea.wasm
+__pycache__/

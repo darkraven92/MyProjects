@@ -339,6 +339,9 @@ namespace Bot
         }
 
     public:
+        static bool HasDirectAggressor(const Objects::WorldState& world)
+        { return FindDirectAggressor(world) != nullptr; }
+
         void Reset(const Objects::WorldState& world, const std::string& context)
         {
             initialized_ = true;
