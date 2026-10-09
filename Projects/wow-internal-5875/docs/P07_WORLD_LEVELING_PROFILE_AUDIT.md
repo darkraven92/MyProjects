@@ -165,7 +165,7 @@ Run's counter at line 158 may label monitorSession only. No current map,
 positionMapId, zone or worldGeneration should be filled from configuration.
 
 That hook requires modifying protected WorldMonitor.h, so it is explicitly
-deferred. No production file includes the new headers.
+deferred. No runtime translation unit includes the profile policy headers.
 
 Applying restrictions or workload changes is a later, separate ownership
 integration. WorldMonitor's deathRecoveryOwnedTick dispatch before
@@ -174,6 +174,106 @@ coordinated, not permission to interrupt active combat, vendor or recovery.
 GrindModeController and CombatController must continue to enforce their
 existing target safety and aggressor rules. Quest owners retain quest
 acquisition/execution; Detour/NavMesh retains long-distance navigation.
+
+## Isolated evidence adapter checkpoint — 2026-10-10
+
+Continues checkpoint `386ddaf0a2574637e34c02884ffa3a2417cc3a50`.
+Three parallel read-only subagents completed Snapshot Evidence Mapping,
+Identity/Freshness Audit and Regression/Test Audit before coordinator edits.
+All agreed that existing world/player validity does not establish freshness,
+that quest tokens are unbound, and that the adapter must require explicit
+acquisition provenance. Only the coordinator changed files.
+
+`ProfileWorldEvidenceAdapter.h` adds two pure operations:
+
+1. `Capture(world, stamp)` copies the relevant WorldState/PlayerState values
+   into a portable `ProfileWorldSnapshot`. The member-based template accepts
+   the actual WorldState without importing Windows readers into the policy.
+   Capture requires world/player validity, nonzero manager/local-player and
+   descriptor pointers, and `player.address == localPlayer`. It does not read
+   memory or establish freshness. The stamp must be assigned at acquisition,
+   never added retrospectively to cached data. Its timestamp is the start of
+   the world read, conservatively bounding the age of every copied field.
+2. `Adapt(snapshot, current, maximumAgeMs)` returns a new evidence value.
+   The caller must supply an independent post-acquisition identity recheck:
+   successful reads of the current manager, active GUID and matching type-4
+   local-player object, tagged for the current evaluation. Copying identity
+   from the input snapshot does not meet this contract. GUID, manager and
+   local-player address must match and be nonzero. Capture/recheck monitor
+   sessions and sample sequences must match and be nonzero. Recheck time must
+   not precede acquisition; elapsed age must be within the explicit caller
+   budget. Evaluation time is taken after the identity recheck using the same
+   monotonic clock. A zero budget permits equal timestamps only. Timestamp
+   zero itself is valid. A prior evaluation is rejected even within the age budget.
+
+Any validity, identity, session, sample or freshness failure returns default
+evidence: no identity, `freshForPlayer=false`, every optional field Unknown
+and no facts. No previous success is retained. On coherent input, level and
+position are validated independently; invalid level does not discard valid
+XYZ, and invalid XYZ does not discard valid level. There is no clamping.
+
+| Evidence output | Exact adapter source / semantics |
+|---|---|
+| Player GUID | `WorldState.activePlayerGuid`, nonzero and equal to independently rechecked identity. |
+| Monitor session | Caller acquisition stamp, equal to the current evaluation session. Run's monitor counter may label this field only. |
+| Freshness | Explicit acquisition/recheck qualification and bounded age, never `world.valid` alone. |
+| Player level | Embedded `world.player.level`, required descriptor +0x88 read in `PlayerSnapshot.h:226`; accept 1..60 only, otherwise Unknown. No quest-level fallback. |
+| Position | Embedded `world.player.x/y/z`, required movement reads in `PlayerSnapshot.h:326`; recheck every coordinate with `isfinite`. Finite zero/negative values are accepted. |
+| Map / position map | Always Unknown: no qualified current-map reader. Coordinates have no proven map association. |
+| Zone/area / faction group | Always Unknown: no qualified sources. |
+| Class/race | Always Unknown in this step. QuestPlannerSnapshot has no GUID/session/sample/time binding and is not an accepted adapter input. |
+| World generation | Always Unknown. Neither monitor session nor sample sequence is world/map identity. |
+| Preparation/completion facts | Empty: no qualified fact producer is connected. |
+
+The initial GUID/object association is in `WorldState.h:108-120,203-209`;
+the embedded player read is at `:248-253`. These reads have no final identity
+recheck. `QuestPlannerTypes.h:399-415` has tokens/level but no binding;
+`QuestPlannerRuntimeController.h:614-628` retains its previous snapshot after
+a refresh failure, and `QuestPlannerStateReader.h:417-428` omits race from
+its equality check. These limits are why quest data is excluded entirely.
+No location is inferred from quests, profiles, navigation configuration,
+race, faction-template values or session/sample counters.
+
+The adapter has only const/value inputs and returned values, with no clock,
+reader, Lua, callbacks, logging, cache, commands or controller dependencies.
+It validates supplied provenance; it cannot authenticate a caller that labels
+old data as a new acquisition. A real sampler and runtime qualification remain
+future work. Class/race support likewise requires a separately qualified
+same-player/session acquisition before expanding this adapter.
+
+The future hook remains immediately after `WorldStateReader::Read` and
+`nowMs` acquisition in `WorldMonitor::Run` (`WorldMonitor.h:596-602`), before
+the invalid-read early continue and before ownership dispatch. That future
+work must stamp the start of the world read, perform the independent identity
+recheck, choose a freshness budget and emit observe-only diagnostics even
+for unavailable evidence. The monitor Run counter is session identity only;
+the caller must maintain a separate per-evaluation sample sequence. This
+checkpoint does not implement that hook or edit any protected controller.
+
+`tests/profile_world_evidence_adapter_test.cpp` covers valid mapping, level
+endpoints/implausible values, zero/mismatched GUIDs, invalid snapshots and
+pointer associations, missing/mismatched sessions and sample sequences,
+inclusive age/zero-age/future/stale/large timestamps, NaN and both infinities
+in every coordinate, zero coordinates, explicit Unknown fields, repeated
+calls after failure, const-input preservation, and selector propagation for
+level-only versus map/class-constrained profiles. Under MinGW the same test
+instantiates Capture against the actual `Objects::WorldState`; native tests
+use a small value fixture. Test discovery needs no harness changes.
+
+Adapter checkpoint validation:
+
+- Focused native C++20 compile/run with `-Wall -Wextra -Werror`: PASS.
+- MinGW i686 compile with the same warnings and actual WorldState: PASS.
+- `python3 tools/validate.py --jobs 4`: PASS, 110 C++ test executables,
+  42 audit Python tests, 13 QuestDB Python tests, SQL/TSV fixture, 10 Lua
+  fixtures, full MinGW build and diff check. All 245 validation records passed.
+  Results: `/tmp/wow-validation-4jlucjwz/results.json`.
+- Separate `cmake --build build`: PASS for DLL, testhost, loader and GUI.
+- `git diff --check` and untracked-file `--no-index --check`: PASS.
+- All eight protected files match checkpoint `386ddaf` with no diff.
+- `git status --short`: only this document modified, the adapter header and
+  its focused test untracked. No staged files or commit.
+- Runtime: NOT RUN / PENDING. No new WoW behavior is enabled or qualified.
 
 ## Regression and validation
 
