@@ -1,5 +1,203 @@
 # R0.1 unattended maintenance / connection audit
 
+## R0.1b.1 read-only lifecycle observer (2026-10-09)
+
+Starting restored HEAD: `a329e0bfead01999c7d7938081dc2b1c4e8ab477`, branch
+`codex/r01b-connection-observer`, initially clean worktree. This section is
+the current checkpoint; the earlier sections below retain their historical
+validation and runtime status.
+
+User-reported restored baseline: Arch Linux, Wine Staging 11.19, MinGW i686,
+CMake/Ninja build PASS; validator PASS with 104 C++ tests. GUI retained-handle
+injection, ObjectManager/LocalPlayer reads, and Stop Bot → detach → DLL unload
+with WoW remaining open are RUNTIME PASS for that baseline. The client remains
+WoW 1.12.1 build 5875, SHA256
+`b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`.
+The reported offline connection audit is `sourceSignatures=PASS`,
+`runtimeQualified=False`, `reconnectImplemented=False`. These baseline results
+alone do not qualify the observer; the manual lifecycle evidence is recorded below.
+
+### Source and ownership boundary
+
+Set `WOW_INTERNAL_CONNECTION_MODE=observe` in the **WoW process environment**.
+Bootstrap still verifies client identity, then bypasses `WaitForWorld` and the
+one-time ObjectManager probe. `WorldMonitor::Run` branches immediately, before
+even the NavMesh session lifetime, and returns after the separate observer.
+No Combat, Grind, navigation, DeathRecovery, AFK, vendor, quest, recovery or
+other gameplay/input controller is constructed or started on that branch.
+The unset variable takes the existing normal path without changes. Empty or
+unsupported configured values fail closed and unload; observe takes precedence
+over the water diagnostic and other workload settings. A missing GUI control
+channel also blocks/unloads, preserving an explicit Stop Bot path.
+
+`ConnectionLifecycleObserver5875` reuses `ConnectionEvidence5875::Observe`
+with bounded `ReadProcessMemory` reads and the existing read-only
+`WorldStateReader::Read`. No new offsets or signature assumptions were added.
+It polls every 250 ms, maintains GUI heartbeat even without a world snapshot,
+and reports the GUI active workload as Unknown. GUI IPC and diagnostic files
+are the only writes; no client memory write, hook, Lua execution, native action,
+login, EnterWorld, dialog click, movement, attack or AFK input is dispatched.
+Stop/unload uses its own teardown with no attack-stop or movement-hold call.
+It emits `BOT SESSION STOP`, marks detached, and returns to bootstrap unload.
+
+`CONNECTION OBSERVE` sample events appear in the normal log and lifecycle
+journal on the first sample and changes only. Their comparison excludes
+timestamps, heartbeat, position, health and surrounding units. Fields include:
+
+- `worldSnapshot` and `worldStage`, independent of the connection predicate.
+  Manager, player GUID and local-player pointer are logged only for a successful
+  current world snapshot; failed snapshots report those values as `unknown`.
+  Identity/pointer changes are observable but authorize no resume or action.
+- `sourceVerified`, `serverConnected=yes|no|unknown`, and allowlisted
+  `lastGlueScreen` with explicit `glueScreenSemantics=historical`.
+  Signature/read failure replaces prior success immediately; independent
+  historical screen evidence may survive an unavailable server-predicate read.
+- `glueVisibility`, `dialogState`, `loading`, `currentGlueScreen`,
+  `pendingGlueScreen`, `glueGeneration`, `disconnectConfirmed` and
+  `actionEligibility` remain explicitly `unknown`. Even a known false server
+  predicate does not identify a disconnect cause or a visible dialog.
+- `decision=observe_only inputOwner=none commands=none`, source reason,
+  process-alive evidence and sample/session timing.
+
+ObjectManager loss alone cannot become confirmed disconnect. A historical
+`charselect` or `login` name may coexist with a valid in-world snapshot and
+`serverConnected=yes`. Samples are sequential reads, not an atomic world/glue
+generation; short transitions can occur between polls. Unchanged samples are
+suppressed indefinitely while the GUI heartbeat continues. No successful sample
+is retained as a substitute for unknown evidence.
+
+### R0.1b.1 validation
+
+Focused C++ tests exercise mode parsing, unchanged-sample suppression, independent
+world/server/historical-screen evidence, return and identity changes, and failed
+reads replacing known values. The native-reader fixtures cover missing/mismatched
+signatures, changing owner/connection/screen reads, missing buffers, null and
+overflowing owners, relocated images and unrecognized strings. Python source
+ownership guards pin the immediate monitor return, bootstrap world-wait bypass,
+and observer dependency/action boundary. These guards are static evidence,
+not live proof that no input occurs.
+
+`python3 tools/validate.py --jobs 4`: **PASS**, 105 C++ tests, failures=[];
+39 audit Python tests, 13 QuestDB Python tests, SQL and all 10 Lua fixtures pass.
+Report: `/tmp/wow-validation-qweotz3t/results.json`.
+`cmake --build build`: **PASS** (MinGW DLL build in validation, followed by
+the separately requested build). `git diff --check`: **PASS**.
+After recording the manual qualification, the documentation-only update passed
+the same full validator (105 C++ tests; failures=[]), separate
+`cmake --build build` and `git diff --check`. Latest report:
+`/tmp/wow-validation-mqp8_k78/results.json`. `git status --short` was reviewed;
+only this audit was edited in that update, preserving the prior uncommitted
+observer implementation/test files. No commit was made.
+No WoW/GUI was launched during implementation. Subsequent user-performed runtime
+qualification is recorded below. Safe reconnect prerequisites remain unproven.
+
+### R0.1b.1 observed manual runtime qualification
+
+**R0.1b.1 READ-ONLY CONNECTION LIFECYCLE OBSERVER — RUNTIME PASS**
+
+Scope: normal world → character select → loading → same-world lifecycle only,
+including the observer's cooperative Stop Bot/detach/unload path. Evidence is
+the user's supplied observations from the completed manual session; no raw
+capture file, timestamps or session identifier were supplied for independent
+log inspection. No implementation defect is exposed by these observations,
+and no implementation change is made for this qualification.
+
+| Manually observed phase | World evidence | Independent connection evidence | Ownership evidence |
+| --- | --- | --- | --- |
+| Initial in-world | `worldSnapshot=valid`, `worldStage=complete`, `manager=0x08C1E008`, `playerGuid=0x000000000001AA56`, `localPlayer=0x143D0008` | `sourceVerified=yes`, `serverConnected=yes`, `lastGlueScreen=charselect`, `glueScreenSemantics=historical` | `mode=connection_observe`, `inputOwner=none`, `commands=none`, `decision=observe_only` |
+| Normal logout to character select | `worldSnapshot=unavailable`, `worldStage=manager_missing` | `serverConnected=yes`, `lastGlueScreen=charselect`, `disconnectConfirmed=unknown` | `inputOwner=none`, `commands=none` |
+| Normal Enter World/loading transition | `worldSnapshot=unavailable`, `worldStage=active_guid_missing` | `serverConnected=yes`, `disconnectConfirmed=unknown` | `inputOwner=none`, `commands=none` |
+| Returned to same character/world | `worldSnapshot=valid`, `worldStage=complete`, `manager=0x08565A08`, `playerGuid=0x000000000001AA56`, `localPlayer=0x16CF0008` | `sourceVerified=yes`, `serverConnected=yes` | `inputOwner=none`, `commands=none` |
+
+The initial sample explicitly reported `glueVisibility=unknown`,
+`dialogState=unknown`, `loading=unknown`, `currentGlueScreen=unknown`,
+`pendingGlueScreen=unknown`, `glueGeneration=unknown`,
+`disconnectConfirmed=unknown` and `actionEligibility=unknown`.
+The loading phase in the table is the user's visible lifecycle observation,
+not a reader classification of `active_guid_missing` as loading.
+
+The player GUID stayed identical across logout/loading/world return.
+ObjectManager changed `0x08C1E008` → `0x08565A08`; LocalPlayer changed
+`0x143D0008` → `0x16CF0008`. ObjectManager loss was not classified as disconnect,
+and historical `lastGlueScreen` was not treated as current visibility. This
+qualifies passive lifecycle observation, not automatic reconnect or gameplay
+owner reconciliation/resume.
+
+The user reports that grep for `GRIND`, `MOVEMENT INTENT`, `CombatController`,
+`AFK PROTECTION`, `VENDOR`, `Death14` and `QuestPolicy` produced no output in
+this observer session. Together with `inputOwner=none`, `commands=none` and
+the source ownership boundary, this supports the read-only qualification;
+absence of matching log lines alone is not independent proof of no input.
+
+Shutdown evidence, in reported order:
+
+1. GUI `stop_button` observed.
+2. `BOT SESSION STOP mode=connection_observe reason=stop_or_unload inputOwner=none commands=none`.
+3. `RUNTIME DETACHED` observed.
+4. DLL `unload_requested` observed.
+5. `wow_gui.exe` and `WoW.exe` remained running; `wow_loader.exe` was no longer running.
+
+Only this normal read-only lifecycle is RUNTIME PASS. Live disconnect-dialog
+visibility, loading classification, glue visibility/current or pending screen
+generation, safe login/action eligibility and reconnect remain unqualified.
+`tools/connection_client_audit.py` remains unchanged with
+`runtimeQualified=False` and `reconnectImplemented=False`. No forced network
+disconnect is part of this qualification. The supplied observations do not
+separately quantify unchanged-sample suppression or heartbeat cadence; their
+existing source/test evidence is not upgraded into a new runtime claim.
+
+**SOURCE GAP — RECONNECT NOT IMPLEMENTED**
+
+### Manual runtime qualification procedure (retained for repeat runs)
+
+Keep complete `build/wow-internal.log` and `build/wow-internal.lifecycle.log`
+from the same DLL session, plus manual timestamps of the visible UI steps.
+Use the existing configured Wine prefix and a fresh GUI/client launched with:
+
+```sh
+env WOW_INTERNAL_CONNECTION_MODE=observe wine ./build/wow_gui.exe
+```
+
+Use **Start WoW** so the retained handle and environment reach the client.
+Setting the variable only on a new loader cannot change an already-running
+WoW process's environment. Manually log in and enter the intended character,
+then press **Start Bot**. Check `CONNECTION OBSERVE CONFIG mode=observe` before
+continuing. No diagnostic marker means this run is not qualified as observe mode.
+
+1. **In-world:** record the initial valid snapshot, manager, player GUID and
+   local-player pointer. Expect `sourceVerified=yes` and a readable server
+   predicate; record the actual historical name without treating it as visible
+   UI. Wait briefly to verify unchanged samples stop while heartbeat advances.
+2. **Normal logout to character select:** manually use WoW's normal logout.
+   Record the visible screen time and any world-unavailable/stage transitions.
+   Server connection is sampled independently and may remain `yes` at character
+   select. `lastGlueScreen` is historical; all unproven fields must remain
+   `unknown`. A gap must never become a confirmed disconnect.
+3. **Normal Enter World/loading:** manually select the same character and click
+   Enter World. Record the visible loading interval and emitted changes. The
+   observer must neither click nor send input and must keep `loading=unknown`;
+   the human observation does not promote this reader into a loading detector.
+   A short transition missed between polls is unobserved, not proof it was absent.
+4. **Return to the same character/world:** require a new valid world sample and
+   compare the GUID with step 1. Record the current manager/local-player pointers
+   (they may differ), server predicate and historical name. No gameplay owner
+   may start on return. This is observed world recovery, never reconnect success.
+
+Finally press **Stop Bot**: require `BOT SESSION STOP mode=connection_observe`,
+`RUNTIME DETACHED` and DLL unload while WoW stays running, with no stop/hold/input
+command. Fail qualification if any gameplay controller, Lua, input dispatch or
+automatic UI action occurs, or if unknown evidence becomes invented UI/loading
+proof. Unknown source/read evidence must be investigated and recorded as an
+unqualified read, not accepted as disconnected. Absence of a log alone cannot
+prove no input; correlate the ownership source checks and visible behavior.
+Do not force a network disconnect. Any naturally encountered dialog remains
+manually observed and unqualified by this reader. To resume normal gameplay
+later, restart the GUI/client with the variable **unset**, not empty.
+
+**SOURCE GAP — RECONNECT NOT IMPLEMENTED**
+
+## Historical R0.1 baseline
+
 Starting HEAD: `069fe3dc0e859ec0c42539c608c4107ba9fb0458`.
 No WoW, GUI, Wine runtime, login action, or credential access was performed.
 R0.1 overall is **INCOMPLETE / SOURCE GAP**. This checkpoint addresses the

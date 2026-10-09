@@ -11,6 +11,10 @@ struct MemoryFixture
     std::map<std::uintptr_t, std::vector<unsigned char>> bytes;
     int ownerReads = 0;
     bool changeOwner = false;
+    int connectionReads = 0;
+    bool changeConnection = false;
+    int screenReads = 0;
+    bool changeScreen = false;
     template<class T> void Put(std::uintptr_t address, const T& value)
     {
         const auto* p = reinterpret_cast<const unsigned char*>(&value);
@@ -22,6 +26,9 @@ struct MemoryFixture
         const auto it = bytes.find(address);
         if (it == bytes.end() || it->second.size() != sizeof(value)) return false;
         std::memcpy(&value, it->second.data(), sizeof(value));
+        if ((address == 0x101b00 && changeConnection && ++connectionReads > 1) ||
+            (address == 0xb41478 && changeScreen && ++screenReads > 1))
+            reinterpret_cast<unsigned char*>(&value)[0] ^= 1;
         return true;
     }
     MemoryFixture()
@@ -78,6 +85,33 @@ int main()
     assert(std::string(m.Observe().lastGlueScreen) == "unknown");
     m.bytes.erase(0x101b00);
     assert(!m.Observe().serverConnectionKnown); // cannot reuse prior success
+
+    for (auto address : {0x8374a0,0x46d380,0x5ab490,0x46ce8f,0x46b860})
+    {
+        m = MemoryFixture{};
+        m.bytes.erase(address);
+        e = m.Observe();
+        assert(!e.signaturesKnown && !e.serverConnectionKnown);
+        assert(std::string(e.lastGlueScreen) == "unknown");
+    }
+    m = MemoryFixture{};
+    m.changeConnection = true;
+    e = m.Observe();
+    assert(!e.serverConnectionKnown); // torn predicate fails closed
+    assert(std::string(e.lastGlueScreen) == "charselect");
+    m = MemoryFixture{};
+    m.changeScreen = true;
+    e = m.Observe();
+    assert(e.serverConnectionKnown && e.serverConnected);
+    assert(std::string(e.lastGlueScreen) == "unknown");
+    m = MemoryFixture{};
+    m.bytes.erase(0xb41478);
+    e = m.Observe();
+    assert(e.serverConnectionKnown && e.serverConnected);
+    assert(std::string(e.lastGlueScreen) == "unknown");
+    m.bytes.erase(0xc28128);
+    e = m.Observe();
+    assert(!e.serverConnectionKnown && std::string(e.lastGlueScreen) == "unknown");
 
     // Existing world-gap diagnostics remain observational, not reconnect.
     Bot::DisconnectDiagnosticPolicy d;

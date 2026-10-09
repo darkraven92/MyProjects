@@ -15,6 +15,7 @@
 #include "Wow5875/Offsets.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -305,6 +306,16 @@ DWORD WINAPI BootstrapThread(
     Debug::Logger::Info(
         "WoW 1.12.1 build 5875 verified."
     );
+
+    // Observe glue/world transitions even when injection begins outside the
+    // world. Configured invalid modes also bypass gameplay and fail closed.
+    if (Bot::ParseConnectionMode(std::getenv("WOW_INTERNAL_CONNECTION_MODE")) !=
+        Bot::ConnectionMode::Normal)
+    {
+        Bot::WorldMonitor::Run();
+        UnloadSelf(module,
+            "GUI CONTROL 14H.2: connection observer exiting; unloading wow_internal.dll.");
+    }
 
     {
         Control::RuntimeControlChannel startupControl;

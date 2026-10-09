@@ -12,6 +12,7 @@
 #include "LivingWaterBlockPolicy.h"
 #include "DisconnectDiagnosticPolicy.h"
 #include "ConnectionEvidence5875.h"
+#include "ConnectionLifecycleObserver5875.h"
 #include "RuntimeRobustnessSupervisor.h"
 #include "CombatController.h"
 #include "DeathRecoveryController.h"
@@ -138,6 +139,14 @@ namespace Bot
     public:
         static void Run()
         {
+            const auto connectionMode = ParseConnectionMode(
+                std::getenv("WOW_INTERNAL_CONNECTION_MODE"));
+            if (connectionMode != ConnectionMode::Normal)
+            {
+                ConnectionLifecycleObserver5875::Run(connectionMode);
+                return;
+            }
+
             struct NavMeshSessionLifetime
             {
                 ~NavMeshSessionLifetime()
