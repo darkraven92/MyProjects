@@ -1,5 +1,36 @@
 # Project
 
+## R0.1b connection source qualification / incident reconstruction (2026-10-09)
+
+Starting HEAD `6b4407f9c3b1109f55052d72f1243f9205b28525` verified.
+**SOURCE GAP — RECONNECT NOT IMPLEMENTED.** R0.1 is still incomplete; no new
+gameplay phase, WoW/GUI launch, credentials access or reconnect action occurred.
+
+The complete `runtime-captures/r01-incident-2026-10-08.log` is now inspected.
+It shows TWO vendor trips: first food trip opened Wuark's MerchantFrame and
+failed return navigation; later full-bag trip failed five Wuark interactions
+(2.961 then 0.498 yd) and entered the hold. AFK threshold was on the earlier
+trip. The later movement/transport blocker has no raw flag operand in this
+capture; the only native flags sample is zero at 22:07. Do not widen masks.
+World absence lasted 25,494,129 ms; same player returned with a new manager,
+but this was passive/unattributed, not bot reconnect. A separate final process
+exit follows another short world gap. Full timeline and source evidence:
+[RUNTIME_CONNECTION_RELIABILITY_AUDIT.md](RUNTIME_CONNECTION_RELIABILITY_AUDIT.md).
+
+Local PE callbacks and patch/patch-2 MPQ GlueXML now prove native server
+connection and historical screen-storage semantics, plus typed disconnect UI
+behavior. A signature-validated **read-only** diagnostic logs serverConnection
+and lastGlueScreen at existing world diagnostic cadence. It never classifies
+historical screen as visible or OM loss as disconnected, and authorizes no
+action. Glue interpreter lifecycle, live dialog visibility, safe action
+preconditions, intended-character binding and full world-owner reconciliation
+remain gaps; no automatic reconnect or unsafe credential workaround is added.
+
+R0.1 maintenance retries/two fresh bag reads/idle AFK guards remain unchanged.
+All navigation 2000/4/2, terrain, DeathRecovery, combat and AFK300000 bounds
+remain unchanged. This is a diagnostic/source-audit subset, not R0.1 closure.
+Runtime PENDING. Validation results are recorded in the reliability audit.
+
 ## R0.1 unattended maintenance / connection reliability (2026-10-09)
 
 Active reliability work supersedes gameplay expansion. Starting HEAD:
@@ -13,7 +44,8 @@ explicit MaintenanceBlocked telemetry after exhaustion, two fresh bag-space
 observations to release that automatic hold, defensive preemption, and
 stationary maintenance AFK eligibility with unchanged native/UI guards.
 Raw AFK movement-mask diagnostics and a read-only incident audit are added.
-Exact incident merchant/flags require the missing full runtime log.
+The excerpt-only incident analysis below is historical; R0.1b above now has
+the complete log and corrects its trip ordering (later raw bits still absent).
 See [RUNTIME_CONNECTION_RELIABILITY_AUDIT.md](RUNTIME_CONNECTION_RELIABILITY_AUDIT.md).
 The maintenance/AFK subset is TEST PASS / BUILD PASS / DIFF CHECK PASS:
 full worktree 103 C++ tests, 30 audit Python tests, 13 QuestDB Python tests,

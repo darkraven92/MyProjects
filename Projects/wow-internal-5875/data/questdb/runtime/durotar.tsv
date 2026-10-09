@@ -1,6 +1,7 @@
 # wow-internal questdb runtime catalog v2
 # area=durotar_orc_warrior_1_12	map=1	class=warrior	race=orc
 Q	784	Vanquish the Betrayers	3	0	3139	3139	3	KillMob	3128	0	0	10	Kul Tiras Sailor	None	600	-1	0	0	0	7	0	825	0	1	supported	0
+M	784	0	0	0	14	0	0
 G	784	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
 T	784	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
 O	784	0	1	0	KillMob	3128	0	0	10	Kul Tiras Sailor	-1	0
@@ -85,6 +86,7 @@ S	784	1	-218.587	-5056.1	21.2766	28.0	QuestDB objective spawn 28
 S	784	1	-272.464	-5110.77	25.2435	28.0	QuestDB objective spawn 29
 D	784	1	-262.554	-5188.37	21.1489	28.0	QuestDB primary objective seed
 Q	786	Thwarting Kolkar Aggression	5	0	3140	3140	3	InteractGameObject	0	0	3189	1	Attack Plan: Valley of Trials	SenjinVillage	690	10	0	805	0	8	0	0	0	1	supported	1
+M	786	0	0	0	14	0	0
 G	786	1	-774.774	-4830.36	19.8326	5.0	QuestDB giver spawn 1
 T	786	1	-774.774	-4830.36	19.8326	5.0	QuestDB turn-in spawn 1
 O	786	0	1	0	InteractGameObject	0	0	3189	1	Attack Plan: Valley of Trials	10	0
@@ -96,6 +98,7 @@ OS	786	2	1	-974.429	-4406.92	29.2641	8.0	QuestDB objective 3 spawn 1
 S	786	1	-1056.98	-4596.39	25.8219	8.0	QuestDB objective spawn 1
 D	786	1	-1056.98	-4596.39	25.8219	8.0	QuestDB primary objective seed
 Q	791	Carry Your Weight	4	0	3147	3147	1	CollectItemFromMob	3119	4870	0	8	Kolkar Drudge	None	600	-1	0	0	0	7	0	0	0	1	supported	0
+M	791	0	0	0	14	0	0
 G	791	1	384.743	-4600.13	76.1716	5.0	QuestDB giver spawn 1
 T	791	1	384.743	-4600.13	76.1716	5.0	QuestDB turn-in spawn 1
 O	791	0	1	0	CollectItemFromMob	3119	4870	0	8	Kolkar Drudge	-1	0
@@ -139,6 +142,7 @@ S	791	1	-1083.06	-4716.26	15.5697	28.0	QuestDB objective spawn 18
 S	791	1	-916.154	-4749.1	21.2628	28.0	QuestDB objective spawn 19
 D	791	1	-987.174	-4676.82	26.8719	28.0	QuestDB primary objective seed
 Q	806	Dark Storms	4	0	3142	3142	1	CollectItemFromMob	3203	4869	0	1	Fizzle Darkstorm	None	600	-1	0	0	0	12	823	0	0	1	supported	0
+M	806	0	0	0	14	0	0
 G	806	1	287.265	-4724.88	13.2142	5.0	QuestDB giver spawn 1
 T	806	1	287.265	-4724.88	13.2142	5.0	QuestDB turn-in spawn 1
 O	806	0	1	0	CollectItemFromMob	3203	4869	0	1	Fizzle Darkstorm	-1	0
@@ -146,6 +150,7 @@ OS	806	0	1	868.614	-4189.56	-14.0285	28.0	QuestDB objective 1 spawn 1
 S	806	1	868.614	-4189.56	-14.0285	28.0	QuestDB objective spawn 1
 D	806	1	868.614	-4189.56	-14.0285	28.0	QuestDB primary objective seed
 Q	808	Minshina's Skull	4	0	3188	3188	1	CollectWorldItem	0	4864	3237	1	Imprisoned Darkspear	EchoIsles	770	3	2424	805	0	9	0	0	0	1	supported	0
+M	808	0	0	0	14	0	0
 G	808	1	-825.636	-4920.76	19.7409	5.0	QuestDB giver spawn 1
 T	808	1	-825.636	-4920.76	19.7409	5.0	QuestDB turn-in spawn 1
 O	808	0	1	0	CollectWorldItem	0	4864	3237	1	Imprisoned Darkspear	3	2424
@@ -165,13 +170,16 @@ S	808	1	-1287.25	-5530.0	15.2078	22.0	QuestDB objective spawn 6
 S	808	1	-1287.58	-5528.78	15.2078	22.0	QuestDB objective spawn 7
 D	808	1	-1288.12	-5529.06	15.2078	22.0	QuestDB primary objective seed
 Q	809	Ak'Zeloth	4	0	3216	3521	0	TravelReport	3521	0	0	1	Ak'Zeloth	None	100	-1	0	0	1	13	829	924	0	1	supported	0
+M	809	0	0	0	14	0	0
 G	809	1	1800.66	-4374.51	-17.3475	5.0	QuestDB giver spawn 1
 T	809	1	256.258	-3693.95	26.4771	5.0	QuestDB turn-in spawn 1
 Q	812	Need for a Cure	7	0	3190	3190	1	Unknown	0	4904	0	1	item 4904	None	600	-1	0	0	0	9	0	0	0	0	objective 1 unsupported/unresolved	0
+M	812	0	0	0	14	0	0
 G	812	1	1152.64	-4159.0	20.236	5.0	QuestDB giver spawn 1
 T	812	1	1152.64	-4159.0	20.236	5.0	QuestDB turn-in spawn 1
 O	812	0	1	0	Unknown	0	4904	0	1	item 4904	-1	0
 Q	813	Finding the Antidote	7	0	3189	3189	1	CollectItemFromMob	3127	4886	0	4	Venomtail Scorpid	None	600	-1	0	0	0	9	-812	0	0	1	supported	0
+M	813	0	0	0	14	0	0
 G	813	1	1772.72	-4343.18	-7.81578	5.0	QuestDB giver spawn 1
 T	813	1	1772.72	-4343.18	-7.81578	5.0	QuestDB turn-in spawn 1
 O	813	0	1	0	CollectItemFromMob	3127	4886	0	4	Venomtail Scorpid	-1	0
@@ -273,6 +281,7 @@ S	813	1	1160.42	-4286.0	20.983	28.0	QuestDB objective spawn 47
 S	813	1	1210.1	-4283.0	22.527	28.0	QuestDB objective spawn 48
 D	813	1	1294.18	-4970.53	2.84001	28.0	QuestDB primary objective seed
 Q	815	Break a Few Eggs	6	0	3191	3191	1	CollectWorldItem	0	4890	3240	3	Taillasher Eggs	None	600	3	2495	0	0	8	0	0	0	1	supported	0
+M	815	0	0	0	14	0	0
 G	815	1	312.099	-4664.95	16.4254	5.0	QuestDB giver spawn 1
 T	815	1	312.099	-4664.95	16.4254	5.0	QuestDB turn-in spawn 1
 O	815	0	1	0	CollectWorldItem	0	4890	3240	3	Taillasher Eggs	3	2495
@@ -306,6 +315,7 @@ S	815	1	-1112.72	-5152.75	0.909302	22.0	QuestDB objective spawn 13
 S	815	1	-1352.6	-5123.35	1.75954	22.0	QuestDB objective spawn 14
 D	815	1	-821.378	-5646.5	5.34579	22.0	QuestDB primary objective seed
 Q	816	Lost But Not Forgotten	8	0	3193	3193	1	CollectItemFromMob	3110	4891	0	1	Dreadmaw Crocolisk	None	600	-1	0	0	0	11	0	0	0	1	supported	0
+M	816	0	0	0	14	0	0
 G	816	1	742.385	-4241.65	18.762	5.0	QuestDB giver spawn 1
 T	816	1	742.385	-4241.65	18.762	5.0	QuestDB turn-in spawn 1
 O	816	0	1	0	CollectItemFromMob	3110	4891	0	1	Dreadmaw Crocolisk	-1	0
@@ -409,6 +419,7 @@ S	816	1	12.6142	-3732.27	17.2314	28.0	QuestDB objective spawn 48
 S	816	1	-214.576	-3853.52	21.3208	28.0	QuestDB objective spawn 49
 D	816	1	887.155	-3811.98	15.4663	28.0	QuestDB primary objective seed
 Q	817	Practical Prey	5	0	3194	3194	1	CollectItemFromMob	3121	4892	0	4	Durotar Tiger	EchoIsles	740	-1	0	805	0	8	0	0	0	1	supported	0
+M	817	0	0	0	14	0	0
 G	817	1	-797.523	-4921.17	22.9571	5.0	QuestDB giver spawn 1
 T	817	1	-797.523	-4921.17	22.9571	5.0	QuestDB turn-in spawn 1
 O	817	0	1	0	CollectItemFromMob	3121	4892	0	4	Durotar Tiger	-1	0
@@ -474,6 +485,7 @@ S	817	1	-1411.09	-5210.54	4.25019	28.0	QuestDB objective spawn 29
 S	817	1	-1413.26	-5152.44	2.84778	28.0	QuestDB objective spawn 30
 D	817	1	-1553.21	-5350.96	4.72484	28.0	QuestDB primary objective seed
 Q	818	A Solvent Spirit	5	0	3304	3304	2	CollectItemFromMob	3103	4887	0	4	Makrura Clacker	SenjinCoast	760	-1	0	805	0	7	0	0	0	1	supported	0
+M	818	0	0	0	14	0	0
 G	818	1	-813.994	-4920.57	19.4341	5.0	QuestDB giver spawn 1
 T	818	1	-813.994	-4920.57	19.4341	5.0	QuestDB turn-in spawn 1
 O	818	0	1	0	CollectItemFromMob	3103	4887	0	4	Makrura Clacker	-1	0
@@ -613,9 +625,11 @@ S	818	1	-1012.46	-4994.26	-6.20651	28.0	QuestDB objective spawn 40
 S	818	1	151.385	-5280.08	-10.2197	28.0	QuestDB objective spawn 41
 D	818	1	52.0649	-5411.03	-21.5256	28.0	QuestDB primary objective seed
 Q	823	Report to Orgnil	4	0	3188	3142	0	TravelReport	3142	0	0	1	Orgnil Soulscar	RazorHillRoad	100	-1	0	805	1	7	0	0	0	1	supported	0
+M	823	0	0	0	14	0	0
 G	823	1	-825.636	-4920.76	19.7409	5.0	QuestDB giver spawn 1
 T	823	1	287.265	-4724.88	13.2142	5.0	QuestDB turn-in spawn 1
 Q	825	From The Wreckage....	3	0	3139	3139	1	CollectWorldItem	0	4863	3236	3	Gnomish Toolbox	None	600	3	2422	0	0	8	784	0	0	1	supported	0
+M	825	0	0	0	14	0	0
 G	825	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
 T	825	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
 O	825	0	1	0	CollectWorldItem	0	4863	3236	3	Gnomish Toolbox	3	2422
@@ -661,6 +675,7 @@ S	825	1	-76.2622	-5358.88	-19.4791	22.0	QuestDB objective spawn 19
 S	825	1	-60.0938	-5336.67	-20.281	22.0	QuestDB objective spawn 20
 D	825	1	-80.2491	-5386.02	-14.9874	22.0	QuestDB primary objective seed
 Q	826	Zalazane	4	0	3188	3188	3	KillMob	3207	0	0	8	Hexed Troll	EchoIsles	790	-1	0	805	0	10	0	0	0	1	supported	0
+M	826	0	0	0	14	0	0
 G	826	1	-825.636	-4920.76	19.7409	5.0	QuestDB giver spawn 1
 T	826	1	-825.636	-4920.76	19.7409	5.0	QuestDB turn-in spawn 1
 O	826	0	1	0	KillMob	3207	0	0	8	Hexed Troll	-1	0
@@ -712,6 +727,7 @@ S	826	1	-1287.27	-5481.16	4.22497	28.0	QuestDB objective spawn 14
 S	826	1	-1118.81	-5485.68	7.90532	28.0	QuestDB objective spawn 15
 D	826	1	-1134.72	-5544.55	10.623	28.0	QuestDB primary objective seed
 Q	827	Skull Rock	4	0	3208	3208	1	CollectItemFromMob	3195	4871	0	6	Burning Blade Thug	None	600	-1	0	0	0	12	828	0	0	1	supported	0
+M	827	0	0	0	14	0	0
 G	827	1	1102.09	-4945.36	15.6857	5.0	QuestDB giver spawn 1
 T	827	1	1102.09	-4945.36	15.6857	5.0	QuestDB turn-in spawn 1
 O	827	0	1	0	CollectItemFromMob	3195	4871	0	6	Burning Blade Thug	-1	0
@@ -729,20 +745,25 @@ S	827	1	828.064	-4766.75	36.8359	28.0	QuestDB objective spawn 5
 S	827	1	779.311	-4738.29	38.5627	28.0	QuestDB objective spawn 6
 D	827	1	781.005	-4772.92	36.7114	28.0	QuestDB primary objective seed
 Q	828	Margoz	4	0	3142	3208	0	TravelReport	3208	0	0	1	Margoz	None	100	-1	0	0	1	12	806	827	0	1	supported	0
+M	828	0	0	0	14	0	0
 G	828	1	287.265	-4724.88	13.2142	5.0	QuestDB giver spawn 1
 T	828	1	1102.09	-4945.36	15.6857	5.0	QuestDB turn-in spawn 1
 Q	829	Neeru Fireblade	4	0	3208	3216	1	Unknown	0	6658	0	1	item 6658	None	600	-1	0	0	0	12	827	809	0	0	objective 1 unsupported/unresolved	0
+M	829	0	0	0	14	0	0
 G	829	1	1102.09	-4945.36	15.6857	5.0	QuestDB giver spawn 1
 T	829	1	1800.66	-4374.51	-17.3475	5.0	QuestDB turn-in spawn 1
 O	829	0	1	0	Unknown	0	6658	0	1	item 6658	-1	0
 Q	830	The Admiral's Orders	1	0	0	3139	1	Unknown	0	4883	0	1	item 4883	None	600	-1	0	0	0	7	0	831	0	0	missing giver relation; objective 1 unsupported/unresolved	0
+M	830	0	0	0	14	0	0
 T	830	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
 O	830	0	1	0	Unknown	0	4883	0	1	item 4883	-1	0
 Q	831	The Admiral's Orders	1	0	3139	3230	1	Unknown	0	4883	0	1	item 4883	None	600	-1	0	0	0	7	830	0	0	0	objective 1 unsupported/unresolved	0
+M	831	0	0	0	14	0	0
 G	831	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
 T	831	1	1939.05	-4133.25	40.9998	5.0	QuestDB turn-in spawn 1
 O	831	0	1	0	Unknown	0	4883	0	1	item 4883	-1	0
 Q	832	Burning Shadows	4	0	0	3216	1	CollectItemFromMob	3204	4903	0	1	Gazz'uz	None	600	-1	0	0	0	12	0	0	0	0	missing giver relation	0
+M	832	0	0	0	14	0	0
 T	832	1	1800.66	-4374.51	-17.3475	5.0	QuestDB turn-in spawn 1
 O	832	0	1	0	CollectItemFromMob	3204	4903	0	1	Gazz'uz	-1	0
 OS	832	0	1	1454.2	-4701.82	-2.62193	28.0	QuestDB objective 1 spawn 1
@@ -755,6 +776,7 @@ S	832	1	1497.54	-4744.14	18.0121	28.0	QuestDB objective spawn 3
 S	832	1	1465.78	-4683.74	6.62599	28.0	QuestDB objective spawn 4
 D	832	1	1454.2	-4701.82	-2.62193	28.0	QuestDB primary objective seed
 Q	834	Winds in the Desert	7	0	3293	3293	1	CollectWorldItem	0	4918	3290	5	Stolen Supply Sack	None	600	3	2491	0	0	9	0	835	0	1	supported	0
+M	834	0	0	0	14	0	0
 G	834	1	999.763	-4414.4	14.4718	5.0	QuestDB giver spawn 1
 T	834	1	999.763	-4414.4	14.4718	5.0	QuestDB turn-in spawn 1
 O	834	0	1	0	CollectWorldItem	0	4918	3290	5	Stolen Supply Sack	3	2491
@@ -780,6 +802,7 @@ S	834	1	829.436	-4695.52	12.4961	22.0	QuestDB objective spawn 9
 S	834	1	900.762	-4610.89	17.0328	22.0	QuestDB objective spawn 10
 D	834	1	596.293	-4505.19	13.0419	22.0	QuestDB primary objective seed
 Q	835	Securing the Lines	7	0	3293	3293	2	KillMob	3117	0	0	12	Dustwind Savage	None	600	-1	0	0	0	11	834	0	0	1	supported	0
+M	835	0	0	0	14	0	0
 G	835	1	999.763	-4414.4	14.4718	5.0	QuestDB giver spawn 1
 T	835	1	999.763	-4414.4	14.4718	5.0	QuestDB turn-in spawn 1
 O	835	0	1	0	KillMob	3117	0	0	12	Dustwind Savage	-1	0
@@ -834,6 +857,7 @@ S	835	1	935.446	-4781.74	21.9261	28.0	QuestDB objective spawn 14
 S	835	1	1072.86	-4681.6	13.8102	28.0	QuestDB objective spawn 15
 D	835	1	968.545	-4702.7	30.2607	28.0	QuestDB primary objective seed
 Q	837	Encroachment	6	0	3139	3139	4	KillMob	3111	0	0	4	Razormane Quilboar	None	600	-1	0	0	0	10	0	0	0	1	supported	0
+M	837	0	0	0	14	0	0
 G	837	1	274.988	-4709.3	17.5719	5.0	QuestDB giver spawn 1
 T	837	1	274.988	-4709.3	17.5719	5.0	QuestDB turn-in spawn 1
 O	837	0	1	0	KillMob	3111	0	0	4	Razormane Quilboar	-1	0
@@ -932,14 +956,17 @@ S	837	1	85.4167	-4543.75	58.0721	28.0	QuestDB objective spawn 14
 S	837	1	110.593	-4572.87	58.2189	28.0	QuestDB objective spawn 15
 D	837	1	18.2329	-4617.23	44.7297	28.0	QuestDB primary objective seed
 Q	840	Conscript of the Horde	10	0	3336	3337	1	Unknown	0	4992	0	1	item 4992	None	600	-1	0	0	0	12	0	842	0	0	objective 1 unsupported/unresolved	0
+M	840	0	0	0	14	0	0
 G	840	1	271.805	-4650.83	11.7894	5.0	QuestDB giver spawn 1
 T	840	1	303.432	-3686.16	27.1502	5.0	QuestDB turn-in spawn 1
 O	840	0	1	0	Unknown	0	4992	0	1	item 4992	-1	0
 Q	842	Crossroads Conscription	10	0	3337	3338	1	Unknown	0	4995	0	1	item 4995	None	600	-1	0	0	0	12	840	0	0	0	objective 1 unsupported/unresolved	0
+M	842	0	0	0	14	0	0
 G	842	1	303.432	-3686.16	27.1502	5.0	QuestDB giver spawn 1
 T	842	1	-482.475	-2670.19	97.522	5.0	QuestDB turn-in spawn 1
 O	842	0	1	0	Unknown	0	4995	0	1	item 4995	-1	0
 Q	924	The Demon Seed	9	0	3521	3521	1	InteractGameObject	0	0	3525	1	The Altar of Fire	None	600	10	0	0	0	14	809	0	0	1	supported	0
+M	924	0	0	0	14	0	0
 G	924	1	256.258	-3693.95	26.4771	5.0	QuestDB giver spawn 1
 T	924	1	256.258	-3693.95	26.4771	5.0	QuestDB turn-in spawn 1
 O	924	0	1	0	InteractGameObject	0	0	3525	1	The Altar of Fire	10	0
@@ -947,21 +974,26 @@ OS	924	0	1	324.017	-2238.79	212.078	8.0	QuestDB objective 1 spawn 1
 S	924	1	324.017	-2238.79	212.078	8.0	QuestDB objective spawn 1
 D	924	1	324.017	-2238.79	212.078	8.0	QuestDB primary objective seed
 Q	926	Flawed Power Stone	1	0	5619	5619	0	TravelReport	5619	0	0	1	Flawed Power Stone	None	600	-1	0	0	0	14	-924	0	0	1	supported	0
+M	926	0	0	0	14	0	0
 G	926	1	259.176	-3694.17	27.0924	5.0	QuestDB giver spawn 1
 T	926	1	259.176	-3694.17	27.0924	5.0	QuestDB turn-in spawn 1
 Q	2161	A Peon's Burden	1	0	6786	6928	1	Unknown	0	7629	0	1	item 7629	None	600	-1	0	0	0	5	0	0	0	0	objective 1 unsupported/unresolved	0
+M	2161	0	0	0	14	0	0
 G	2161	1	-599.449	-4715.32	35.2296	5.0	QuestDB giver spawn 1
 T	2161	1	340.362	-4686.29	16.5411	5.0	QuestDB turn-in spawn 1
 O	2161	0	1	0	Unknown	0	7629	0	1	item 7629	-1	0
 Q	2383	Simple Parchment	1	0	3143	3153	1	Unknown	0	12635	0	1	item 12635	None	600	-1	0	0	0	1	788	0	0	0	objective 1 unsupported/unresolved	0
+M	2383	50	1	0	-81	0	0
 G	2383	1	-600.132	-4186.19	41.2663	5.0	QuestDB giver spawn 1
 T	2383	1	-639.344	-4230.19	38.5605	5.0	QuestDB turn-in spawn 1
 O	2383	0	1	0	Unknown	0	12635	0	1	item 12635	-1	0
 Q	7664	Ivory Raptor Replacement	60	0	7952	7952	1	Unknown	0	13317	0	1	item 13317	None	600	-1	0	0	0	1	0	0	0	0	objective 1 unsupported/unresolved	0
+M	7664	178	0	0	14	0	0
 G	7664	1	-858.232	-4882.66	22.1158	5.0	QuestDB giver spawn 1
 T	7664	1	-858.232	-4882.66	22.1158	5.0	QuestDB turn-in spawn 1
 O	7664	0	1	0	Unknown	0	13317	0	1	item 13317	-1	0
 Q	7665	Red Raptor Replacement	60	0	7952	7952	1	Unknown	0	8586	0	1	item 8586	None	600	-1	0	0	0	1	0	0	0	0	objective 1 unsupported/unresolved	0
+M	7665	178	0	0	14	0	0
 G	7665	1	-858.232	-4882.66	22.1158	5.0	QuestDB giver spawn 1
 T	7665	1	-858.232	-4882.66	22.1158	5.0	QuestDB turn-in spawn 1
 O	7665	0	1	0	Unknown	0	8586	0	1	item 8586	-1	0

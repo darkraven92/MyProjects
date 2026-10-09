@@ -1,5 +1,10 @@
 #pragma once
 
+#include "QuestFocusPolicy.h"
+#include "QuestObjectiveDispatchPolicy.h"
+#include "QuestGraph.h"
+#include "QuestDeferPolicy.h"
+
 #include "QuestPlannerTypes.h"
 #include "ValleyOfTrialsProfiles.h"
 
@@ -72,6 +77,13 @@ namespace Bot
         }
 
     public:
+        // Use the verified revisit boundary, not a second ownership model.
+        // Live snapshots/progress still refresh while selection is held.
+        static bool MayReplaceSelection(const QuestRevisitBoundary& boundary,
+            bool deathOwned = false)
+        {
+            return !deathOwned && CanEvaluateQuestRevisit(boundary);
+        }
         static const char* ActionName(
             QuestPlannerAction action)
         {
@@ -85,6 +97,10 @@ namespace Bot
                     return "ExecuteObjective";
                 case QuestPlannerAction::DiscoverPickup:
                     return "DiscoverPickup";
+                case QuestPlannerAction::TemporarilyBlocked:
+                    return "TemporarilyBlocked";
+                case QuestPlannerAction::Deferred:
+                    return "Deferred";
                 case QuestPlannerAction::UnsupportedActiveQuest:
                     return "UnsupportedActiveQuest";
                 default:
@@ -107,10 +123,16 @@ namespace Bot
                     return "CollectWorldItem";
                 case QuestObjectiveType::UseItemOnUnit:
                     return "UseItemOnUnit";
+                case QuestObjectiveType::UseQuestItemAtLocation:
+                    return "UseQuestItemAtLocation";
+                case QuestObjectiveType::UseItemAtGameObject:
+                    return "UseItemAtGameObject";
                 case QuestObjectiveType::InteractGameObject:
                     return "InteractGameObject";
                 case QuestObjectiveType::TravelReport:
                     return "TravelReport";
+                case QuestObjectiveType::ExploreOrAreaTrigger:
+                    return "ExploreOrAreaTrigger";
                 default:
                     return "Unknown";
             }
@@ -159,7 +181,10 @@ namespace Bot
         static QuestPlannerPlan Evaluate(
             const QuestPlannerSnapshot& snapshot,
             const std::set<int>* temporarilyBlockedQuestIds = nullptr,
-            const std::set<int>* completedQuestIds = nullptr)
+            const std::set<int>* completedQuestIds = nullptr,
+            int focusQuestId = 0,
+            const std::set<int>* deferredQuestIds = nullptr,
+            const std::vector<QuestProfile>* catalogue = nullptr)
         {
             QuestPlannerPlan plan{};
 
@@ -176,6 +201,7 @@ namespace Bot
                 int score = 0;
                 int activeObjectiveIndex = -1;
                 bool blocked = false;
+                bool deferred = false;
             };
 
             std::vector<Candidate> candidates;
@@ -185,11 +211,49 @@ namespace Bot
                 const auto* profile = ValleyOfTrialsProfiles::Find(
                     entry,
                     snapshot.classToken,
-                    completedQuestIds);
+                    completedQuestIds, 0, catalogue);
 
-                if (profile == nullptr || !profile->automatable)
+                // In an explicitly scoped first-quest run, unrelated log
+                // entries neither become objectives nor block discovery of
+                // the requested quest. Unknown/ambiguous identity fails
+                // closed; it is never guessed from a title alone.
+                if (focusQuestId != 0 &&
+                    (profile == nullptr ||
+                     !QuestFocusPolicy::Allows(focusQuestId, profile->questId)))
+                    continue;
+
+                if (profile == nullptr)
                 {
                     plan.unknownActiveTitles.push_back(entry.title);
+                    plan.candidateEvaluations.push_back({0, QuestEligibility::AmbiguousMetadata,
+                        QuestRuntimeSupport::MissingData, false, false});
+                    continue;
+                }
+
+                const int activeObjectiveIndex =
+                    SelectActiveObjectiveIndex(*profile, entry);
+                auto classification = QuestClassificationPolicy::ClassifyStep(*profile, activeObjectiveIndex);
+                if (!catalogue)
+                    if (const auto* node = ValleyOfTrialsProfiles::Graph().Find(profile->questId);
+                        node && !node->structurallyValid)
+                        classification = node->classification;
+                QuestEligibilityContext context;
+                context.level = snapshot.playerLevel;
+                context.classMask = QuestEligibilityPolicy::ClassMask(snapshot.classToken);
+                if (completedQuestIds) context.completed = *completedQuestIds;
+                context.active = true;
+                context.liveComplete = entry.complete;
+                context.blocked = temporarilyBlockedQuestIds && temporarilyBlockedQuestIds->count(profile->questId);
+                context.deferred = deferredQuestIds && deferredQuestIds->count(profile->questId);
+                const auto eligibility = QuestEligibilityPolicy::Evaluate(*profile, classification, context);
+                plan.candidateEvaluations.push_back({profile->questId, eligibility, classification.support,
+                    context.deferred && !entry.complete, context.blocked && !entry.complete});
+                if (eligibility != QuestEligibility::AlreadyActive &&
+                    eligibility != QuestEligibility::ReadyForTurnIn &&
+                    eligibility != QuestEligibility::Deferred &&
+                    eligibility != QuestEligibility::TemporarilyBlocked)
+                {
+                    plan.nonExecutableQuestIds.push_back(profile->questId);
                     continue;
                 }
 
@@ -206,25 +270,40 @@ namespace Bot
                         temporarilyBlockedQuestIds->end();
                 if (blocked)
                     ++plan.waveBlockedCount;
+                const bool deferred = !entry.complete &&
+                    deferredQuestIds != nullptr &&
+                    deferredQuestIds->find(profile->questId) !=
+                        deferredQuestIds->end();
+                if (deferred)
+                    ++plan.waveDeferredCount;
 
                 candidates.push_back(
                     {
                         profile,
                         &entry,
                         Score(*profile, entry.complete),
-                        SelectActiveObjectiveIndex(*profile, entry),
-                        blocked
+                        activeObjectiveIndex,
+                        blocked,
+                        deferred
                     });
             }
 
             if (candidates.empty())
             {
+                if (!plan.nonExecutableQuestIds.empty())
+                {
+                    plan.action = QuestPlannerAction::UnsupportedActiveQuest;
+                    plan.reason =
+                        "active profiled quest has no dispatchable executor "
+                        "for its current objective.";
+                    return plan;
+                }
                 if (!plan.unknownActiveTitles.empty())
                 {
                     plan.action = QuestPlannerAction::UnsupportedActiveQuest;
                     plan.reason =
                         "active quest exists but is either absent from the "
-                        "database/profile catalogue or deferred because its "
+                        "database/profile catalogue or non-executable because its "
                         "objective pattern has no generic executor yet.";
                     return plan;
                 }
@@ -298,7 +377,7 @@ namespace Bot
                 {
                     return candidate.entry != nullptr &&
                            !candidate.entry->complete &&
-                           !candidate.blocked &&
+                           !candidate.blocked && !candidate.deferred &&
                            !candidate.profile->optional &&
                            !candidate.profile->hubExit;
                 });
@@ -324,7 +403,7 @@ namespace Bot
                     {
                         return candidate.entry != nullptr &&
                                !candidate.entry->complete &&
-                               !candidate.blocked &&
+                               !candidate.blocked && !candidate.deferred &&
                                candidate.profile->optional &&
                                !candidate.profile->hubExit;
                     });
@@ -339,7 +418,7 @@ namespace Bot
                     {
                         return candidate.entry != nullptr &&
                                !candidate.entry->complete &&
-                               !candidate.blocked &&
+                               !candidate.blocked && !candidate.deferred &&
                                candidate.profile->hubExit;
                     });
             }
@@ -348,12 +427,14 @@ namespace Bot
             {
                 // Bounded-failure policy: if unfinished work is quarantined,
                 // hold planner ownership until the quarantine timer expires.
-                if (plan.waveBlockedCount > 0)
+                if (plan.waveDeferredCount > 0 || plan.waveBlockedCount > 0)
                 {
-                    plan.action = QuestPlannerAction::UnsupportedActiveQuest;
+                    plan.action = plan.waveDeferredCount > 0
+                        ? QuestPlannerAction::Deferred
+                        : QuestPlannerAction::TemporarilyBlocked;
                     plan.reason =
-                        "all remaining supported quest work is temporarily "
-                        "quarantined after bounded runtime/objective failures.";
+                        "all remaining supported quest work is deferred or "
+                        "temporarily blocked; keep planner ownership.";
                     return plan;
                 }
 
@@ -378,7 +459,7 @@ namespace Bot
                     {
                         return candidate.entry != nullptr &&
                                !candidate.entry->complete &&
-                               !candidate.blocked &&
+                               !candidate.blocked && !candidate.deferred &&
                                candidate.profile->optional;
                     });
 
@@ -419,7 +500,7 @@ namespace Bot
                 for (const auto& candidate : candidates)
                 {
                     if (candidate.entry->complete ||
-                        candidate.blocked ||
+                        candidate.blocked || candidate.deferred ||
                         candidate.profile->routeGroup != selected.profile->routeGroup)
                     {
                         continue;
@@ -433,7 +514,8 @@ namespace Bot
                     plan.routeBundle.end(),
                     [](const QuestProfile* a, const QuestProfile* b)
                     {
-                        return a->priority > b->priority;
+                        return a->priority != b->priority ? a->priority > b->priority
+                            : a->questId < b->questId;
                     });
             }
 

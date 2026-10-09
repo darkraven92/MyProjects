@@ -32,14 +32,15 @@ namespace Control
         volatile LONG activeMode = static_cast<LONG>(BotMode::Unknown);
         volatile LONG runtimeState = static_cast<LONG>(BotRunState::Unknown);
         volatile LONG heartbeat = 0;
+        volatile LONG vendorAutomationEnabled = 0;
     };
 
     class RuntimeControlChannel
     {
     private:
         static constexpr DWORD Magic = 0x32484357; // WCH2
-        static constexpr DWORD Version = 2;
-        static constexpr wchar_t MappingName[] = L"WowInternal5875Control14H2";
+        static constexpr DWORD Version = 3;
+        static constexpr wchar_t MappingName[] = L"WowInternal5875Control14H2V3";
 
         HANDLE mapping_ = nullptr;
         RuntimeControlState* state_ = nullptr;
@@ -127,6 +128,7 @@ namespace Control
                 InterlockedExchange(&state_->activeMode, static_cast<LONG>(BotMode::Unknown));
                 InterlockedExchange(&state_->runtimeState, static_cast<LONG>(BotRunState::Unknown));
                 InterlockedExchange(&state_->heartbeat, 0);
+                InterlockedExchange(&state_->vendorAutomationEnabled, 0);
             }
 
             return true;
@@ -174,6 +176,18 @@ namespace Control
             if (!state_)
                 return fallback;
             return state_->runRequested != 0;
+        }
+
+        void RequestVendorAutomation(bool enabled)
+        {
+            if (!state_)
+                return;
+            InterlockedExchange(&state_->vendorAutomationEnabled, enabled ? 1 : 0);
+        }
+
+        bool VendorAutomationEnabled(bool fallback = false) const
+        {
+            return state_ ? state_->vendorAutomationEnabled != 0 : fallback;
         }
 
         void RequestMode(BotMode mode)

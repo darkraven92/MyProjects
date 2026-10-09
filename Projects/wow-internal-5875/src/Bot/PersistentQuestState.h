@@ -1,4 +1,5 @@
 #pragma once
+#include "QuestOfferResolutionPolicy.h"
 
 #include "VanillaQuestDatabase.h"
 #include "../Debug/Logger.h"
@@ -153,6 +154,7 @@ namespace Bot
 
             int version = 0;
             int fileLevel = 0;
+            int giverAuditVersion = 0;
             std::uint64_t fileGuid = 0;
             std::set<int> fileCompleted;
             std::set<std::uint32_t> fileChecked;
@@ -176,6 +178,8 @@ namespace Bot
                     fileGuid = ParseGuid(value);
                 else if (key == "level")
                     fileLevel = std::atoi(value.c_str());
+                else if (key == "giverAuditVersion")
+                    giverAuditVersion = std::atoi(value.c_str());
                 else if (key == "completed")
                 {
                     const int questId = std::atoi(value.c_str());
@@ -207,8 +211,11 @@ namespace Bot
             completedQuestIds.insert(fileCompleted.begin(), fileCompleted.end());
             storedLevel_ = fileLevel;
 
-            if (fileLevel > 0 && fileLevel == storedLevel_)
+            if (fileLevel > 0 && fileLevel == storedLevel_ &&
+                QuestOfferResolutionPolicy::RestoreEmptyCache(giverAuditVersion))
                 checkedGiverEntries.insert(fileChecked.begin(), fileChecked.end());
+            else if(!fileChecked.empty())
+                Debug::Logger::Info("QUEST GIVER CACHE result=reaudit reason=unverified_legacy_empty_cache completionLedger=preserved");
 
             return true;
         }
@@ -235,6 +242,7 @@ namespace Bot
                 output << "version=" << FormatVersion << "\n";
                 output << "guid=0x" << GuidHex(characterGuid_) << "\n";
                 output << "level=" << currentLevel << "\n";
+                output << "giverAuditVersion=" << QuestOfferResolutionPolicy::EmptyCacheVersion << "\n";
                 for (const int questId : completedQuestIds)
                     output << "completed=" << questId << "\n";
                 for (const auto giver : checkedGiverEntries)

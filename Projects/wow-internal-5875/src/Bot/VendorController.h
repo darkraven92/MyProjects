@@ -1,12 +1,18 @@
 #pragma once
+#include "EquipmentDurabilityProbe.h"
+#include "QuestMaintenancePolicy.h"
 
 #include "AutonomousMaintenancePolicy.h"
 #include "AutoSellItemPolicy.h"
 #include "ClickToMoveController.h"
 #include "ConsumableClassificationPolicy.h"
-#include "EquipmentDurabilityProbe.h"
 #include "GameThreadDispatcher.h"
 #include "GrindBagMonitor.h"
+#include "ServiceHubSelectionPolicy.h"
+#include "ServiceHubRegistryPolicy.h"
+#include "ServiceHubBackoffPolicy.h"
+#include "MaintenanceOutcomePolicy.h"
+#include "ServiceHubCatalogue.h"
 
 #include "../Core/Memory.h"
 #include "../Debug/Logger.h"
@@ -29,12 +35,15 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace Bot
 {
     enum class VendorState
     {
         Idle,
+        PreparingHubSelection,
+        SelectingHub,
         ReturningHomeForSearch,
         SearchingVendor,
         NavigatingVendor,
@@ -102,14 +111,18 @@ namespace Bot
         static constexpr int MaximumServiceCandidates = 10;
         static constexpr int MinimumFreeSlotsAfterVendor = 2;
 
-        // Phase 14L.2: Wuark in Razor Hill is the primary sell/repair service.
-        // Route to a player-proven standable hub point beside him, then use the
-        // live ObjectManager position for the final approach/interact.
-        static constexpr std::uint32_t PreferredVendorEntry = 3167; // Wuark <Armorer & Shieldcrafter>
+        // Project history identifies Tai'tasi and Zansoa as Sen'jin merchant
+        // candidates, but provides no verified position for either one.
+        // They become routable only when a live WorldState supplies a position.
+        static constexpr std::uint32_t WuarkEntry = 3167;
+        static constexpr std::uint32_t TaiTasiEntry = 3187;
+        static constexpr std::uint32_t ZansoaEntry = 5942;
         static constexpr Navigation::NavPoint RazorHillServiceHub{
             357.1937f, -4708.1279f, 14.4788f};
         static constexpr float RemoteHubArrivalDistance = 8.0f;
-        static constexpr std::uint32_t VendorMemoryVersion = 1;
+        static constexpr float HubMerchantMatchRadius = 80.0f;
+        static constexpr std::size_t MaximumHubShortlist = 4;
+        static constexpr std::size_t InvalidHubIndex = static_cast<std::size_t>(-1);
 
         static constexpr const char* LuaResultVariable =
             "WOW_INTERNAL_VENDOR_RESULT";
@@ -124,13 +137,19 @@ namespace Bot
         std::uint64_t vendorGuid_ = 0;
         std::uint32_t vendorEntry_ = 0;
 
-        bool knownVendorValid_ = false;
-        std::uint32_t knownVendorEntry_ = 0;
-        Navigation::NavPoint knownVendorPosition_{};
+        std::vector<ServiceHubCandidate> knownHubs_{};
+        std::unordered_set<std::uint32_t> verifiedHubEntries_{};
         bool vendorMemoryLoaded_ = false;
         std::filesystem::path vendorMemoryPath_{};
         bool remoteHubRouting_ = false;
-        bool primaryHubReached_ = false;
+        std::vector<ServiceHubCandidate> tripCandidates_{};
+        Objects::PlayerState selectionPlayer_{};
+        ServiceSelectionOrigin selectionOrigin_{};
+        std::vector<std::size_t> hubShortlist_{};
+        std::size_t hubProbeIndex_ = 0;
+        std::size_t selectedHubIndex_ = InvalidHubIndex;
+        std::uint32_t failoverFromEntry_ = 0;
+        std::unique_ptr<Navigation::GenericNavMeshPathFollower> hubProbeNavigator_{};
 
         std::uint64_t stateStartedTick_ = 0;
         std::uint64_t lastInteractionTick_ = 0;
@@ -162,6 +181,21 @@ namespace Bot
         MaintenanceSnapshot maintenanceAtStart_{};
         MaintenanceSnapshot lastMaintenanceSnapshot_{};
         bool bagPressureTrigger_ = false;
+        bool bagPressureSatisfied_ = true;
+        ServiceHubBackoffPolicy localBackoff_{};
+        ServiceHubBackoffPolicy* sharedBackoff_ = nullptr;
+        ServiceHubBackoffPolicy& CandidateBackoff()
+        { return sharedBackoff_ ? *sharedBackoff_ : localBackoff_; }
+        void BackOffCandidate(std::uint32_t entry, std::uint64_t tick, const char* reason)
+        {
+            if (!entry) return;
+            rejectedServiceEntries_.insert(entry);
+            CandidateBackoff().Reject(entry, tick, QuestMaintenancePolicy::RetryTicks);
+            Debug::Logger::Info("VENDOR CANDIDATE BACKOFF entry=" + std::to_string(entry) +
+                " reason=" + reason + " untilTick=" +
+                std::to_string(tick + QuestMaintenancePolicy::RetryTicks));
+        }
+        bool conservativeQuestSales_ = false;
         bool serviceSearchMode_ = false;
         bool repairSatisfied_ = true;
         bool foodSatisfied_ = true;
@@ -182,6 +216,8 @@ namespace Bot
             switch (state)
             {
                 case VendorState::Idle: return "Idle";
+                case VendorState::PreparingHubSelection: return "PreparingHubSelection";
+                case VendorState::SelectingHub: return "SelectingHub";
                 case VendorState::ReturningHomeForSearch: return "ReturningHomeForSearch";
                 case VendorState::SearchingVendor: return "SearchingVendor";
                 case VendorState::NavigatingVendor: return "NavigatingVendor";
@@ -206,6 +242,16 @@ namespace Bot
             return stream.str();
         }
 
+        static const char* ServiceName(ServiceKnowledge value)
+        {
+            switch (value)
+            {
+                case ServiceKnowledge::Available: return "yes";
+                case ServiceKnowledge::Unavailable: return "no";
+                default: return "unknown";
+            }
+        }
+
         static float Distance2D(
             float ax,
             float ay,
@@ -215,13 +261,6 @@ namespace Bot
             const float dx = bx - ax;
             const float dy = by - ay;
             return std::sqrt(dx * dx + dy * dy);
-        }
-
-        static bool IsConfiguredVendorEntry(std::uint32_t entry)
-        {
-            // Phase 14L.2: Wuark is the only configured primary vendor.
-            // Other merchants may still be proven by bounded local discovery.
-            return entry == PreferredVendorEntry;
         }
 
         static void ModuleAnchor() {}
@@ -283,6 +322,25 @@ namespace Bot
                 return;
             vendorMemoryLoaded_ = true;
 
+            // The seed is intentionally unverified: MerchantFrame must prove
+            // its services, exactly like any other candidate.
+            ServiceHubCandidate wuark{};
+            wuark.entry = WuarkEntry;
+            wuark.source = ServiceHubSource::Seeded;
+            wuark.x = RazorHillServiceHub.x;
+            wuark.y = RazorHillServiceHub.y;
+            wuark.z = RazorHillServiceHub.z;
+            wuark.positionKnown = true;
+            knownHubs_.push_back(wuark);
+
+            for (const std::uint32_t entry : {TaiTasiEntry, ZansoaEntry})
+            {
+                ServiceHubCandidate localMerchant{};
+                localMerchant.entry = entry;
+                localMerchant.source = ServiceHubSource::Seeded;
+                knownHubs_.push_back(localMerchant);
+            }
+
             if (!EnsureVendorMemoryPath())
                 return;
 
@@ -290,43 +348,12 @@ namespace Bot
             if (!input)
                 return;
 
-            std::string tag;
-            std::uint32_t version = 0;
-            std::uint32_t entry = 0;
-            float x = 0.0f;
-            float y = 0.0f;
-            float z = 0.0f;
-            if (!(input >> tag >> version >> entry >> x >> y >> z) ||
-                tag != "V" || version != VendorMemoryVersion || entry == 0 ||
-                !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
-            {
-                Debug::Logger::Info(
-                    "VENDOR ROUTING 14L.1: vendor-memory row invalid; ignoring it.");
-                return;
-            }
-
-            if (entry != PreferredVendorEntry)
-            {
-                Debug::Logger::Info(
-                    "VENDOR ROUTING 14L.2: ignoring legacy persistent merchant entry=" +
-                    std::to_string(entry) +
-                    "; Wuark (3167) is the primary Razor Hill service vendor.");
-                return;
-            }
-
-            knownVendorValid_ = true;
-            knownVendorEntry_ = entry;
-            knownVendorPosition_ = Navigation::NavPoint{x, y, z};
-            Debug::Logger::Info(
-                "VENDOR ROUTING 14L.2: loaded persistent verified Wuark entry=" +
-                std::to_string(entry) + " pos=(" + Float(x) + "," +
-                Float(y) + "," + Float(z) + ")");
+            ServiceHubRegistryPolicy::Load(input, knownHubs_, verifiedHubEntries_);
         }
 
         void SaveVendorMemory()
         {
-            if (!knownVendorValid_ || knownVendorEntry_ == 0 ||
-                !EnsureVendorMemoryPath())
+            if (!EnsureVendorMemoryPath())
             {
                 return;
             }
@@ -336,11 +363,8 @@ namespace Bot
                 std::ofstream output(tempPath, std::ios::trunc);
                 if (!output)
                     return;
-                output << "V\t" << VendorMemoryVersion << '\t'
-                       << knownVendorEntry_ << '\t'
-                       << std::setprecision(9) << knownVendorPosition_.x << '\t'
-                       << knownVendorPosition_.y << '\t'
-                       << knownVendorPosition_.z << '\n';
+                ServiceHubRegistryPolicy::Write(
+                    output, knownHubs_, verifiedHubEntries_);
                 if (!output)
                     return;
             }
@@ -497,7 +521,8 @@ namespace Bot
             const auto getText =
                 reinterpret_cast<GetTextFunction>(getTextAddress);
 
-            // The bounded sale-decision trace can exceed a scalar readback.
+            // The manual-vendor inventory diagnostic is bounded to one bag
+            // snapshot and needs more than the ordinary scalar readbacks.
             char buffer[4096]{};
             bool onGameThread = false;
             bool luaExecuted = false;
@@ -698,6 +723,47 @@ namespace Bot
             return true;
         }
 
+        static bool ProbeFoodInventoryDiagnosticInternal(std::string& result)
+        {
+            // Manual wait only, at the existing maintenance cadence. The
+            // compact record is compared by the owner before logging, so
+            // unchanged bags do not emit repeated lines.
+            const std::string script =
+                "if not WOW_INTERNAL_FOOD_DIAG_TOOLTIP then "
+                "WOW_INTERNAL_FOOD_DIAG_TOOLTIP=CreateFrame('GameTooltip','WOW_INTERNAL_FOOD_DIAG_TOOLTIP',UIParent,'GameTooltipTemplate'); "
+                "WOW_INTERNAL_FOOD_DIAG_TOOLTIP:SetOwner(UIParent,'ANCHOR_NONE'); end; "
+                "local tt=WOW_INTERNAL_FOOD_DIAG_TOOLTIP; " +
+                std::string(ConsumableClassificationPolicy::LuaDefinition()) +
+                "local out=''; local truncated=0; "
+                "for b=0,4 do local n=GetContainerNumSlots(b) or 0; "
+                "for s=1,n do local link=GetContainerItemLink(b,s); "
+                "if link and truncated==0 then "
+                "local _,cnt=GetContainerItemInfo(b,s); cnt=cnt or 1; "
+                "local _,_,idText=string.find(link,'item:(%d+)'); "
+                "local id=tonumber(idText or '0') or 0; "
+                "local _,_,q,_,_,itype,subtype=GetItemInfo(link); "
+                "tt:ClearLines(); tt:SetBagItem(b,s); "
+                "local f,d,h,e,m,dr=classifyConsumable(tt); "
+                "local reason='not_food'; "
+                "if f then reason='food' elseif h or e then reason='incomplete_food_tooltip' "
+                "elseif not itype then reason='metadata_missing' end; "
+                "itype=string.gsub(itype or 'unknown','[|;:]','_'); "
+                "subtype=string.gsub(subtype or 'unknown','[|;:]','_'); "
+                "local candidate=f or itype=='Consumable'; "
+                "local row='slot='..b..','..s..' itemId='..id..' count='..cnt.. "
+                "' quality='..(q or -1)..' type='..itype..' subtype='..subtype.. "
+                "' foodCandidate='..(candidate and 'yes' or 'no').. "
+                "' healthOver='..(h and 'yes' or 'no').. "
+                "' eating='..(e and 'yes' or 'no').. "
+                "' drink='..(d and 'yes' or 'no')..' reason='..reason..';'; "
+                "if string.len(out)+string.len(row)>3700 then truncated=1 else out=out..row end; "
+                "end; end; end; "
+                "if truncated==1 then out=out..'truncated;' end; "
+                "WOW_INTERNAL_VENDOR_RESULT=out~='' and out or 'empty';";
+            return ExecuteLuaReadback(
+                script, "wow-internal/ManualFoodInventoryDiagnostic.lua", result);
+        }
+
         enum class MerchantConsumableKind
         {
             Food,
@@ -719,19 +785,21 @@ namespace Bot
                 "if not WOW_INTERNAL_MAINT_MERCHANT_TOOLTIP then "
                 "WOW_INTERNAL_MAINT_MERCHANT_TOOLTIP=CreateFrame('GameTooltip','WOW_INTERNAL_MAINT_MERCHANT_TOOLTIP',UIParent,'GameTooltipTemplate'); "
                 "WOW_INTERNAL_MAINT_MERCHANT_TOOLTIP:SetOwner(UIParent,'ANCHOR_NONE'); end; "
-                "local tt=WOW_INTERNAL_MAINT_MERCHANT_TOOLTIP; local n=GetMerchantNumItems and GetMerchantNumItems() or 0; "
+                "local tt=WOW_INTERNAL_MAINT_MERCHANT_TOOLTIP; " +
+                std::string(ConsumableClassificationPolicy::LuaDefinition()) +
+                "local n=GetMerchantNumItems and GetMerchantNumItems() or 0; "
                 "for i=1,n do "
                 "local name,tex,pr,qty,avail,usable=GetMerchantItemInfo(i); pr=pr or 0; qty=qty or 1; "
                 "local ok=0; if usable then ok=1 end; "
                 "local link=nil; if GetMerchantItemLink then link=GetMerchantItemLink(i) end; "
                 "if link and GetItemInfo then local _,_,_,_,req=GetItemInfo(link); req=req or 0; if req<=lvl then ok=1 else ok=0 end; end; "
-                "if ok==1 and pr>0 then tt:ClearLines(); tt:SetMerchantItem(i); local match=0; local score=0; "
-                "for j=1,tt:NumLines() do local l=getglobal('WOW_INTERNAL_MAINT_MERCHANT_TOOLTIPTextLeft'..j); "
-                "if l and l:GetText() then local t=string.lower(l:GetText()); " +
+                "if ok==1 and pr>0 then tt:ClearLines(); tt:SetMerchantItem(i); "
+                "local food,drink,_,_,_,_,_,text=classifyConsumable(tt); "
+                "local match=0; local score=0; " +
                 std::string(kind == MerchantConsumableKind::Food
-                    ? "if string.find(t,'health over') and string.find(t,'eating') then match=1; local _,_,v=string.find(t,'(%d+)%s+health%s+over'); score=math.max(score,tonumber(v or '0') or 0) end; "
-                    : "if string.find(t,'mana over') and string.find(t,'drinking') then match=1; local _,_,v=string.find(t,'(%d+)%s+mana%s+over'); score=math.max(score,tonumber(v or '0') or 0) end; ") +
-                "end; end; if match==1 then if score>bestscore or (score==bestscore and (bestprice==0 or pr<bestprice)) then best=i; bestscore=score; bestprice=pr end; end; end; end; "
+                    ? "if food then match=1; local _,_,v=string.find(text,'(%d+)%s+health%s+over'); score=tonumber(v or '0') or 0 end; "
+                    : "if drink then match=1; local _,_,v=string.find(text,'(%d+)%s+mana%s+over'); score=tonumber(v or '0') or 0 end; ") +
+                "if match==1 then if score>bestscore or (score==bestscore and (bestprice==0 or pr<bestprice)) then best=i; bestscore=score; bestprice=pr end; end; end; end; "
                 "if best>0 then WOW_INTERNAL_VENDOR_RESULT='candidate|'..best..'|'..bestprice else WOW_INTERNAL_VENDOR_RESULT='none' end;";
 
             std::string result;
@@ -834,95 +902,28 @@ namespace Bot
                    result == "issued";
         }
 
-        const Objects::UnitState* FindConfiguredVendor(
-            const Objects::WorldState& world) const
-        {
-            const Objects::UnitState* best = nullptr;
-            for (const auto& unit : world.units)
-            {
-                if (
-                    !unit.valid ||
-                    unit.guid == 0 ||
-                    !IsConfiguredVendorEntry(unit.entryId))
-                {
-                    continue;
-                }
-
-                if (best == nullptr || unit.distance < best->distance)
-                    best = &unit;
-            }
-
-            return best;
-        }
-
-        const Objects::UnitState* FindServiceCandidate(
-            const Objects::WorldState& world) const
-        {
-            // Keep Wuark preferred even after entering bounded local discovery,
-            // unless this trip has already rejected him as a failed candidate.
-            if (const auto* preferred = FindConfiguredVendor(world))
-            {
-                if (rejectedServiceEntries_.find(preferred->entryId) ==
-                    rejectedServiceEntries_.end())
-                {
-                    return preferred;
-                }
-            }
-
-            const Objects::UnitState* best = nullptr;
-            for (const auto& unit : world.units)
-            {
-                if (!unit.valid || unit.guid == 0 || unit.entryId == 0 ||
-                    unit.health == 0 || unit.npcFlags == 0 ||
-                    rejectedServiceEntries_.find(unit.entryId) !=
-                        rejectedServiceEntries_.end())
-                {
-                    continue;
-                }
-
-                // UNIT_FLAG_NOT_SELECTABLE.  Other NPC flags are deliberately
-                // not decoded here: service discovery proves a merchant by
-                // opening MerchantFrame rather than trusting a guessed flag map.
-                if ((unit.unitFlags & 0x02000000u) != 0)
-                    continue;
-
-                if (best == nullptr || unit.distance < best->distance)
-                    best = &unit;
-            }
-            return best;
-        }
-
-        const Objects::UnitState* FindKnownVendor(
-            const Objects::WorldState& world) const
-        {
-            if (!knownVendorValid_ || knownVendorEntry_ == 0)
-                return nullptr;
-
-            const Objects::UnitState* best = nullptr;
-            for (const auto& unit : world.units)
-            {
-                if (!unit.valid || unit.guid == 0 ||
-                    unit.entryId != knownVendorEntry_)
-                {
-                    continue;
-                }
-
-                if (best == nullptr || unit.distance < best->distance)
-                    best = &unit;
-            }
-            return best;
-        }
-
         const Objects::UnitState* FindVendor(
             const Objects::WorldState& world) const
         {
-            if (serviceSearchMode_)
-                return FindServiceCandidate(world);
-
-            if (const auto* configured = FindConfiguredVendor(world))
-                return configured;
-
-            return FindKnownVendor(world);
+            if (selectedHubIndex_ < tripCandidates_.size())
+            {
+                const auto& selected = tripCandidates_[selectedHubIndex_];
+                const Objects::UnitState* best = nullptr;
+                for (const auto& unit : world.units)
+                {
+                    if (!unit.valid || unit.guid == 0 ||
+                        unit.entryId != selected.entry ||
+                        Distance2D(unit.x, unit.y, selected.x, selected.y) >
+                            HubMerchantMatchRadius)
+                        continue;
+                    if (selected.guid != 0 && unit.guid == selected.guid)
+                        return &unit;
+                    if (best == nullptr || unit.distance < best->distance)
+                        best = &unit;
+                }
+                return best;
+            }
+            return nullptr;
         }
 
         const Objects::UnitState* FindVendorByGuid(
@@ -947,47 +948,55 @@ namespace Bot
 
         void LearnVerifiedMerchant(const Objects::UnitState& vendor)
         {
-            if (!vendor.valid || vendor.guid == 0 || vendor.entryId == 0)
+            if (!MerchantOpen() || !vendor.valid || vendor.guid == 0 || vendor.entryId == 0)
                 return;
-
-            // Phase 14L.2: a fallback merchant may service the current trip,
-            // but it must never replace Wuark as the persistent primary route.
-            if (vendor.entryId != PreferredVendorEntry)
+            auto existing = std::find_if(knownHubs_.begin(), knownHubs_.end(),
+                [&](const auto& item) { return item.entry == vendor.entryId; });
+            const bool changed = existing == knownHubs_.end() ||
+                Distance2D(existing->x, existing->y, vendor.x, vendor.y) > 1.0f ||
+                existing->sell != ServiceKnowledge::Available;
+            if (existing == knownHubs_.end())
             {
-                Debug::Logger::Info(
-                    "VENDOR ROUTING 14L.2: MerchantFrame verified fallback merchant entry=" +
-                    std::to_string(vendor.entryId) +
-                    "; keeping Wuark (3167) as persistent primary.");
-                return;
+                knownHubs_.push_back(ServiceHubCandidate{});
+                existing = knownHubs_.end() - 1;
             }
-
-            const bool changed =
-                !knownVendorValid_ ||
-                knownVendorEntry_ != vendor.entryId ||
-                Distance2D(
-                    knownVendorPosition_.x,
-                    knownVendorPosition_.y,
-                    vendor.x,
-                    vendor.y) > 1.0f;
-
-            knownVendorValid_ = true;
-            knownVendorEntry_ = vendor.entryId;
-            knownVendorPosition_ = Navigation::NavPoint{
-                vendor.x,
-                vendor.y,
-                vendor.z
-            };
-
+            existing->entry = vendor.entryId;
+            existing->source = ServiceHubSource::MerchantFrameVerified;
+            existing->x = vendor.x;
+            existing->y = vendor.y;
+            existing->z = vendor.z;
+            existing->positionKnown = true;
+            existing->sell = ServiceKnowledge::Available;
+            verifiedHubEntries_.insert(vendor.entryId);
             if (changed)
             {
                 Debug::Logger::Info(
-                    "VENDOR DISCOVERY 14L.0: MerchantFrame verified merchant entry=" +
-                    std::to_string(vendor.entryId) +
-                    " pos=(" + Float(vendor.x) + "," +
-                    Float(vendor.y) + "," + Float(vendor.z) + ")");
+                    "VENDOR 14V.1: MerchantFrame verified entry=" +
+                    std::to_string(vendor.entryId) + " sell=yes");
+                SaveVendorMemory();
+            }
+        }
+
+        void LearnRepairCapability(bool available)
+        {
+            if (vendorEntry_ == 0 ||
+                verifiedHubEntries_.find(vendorEntry_) ==
+                    verifiedHubEntries_.end())
+                return;
+            auto known = std::find_if(knownHubs_.begin(), knownHubs_.end(),
+                [&](const auto& hub) { return hub.entry == vendorEntry_; });
+            if (known == knownHubs_.end())
+                return;
+            const auto observed = available
+                ? ServiceKnowledge::Available : ServiceKnowledge::Unavailable;
+            if (known->repair != observed)
+            {
+                known->repair = observed;
                 SaveVendorMemory();
                 Debug::Logger::Info(
-                    "VENDOR ROUTING 14L.2: persisted MerchantFrame-verified Wuark for future sessions.");
+                    "VENDOR 14V.1: learned repair entry=" +
+                    std::to_string(vendorEntry_) +
+                    " available=" + (available ? std::string("yes") : "no"));
             }
         }
 
@@ -1007,6 +1016,9 @@ namespace Bot
 
         void Fail(const std::string& reason, std::uint64_t tick)
         {
+            maintenanceUnmet_ = MaintenanceOutcomePolicy::Unmet(maintenanceUnmet_,
+                bagPressureTrigger_, bagPressureSatisfied_, requestedMaintenance_.repair, repairSatisfied_,
+                requestedMaintenance_.food, foodSatisfied_, requestedMaintenance_.drink, drinkSatisfied_);
             Debug::Logger::Info("================================");
             Debug::Logger::Info("GRIND 14G.1 VENDOR: FAILED");
             Debug::Logger::Info("Reason: " + reason);
@@ -1108,69 +1120,330 @@ namespace Bot
             return true;
         }
 
-        bool StartKnownVendorAnchorNavigation(
-            const Objects::WorldState& world,
-            std::uint64_t tick)
+        bool PrepareHubSelection(const Objects::WorldState& world,
+                                 std::uint64_t tick)
         {
-            if (!knownVendorValid_)
-                return false;
-
-            auto nav = std::make_unique<Navigation::GenericNavMeshPathFollower>();
-            if (!nav->Start(
-                    world.player,
-                    tick,
-                    RazorHillServiceHub,
-                    MapId,
-                    RemoteHubArrivalDistance,
-                    "Razor Hill Wuark service hub from persistent memory"))
+            // This is an ownership handoff, before candidate evaluation.
+            // A destroyed roam/vendor follower may leave its prior CTM active.
+            if (!ClickToMoveController::MoveTo(
+                    world.player, world.player.x, world.player.y,
+                    world.player.z, 0.25f))
             {
+                Fail("could not hold position before service-hub selection", tick);
                 return false;
             }
-
-            vendorNavigator_ = std::move(nav);
-            vendorEntry_ = 0; // hub route has no concrete live merchant selected yet
-            vendorGuid_ = 0;
-            remoteHubRouting_ = true;
-            primaryHubReached_ = false;
-
             Debug::Logger::Info(
-                "VENDOR ROUTING 14L.2: persistent Wuark memory present; routing to standable Razor Hill service hub pos=(" +
-                Float(RazorHillServiceHub.x) + "," +
-                Float(RazorHillServiceHub.y) + "," +
-                Float(RazorHillServiceHub.z) + ")");
-
-            SetState(VendorState::NavigatingVendorAnchor, tick);
+                "VENDOR 14V.1 OWNER HOLD before_selection; route probes remain movement-free.");
+            SetState(VendorState::PreparingHubSelection, tick);
             return true;
         }
 
-        bool StartRemoteServiceHubNavigation(
-            const Objects::WorldState& world,
-            std::uint64_t tick)
+        bool BeginHubSelection(const Objects::WorldState& world,
+                               std::uint64_t tick)
         {
-            auto nav = std::make_unique<Navigation::GenericNavMeshPathFollower>();
-            if (!nav->Start(
-                    world.player,
-                    tick,
-                    RazorHillServiceHub,
-                    MapId,
-                    RemoteHubArrivalDistance,
-                    "Razor Hill Wuark primary service hub"))
+            vendorNavigator_.reset();
+            hubProbeNavigator_.reset();
+            tripCandidates_.clear();
+            hubShortlist_.clear();
+            selectedHubIndex_ = InvalidHubIndex;
+            hubProbeIndex_ = 0;
+            vendorGuid_ = 0;
+            vendorEntry_ = 0;
+            remoteHubRouting_ = false;
+            serviceSearchMode_ = true;
+            selectionPlayer_ = world.player;
+            selectionOrigin_ = ServiceSelectionOrigin{
+                world.player.x, world.player.y, world.player.z};
+
+            CandidateBackoff().Prune(tick);
+
+            for (const auto& remembered : knownHubs_)
             {
-                return false;
+                if (rejectedServiceEntries_.find(remembered.entry) !=
+                    rejectedServiceEntries_.end() || CandidateBackoff().Blocked(remembered.entry, tick))
+                    continue;
+                ServiceHubCandidate candidate = remembered;
+                if (candidate.positionKnown)
+                    candidate.euclideanDistance =
+                        ServiceHubSelectionPolicy::DistanceFrom(
+                            selectionOrigin_, candidate);
+                tripCandidates_.push_back(candidate);
             }
 
-            vendorNavigator_ = std::move(nav);
-            vendorGuid_ = 0;
-            vendorEntry_ = 0; // hub route has no concrete live merchant selected yet
-            serviceSearchMode_ = false;
-            remoteHubRouting_ = true;
-            primaryHubReached_ = false;
+            // Source NPC flags are audit authority, NOT proof of live services.
+            unsigned playerFaction = 0;
+            if (world.player.descriptors)
+                Core::Memory::Read(world.player.descriptors + 0x8Cu, playerFaction);
+            const auto sourceHubs = ServiceHubCatalogue::Instance().Candidates(
+                MapId, playerFaction, selectionOrigin_, requestedMaintenance_.repair && !repairSatisfied_);
+            for (const auto& source : sourceHubs)
+            {
+                if (rejectedServiceEntries_.contains(source.entry) ||
+                    CandidateBackoff().Blocked(source.entry, tick)) continue;
+                auto existing = std::find_if(tripCandidates_.begin(), tripCandidates_.end(),
+                    [&](const auto& hub) { return hub.entry == source.entry; });
+                if (existing == tripCandidates_.end()) tripCandidates_.push_back(source);
+                else if (!existing->positionKnown) *existing = source;
+            }
+
+            // Only registry-backed entries are eligible. A nonzero raw
+            // npcFlags value does not establish merchant capability in 5875.
+            for (const auto& unit : world.units)
+            {
+                if (!unit.valid || unit.guid == 0 || unit.health == 0)
+                    continue;
+                auto existing = std::find_if(tripCandidates_.begin(),
+                    tripCandidates_.end(), [&](const auto& candidate) {
+                        return candidate.entry == unit.entryId;
+                    });
+                if (existing == tripCandidates_.end())
+                    continue;
+                existing->x = unit.x;
+                existing->y = unit.y;
+                existing->z = unit.z;
+                existing->positionKnown = true;
+                existing->guid = unit.guid;
+                existing->live = true;
+                existing->euclideanDistance =
+                    ServiceHubSelectionPolicy::DistanceFrom(
+                        selectionOrigin_, *existing);
+            }
+
+            hubShortlist_ = ServiceHubSelectionPolicy::Shortlist(
+                tripCandidates_, true, requestedMaintenance_.repair &&
+                    !repairSatisfied_, std::min<std::size_t>(MaximumHubShortlist,
+                        MaximumServiceCandidates - std::min(serviceCandidatesTried_, MaximumServiceCandidates)));
+            const auto seededCount = std::count_if(knownHubs_.begin(), knownHubs_.end(),
+                [](const auto& hub) { return hub.source == ServiceHubSource::Seeded; });
+            const auto persistedCount = std::count_if(knownHubs_.begin(), knownHubs_.end(),
+                [](const auto& hub) { return hub.source == ServiceHubSource::Persisted; });
             Debug::Logger::Info(
-                "VENDOR ROUTING 14L.2: Wuark is not currently live; routing to standable Razor Hill service hub pos=(" +
-                Float(RazorHillServiceHub.x) + "," + Float(RazorHillServiceHub.y) +
-                "," + Float(RazorHillServiceHub.z) + ")");
-            SetState(VendorState::NavigatingVendorAnchor, tick);
+                "VENDOR 14V.2 REGISTRY registryCount=" +
+                std::to_string(knownHubs_.size()) +
+                " seededCount=" + std::to_string(seededCount) +
+                " persistedCount=" + std::to_string(persistedCount) +
+                " verifiedCount=" + std::to_string(verifiedHubEntries_.size()) +
+                " playerFaction=" + std::to_string(playerFaction) +
+                " sourceCatalogueActors=" + std::to_string(ServiceHubCatalogue::Instance().ActorCount()) +
+                " sourceCatalogueSpawns=" + std::to_string(ServiceHubCatalogue::Instance().SpawnCount()) +
+                " sourceCandidateCount=" + std::to_string(sourceHubs.size()) +
+                " registeredPositionedCount=" + std::to_string(std::count_if(
+                    knownHubs_.begin(), knownHubs_.end(), [](const auto& hub) { return hub.positionKnown; })) +
+                " positionedCount=" + std::to_string(std::count_if(
+                    tripCandidates_.begin(), tripCandidates_.end(),
+                    [](const auto& hub) { return hub.positionKnown; })));
+            Debug::Logger::Info(
+                "VENDOR 14V.1 SELECTION BEGIN need=" +
+                std::string(requestedMaintenance_.repair && !repairSatisfied_
+                    ? "sell+repair" : "sell") +
+                " candidateCount=" + std::to_string(hubShortlist_.size()) +
+                " selectionOrigin=(" + Float(selectionOrigin_.x) + "," +
+                Float(selectionOrigin_.y) + "," +
+                Float(selectionOrigin_.z) + ")");
+            if (hubShortlist_.empty())
+            {
+                Fail("no suitable service hub candidates", tick);
+                return false;
+            }
+            SetState(VendorState::SelectingHub, tick);
             return true;
+        }
+
+        bool StartSelectedHubNavigation(const Objects::WorldState& world,
+                                        std::uint64_t tick)
+        {
+            if (selectedHubIndex_ >= tripCandidates_.size())
+                return false;
+            const auto& candidate = tripCandidates_[selectedHubIndex_];
+            vendorEntry_ = candidate.entry;
+            vendorGuid_ = candidate.live ? candidate.guid : 0;
+            if (candidate.live &&
+                candidate.euclideanDistance <= ProactiveVendorHandoffDistance)
+            {
+                for (const auto& unit : world.units)
+                    if (unit.valid && unit.guid == candidate.guid)
+                        return StartVendorNavigation(world, unit, tick);
+            }
+
+            // The shortlist probe disables full-map fallback to bound its
+            // cost. Start the selected route with ordinary follower options
+            // so vendor navigation retains its existing fallback semantics.
+            auto nav = std::make_unique<Navigation::GenericNavMeshPathFollower>();
+            Debug::Logger::Info("VENDOR ROUTE REVALIDATE entry=" + std::to_string(candidate.entry) +
+                " probeOrigin=(" + Float(selectionOrigin_.x) + "," + Float(selectionOrigin_.y) +
+                "," + Float(selectionOrigin_.z) + ") executionOrigin=(" + Float(world.player.x) +
+                "," + Float(world.player.y) + "," + Float(world.player.z) + ") destination=(" +
+                Float(candidate.x) + "," + Float(candidate.y) + "," + Float(candidate.z) +
+                ") reason=live_origin_and_current_hazards proof=initial_route_only");
+            if (!nav->Start(world.player, tick,
+                    Navigation::NavPoint{candidate.x, candidate.y, candidate.z},
+                    MapId, candidate.live ? VendorNavArrivalDistance
+                                          : RemoteHubArrivalDistance,
+                    std::string("service hub entry=") +
+                        std::to_string(candidate.entry)))
+                return false;
+            vendorNavigator_ = std::move(nav);
+            remoteHubRouting_ = !candidate.live;
+            SetState(candidate.live ? VendorState::NavigatingVendor
+                                    : VendorState::NavigatingVendorAnchor, tick);
+            return true;
+        }
+
+        void UpdateHubSelection(const Objects::WorldState& world,
+                                std::uint64_t tick)
+        {
+            if (hubProbeIndex_ >= hubShortlist_.size())
+            {
+                selectedHubIndex_ = ServiceHubSelectionPolicy::BestReachable(
+                    tripCandidates_, hubShortlist_);
+                if (selectedHubIndex_ == tripCandidates_.size())
+                {
+                    if (!ServiceHubSelectionPolicy::MayTryAnotherCandidate(
+                            static_cast<std::size_t>(serviceCandidatesTried_),
+                            MaximumServiceCandidates) ||
+                        !BeginHubSelection(world, tick))
+                        Fail("no suitable reachable service hub within bounded candidate budget", tick);
+                    return;
+                }
+                const auto& chosen = tripCandidates_[selectedHubIndex_];
+                Debug::Logger::Info(
+                    "VENDOR 14V.1 SELECTED name=" +
+                    std::string(VendorName(chosen.entry)) +
+                    " entry=" + std::to_string(chosen.entry) +
+                    " navCost=" + Float(chosen.navigationCost) +
+                    " reason=lowest_reachable_nav_cost");
+                if (failoverFromEntry_ != 0)
+                {
+                    Debug::Logger::Info(
+                        "VENDOR 14V.1 FAILOVER from=" +
+                        std::to_string(failoverFromEntry_) +
+                        " to=" + std::to_string(chosen.entry) +
+                        " reason=next_suitable_reachable");
+                    failoverFromEntry_ = 0;
+                }
+                if (!StartSelectedHubNavigation(world, tick) &&
+                    !StartAlternateServiceSearch(world, tick))
+                    Fail("selected service hub navigation could not start", tick);
+                return;
+            }
+
+            auto& candidate = tripCandidates_[hubShortlist_[hubProbeIndex_]];
+            if (!hubProbeNavigator_ && !candidate.evaluated)
+            {
+                Debug::Logger::Info(
+                    "VENDOR 14V.1a PROBE BEGIN entry=" +
+                    std::to_string(candidate.entry) +
+                    " selectionOrigin=(" + Float(selectionOrigin_.x) + "," +
+                    Float(selectionOrigin_.y) + "," +
+                    Float(selectionOrigin_.z) + ") mode=route_or_expanded");
+                hubProbeNavigator_ = std::make_unique<
+                    Navigation::GenericNavMeshPathFollower>();
+                const Navigation::GenericNavMeshStartOptions options{false, true};
+                if (!hubProbeNavigator_->Start(selectionPlayer_, tick,
+                        Navigation::NavPoint{candidate.x, candidate.y, candidate.z},
+                        MapId, candidate.live ? VendorNavArrivalDistance
+                                              : RemoteHubArrivalDistance,
+                        std::string("service hub probe entry=") +
+                            std::to_string(candidate.entry), true, options))
+                {
+                    candidate.evaluated = true;
+                    candidate.probeFailureReason =
+                        Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                            hubProbeNavigator_->PlanningOnlyResult().failure);
+                    hubProbeNavigator_.reset();
+                }
+            }
+            if (hubProbeNavigator_ && !candidate.evaluated)
+            {
+                hubProbeNavigator_->Update(selectionPlayer_, tick);
+                const auto probe = hubProbeNavigator_->PlanningOnlyResult();
+                if (probe.status == Navigation::RouteCostProbeStatus::Reachable)
+                {
+                    candidate.evaluated = true;
+                    candidate.reachable = true;
+                    candidate.plannedPathLength = probe.pathLength;
+                    // A staged path's active prefix can be shorter than the
+                    // final route. The direct distance is a conservative
+                    // lower bound for comparing first-leg route estimates.
+                    candidate.navigationCost = std::max(
+                        candidate.euclideanDistance,
+                        probe.pathLength);
+                }
+                else if (probe.status == Navigation::RouteCostProbeStatus::Unreachable)
+                {
+                    candidate.evaluated = true;
+                    candidate.probeFailureReason =
+                        Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                            probe.failure);
+                }
+            }
+            if (!candidate.evaluated)
+                return;
+
+            if (!candidate.reachable && candidate.live &&
+                candidate.euclideanDistance <= ProactiveVendorHandoffDistance)
+            {
+                // Preserve the existing bounded direct approach for nearby
+                // live merchants, but never call it a navmesh-verified route.
+                candidate.reachable = true;
+                candidate.directFallbackOnly = true;
+                candidate.navigationCost = candidate.euclideanDistance;
+            }
+            if (!candidate.reachable)
+            {
+                BackOffCandidate(candidate.entry, tick, "route_probe_failed");
+                ++serviceCandidatesTried_;
+            }
+
+            Debug::Logger::Info(
+                "VENDOR 14V.1a PROBE END entry=" +
+                std::to_string(candidate.entry) +
+                " result=" + (candidate.directFallbackOnly
+                    ? "bounded_direct_fallback" :
+                    (candidate.reachable ? "planned" : "unreachable")) +
+                " movementCommands=" + std::to_string(
+                    hubProbeNavigator_ ? hubProbeNavigator_->Commands() : 0) +
+                " plannedPathLength=" + (candidate.reachable &&
+                    !candidate.directFallbackOnly
+                    ? Float(candidate.plannedPathLength) : std::string("unknown")) +
+                " navCost=" + (candidate.reachable
+                    ? Float(candidate.navigationCost) : std::string("unknown")) +
+                " navCostBasis=" + (candidate.directFallbackOnly
+                    ? "bounded_direct_fallback" :
+                    (!candidate.reachable ? "unknown" :
+                    (candidate.plannedPathLength >= candidate.euclideanDistance
+                        ? "validated_path_length" : "direct_lower_bound_for_staged_prefix"))) +
+                " reason=" + candidate.probeFailureReason);
+
+            Debug::Logger::Info(
+                "VENDOR 14V.1 CANDIDATE name=" +
+                std::string(VendorName(candidate.entry)) +
+                " entry=" + std::to_string(candidate.entry) +
+                " source=" + ServiceHubSelectionPolicy::SourceName(candidate.source) +
+                " euclideanDistance=" + Float(candidate.euclideanDistance) +
+                " selectionOrigin=(" + Float(selectionOrigin_.x) + "," +
+                Float(selectionOrigin_.y) + "," +
+                Float(selectionOrigin_.z) + ")" +
+                " knownServices=sell:" + ServiceName(candidate.sell) +
+                ",repair:" + ServiceName(candidate.repair) +
+                " plannedPathLength=" + (candidate.reachable &&
+                    !candidate.directFallbackOnly
+                    ? Float(candidate.plannedPathLength) : std::string("unknown")) +
+                " navCost=" + (candidate.reachable
+                    ? Float(candidate.navigationCost) : std::string("unknown")) +
+                " navCostBasis=" + (candidate.directFallbackOnly
+                    ? "bounded_direct_fallback" :
+                    (!candidate.reachable ? "unknown" :
+                    (candidate.plannedPathLength >= candidate.euclideanDistance
+                        ? "validated_path_length" : "direct_lower_bound_for_staged_prefix"))) +
+                " reachable=" + (candidate.reachable ? "yes" : "no") +
+                " reachability=" + (candidate.directFallbackOnly
+                    ? "bounded_direct_fallback" :
+                    (candidate.reachable ? "navmesh" : "unproven")) +
+                " probeFailure=" + candidate.probeFailureReason +
+                " decision=" + (candidate.reachable ? "ranked" : "rejected"));
+            hubProbeNavigator_.reset();
+            ++hubProbeIndex_;
         }
 
         bool TryLocalVendorApproachRecovery(
@@ -1376,6 +1649,7 @@ namespace Bot
                 "local tt=WOW_INTERNAL_VENDOR_TOOLTIP; local found=0; local trace=''; local metadataPending=0; " +
                 std::string(ConsumableClassificationPolicy::LuaDefinition()) +
                 AutoSellItemPolicy::LuaDefinition() +
+                (conservativeQuestSales_ ? std::string(QuestMaintenancePolicy::RestrictSaleLua()) : std::string{}) +
                 "for b=0,4 do if found==0 then local n=GetContainerNumSlots(b) or 0; "
                 "for s=1,n do if found==0 and not (" + blocked + ") then "
                 "local link=GetContainerItemLink(b,s); if link then "
@@ -1474,10 +1748,12 @@ namespace Bot
 
         bool StartAlternateServiceSearch(
             const Objects::WorldState& world,
-            std::uint64_t tick)
+            std::uint64_t tick,
+            const char* reason = "candidate_failed")
         {
-            if (vendorEntry_ != 0)
-                rejectedServiceEntries_.insert(vendorEntry_);
+            const std::uint32_t previousEntry = vendorEntry_;
+            failoverFromEntry_ = previousEntry;
+            BackOffCandidate(vendorEntry_, tick, reason);
 
             CloseNpcFrames();
             vendorNavigator_.reset();
@@ -1493,35 +1769,34 @@ namespace Bot
             repairUnavailableHere_ = false;
             foodUnavailableHere_ = false;
             drinkUnavailableHere_ = false;
-            serviceSearchMode_ = true;
             ++serviceCandidatesTried_;
 
-            if (serviceCandidatesTried_ >= MaximumServiceCandidates)
+            if (!ServiceHubSelectionPolicy::MayTryAnotherCandidate(
+                    static_cast<std::size_t>(serviceCandidatesTried_),
+                    MaximumServiceCandidates))
             {
                 maintenanceUnmet_ = true;
                 Debug::Logger::Info(
-                    "MAINTENANCE 14G.5.1: service candidate budget exhausted; returning to grind with bounded retry backoff.");
+                    "VENDOR 14V.1: service candidate failover budget exhausted.");
+                Fail("service candidate failover budget exhausted", tick);
                 return false;
             }
-
-            const auto* candidate = FindServiceCandidate(world);
-            if (candidate != nullptr)
-            {
-                Debug::Logger::Info(
-                    "MAINTENANCE 14G.5.1: trying alternate service NPC entry=" +
-                    std::to_string(candidate->entryId) +
-                    " distance=" + Float(candidate->distance) +
-                    " attempt=" + std::to_string(serviceCandidatesTried_) +
-                    "/" + std::to_string(MaximumServiceCandidates));
-
-                if (candidate->distance <= InteractionDistance)
-                    return IssueInteraction(*candidate, tick);
-
-                return StartVendorNavigation(world, *candidate, tick);
-            }
-
-            SetState(VendorState::SearchingVendor, tick);
-            return true;
+            Debug::Logger::Info(
+                "VENDOR 14V.1 FAILOVER from=" +
+                std::to_string(previousEntry) +
+                " reason=" + reason + " attempt=" +
+                std::to_string(serviceCandidatesTried_) + "/" +
+                std::to_string(MaximumServiceCandidates) +
+                " remainingCandidates=" + std::to_string(std::count_if(
+                    tripCandidates_.begin(), tripCandidates_.end(),
+                    [&](const auto& hub) {
+                        return rejectedServiceEntries_.find(hub.entry) ==
+                            rejectedServiceEntries_.end() &&
+                            ServiceHubSelectionPolicy::Suitable(
+                                hub, true, requestedMaintenance_.repair &&
+                                    !repairSatisfied_);
+                    })));
+            return PrepareHubSelection(world, tick);
         }
 
         bool RunMaintenanceStep(
@@ -1546,19 +1821,29 @@ namespace Bot
 
             if (requestedMaintenance_.repair && !repairSatisfied_)
             {
+                if (!snapshot.durabilityKnown) return true; // bounded by merchant maintenance deadline
                 if (snapshot.durableItems == 0 ||
                     snapshot.minimumDurabilityPercent >
                         AutonomousMaintenancePolicy::RepairTripThresholdPercent)
                 {
                     repairSatisfied_ = true;
+                    if (repairActions_ > 0 && snapshot.durableItems > 0)
+                        Debug::Logger::Info(
+                            "QUEST REPAIR VERIFY result=confirmed reason=repair_threshold_resolved source=live_durability_probe minDurability=" +
+                            Float(snapshot.minimumDurabilityPercent));
                 }
                 else if (!repairUnavailableHere_)
                 {
+                    // Allow one retry, then observe only until the existing
+                    // merchant wait expires. Issuing a command is not proof.
+                    if (repairActions_ >= 2) return true;
                     std::uint32_t cost = 0;
                     bool available = false;
                     bool noMoney = false;
                     if (!IssueRepairAll(cost, available, noMoney))
                         return true;
+
+                    LearnRepairCapability(available);
 
                     if (!available)
                     {
@@ -1590,6 +1875,9 @@ namespace Bot
 
             if (requestedMaintenance_.food && !foodSatisfied_)
             {
+                if (!snapshot.foodCountKnown &&
+                    snapshot.foodCount < AutonomousMaintenancePolicy::FoodTarget)
+                    return true; // Unknown lower bound cannot prove a shortage is resolved.
                 if (!AutonomousMaintenancePolicy::WantsFoodTopUp(snapshot))
                 {
                     foodSatisfied_ = true;
@@ -1641,6 +1929,9 @@ namespace Bot
 
             if (requestedMaintenance_.drink && !drinkSatisfied_)
             {
+                if (!snapshot.drinkCountKnown &&
+                    snapshot.drinkCount < AutonomousMaintenancePolicy::DrinkTarget)
+                    return true;
                 if (!AutonomousMaintenancePolicy::WantsDrinkTopUp(snapshot))
                 {
                     drinkSatisfied_ = true;
@@ -1725,6 +2016,8 @@ namespace Bot
             const Objects::WorldState& world,
             std::uint64_t tick)
         {
+            if (state_ == VendorState::Failed)
+                return false;
             GrindBagMonitor::Snapshot bags{};
             if (!GrindBagMonitor::Read(bags))
             {
@@ -1748,6 +2041,7 @@ namespace Bot
                     tick);
                 return false;
             }
+            bagPressureSatisfied_ = true; // authoritative post-pass free-slot read
 
             CloseNpcFrames();
 
@@ -1772,38 +2066,21 @@ namespace Bot
         }
 
     public:
+        void SetCandidateBackoff(ServiceHubBackoffPolicy* backoff) { sharedBackoff_ = backoff; }
         void ObserveWorld(const Objects::WorldState& world)
         {
-            const auto* vendor = FindConfiguredVendor(world);
-            if (vendor == nullptr)
-                return;
-
-            const bool changed =
-                !knownVendorValid_ ||
-                knownVendorEntry_ != vendor->entryId ||
-                Distance2D(
-                    knownVendorPosition_.x,
-                    knownVendorPosition_.y,
-                    vendor->x,
-                    vendor->y) > 1.0f;
-
-            knownVendorValid_ = true;
-            knownVendorEntry_ = vendor->entryId;
-            knownVendorPosition_ = Navigation::NavPoint{
-                vendor->x,
-                vendor->y,
-                vendor->z
-            };
-
-            if (changed)
+            for (const auto& vendor : world.units)
             {
-                Debug::Logger::Info(
-                    "GRIND 14G.1 VENDOR: cached live vendor entry=" +
-                    std::to_string(knownVendorEntry_) +
-                    " name=" + VendorName(knownVendorEntry_) +
-                    " pos=(" + Float(knownVendorPosition_.x) + "," +
-                    Float(knownVendorPosition_.y) + "," +
-                    Float(knownVendorPosition_.z) + ")");
+                if (!vendor.valid || vendor.guid == 0)
+                    continue;
+                auto known = std::find_if(knownHubs_.begin(), knownHubs_.end(),
+                    [&](const auto& hub) { return hub.entry == vendor.entryId; });
+                if (known != knownHubs_.end())
+                {
+                    known->x = vendor.x;
+                    known->y = vendor.y;
+                    known->z = vendor.z;
+                }
             }
         }
 
@@ -1812,17 +2089,19 @@ namespace Bot
             const Navigation::NavPoint& grindHome,
             std::uint64_t tick,
             MaintenanceNeed maintenanceNeed = {},
-            bool bagPressureTrigger = false)
+            bool bagPressureTrigger = false,
+            bool conservativeQuestSales = false)
         {
             if (state_ != VendorState::Idle)
                 return false;
 
             grindHome_ = grindHome;
+            conservativeQuestSales_ = conservativeQuestSales;
             LoadVendorMemory();
             remoteHubRouting_ = false;
-            primaryHubReached_ = false;
             vendorGuid_ = 0;
             vendorEntry_ = 0;
+            failoverFromEntry_ = 0;
             stateStartedTick_ = tick;
             lastInteractionTick_ = 0;
             lastDirectMoveTick_ = 0;
@@ -1847,6 +2126,7 @@ namespace Bot
             loggedSaleDecisions_.clear();
             requestedMaintenance_ = maintenanceNeed;
             bagPressureTrigger_ = bagPressureTrigger;
+            bagPressureSatisfied_ = !bagPressureTrigger;
             serviceSearchMode_ = false;
             repairSatisfied_ = !requestedMaintenance_.repair;
             foodSatisfied_ = !requestedMaintenance_.food;
@@ -1861,6 +2141,7 @@ namespace Bot
             drinkPurchases_ = 0;
             serviceCandidatesTried_ = 0;
             rejectedServiceEntries_.clear();
+            CandidateBackoff().Prune(tick);
             maintenanceAtStart_ = MaintenanceSnapshot{};
             lastMaintenanceSnapshot_ = MaintenanceSnapshot{};
             ProbeMaintenanceSnapshotInternal(maintenanceAtStart_);
@@ -1873,9 +2154,7 @@ namespace Bot
                 "Grind home=(" + Float(grindHome_.x) + "," +
                 Float(grindHome_.y) + "," + Float(grindHome_.z) + ")");
             Debug::Logger::Info(
-                "VENDOR DISCOVERY 14L.0: configured/learned merchant first; otherwise bounded local NPC service discovery proves candidates by MerchantFrame.");
-            Debug::Logger::Info(
-                "VENDOR ROUTING 14L.2: Wuark (3167) is primary for sell/repair; route to the player-proven Razor Hill hub, wait for Wuark, then use bounded local MerchantFrame discovery only as fallback.");
+                "VENDOR 14V.1: seeded and MerchantFrame-verified service hubs compete by suitability and bounded route cost; raw visible NPC flags alone do not establish merchant eligibility.");
             Debug::Logger::Info(
                 "VENDOR FINAL APPROACH 14L.1.3: a failed NavMesh route may hand off to bounded direct CTM only while the same live merchant remains within 24 yd; progress is checked before each retry.");
             Debug::Logger::Info(
@@ -1885,7 +2164,9 @@ namespace Bot
             Debug::Logger::Info(
                 "VENDOR INTERACTION GEOMETRY 14L.1.7: local flank probes keep the player's current Z and use a geometry-aware 1-3 yd XY ring targeting 4.0 yd 3D separation inside the unchanged 4.5 yd interaction threshold.");
             Debug::Logger::Info(
-                "Sell policy: all bag items attempted except Hearthstone, quest/key items, locked items, and food/drink used by recovery.");
+                conservativeQuestSales_
+                    ? "Sell policy: questing protected poor miscellaneous trash only; all equipment retained."
+                    : "Sell policy: existing AutoSellItemPolicy protected-item classification.");
             Debug::Logger::Info(
                 "MAINTENANCE 14G.5.1: requested repair=" +
                 std::string(requestedMaintenance_.repair ? "yes" : "no") +
@@ -1903,39 +2184,11 @@ namespace Bot
             }
             Debug::Logger::Info("================================");
 
-            const auto* vendor = FindVendor(world);
-            if (vendor != nullptr)
+            if (!PrepareHubSelection(world, tick))
             {
-                if (vendor->distance <= InteractionDistance)
-                    return IssueInteraction(*vendor, tick);
-
-                if (StartVendorNavigation(world, *vendor, tick))
-                    return true;
-            }
-
-            if (knownVendorValid_ && StartKnownVendorAnchorNavigation(world, tick))
-                return true;
-
-            // Phase 14L.2: when Wuark is not currently in ObjectManager and no
-            // persisted Wuark route is available, navigate to the player-proven
-            // Razor Hill service hub. There we wait briefly for Wuark before
-            // falling back to bounded local MerchantFrame discovery.
-            if (StartRemoteServiceHubNavigation(world, tick))
-                return true;
-
-            // Phase 14L.0: grindHome_ is the captured pre-vendor resume point, not
-            // a vendor-search hub. Returning to it before SearchingVendor simply
-            // searches the same grind pocket forever. When no preferred/learned
-            // merchant is live, immediately switch to bounded local service
-            // discovery and prove a candidate by MerchantFrame.
-            Debug::Logger::Info(
-                "VENDOR DISCOVERY 14L.0: no preferred or learned merchant is currently live; starting bounded local service discovery from the current area.");
-            if (!StartAlternateServiceSearch(world, tick))
-            {
-                Fail("dynamic local merchant discovery could not start.", tick);
+                Reset();
                 return false;
             }
-
             return true;
         }
 
@@ -1948,6 +2201,18 @@ namespace Bot
                 state_ == VendorState::Done ||
                 state_ == VendorState::Failed)
             {
+                return;
+            }
+
+            if (state_ == VendorState::SelectingHub)
+            {
+                UpdateHubSelection(world, tick);
+                return;
+            }
+
+            if (state_ == VendorState::PreparingHubSelection)
+            {
+                BeginHubSelection(world, tick);
                 return;
             }
 
@@ -1977,7 +2242,6 @@ namespace Bot
                 const auto* vendor = FindVendor(world);
                 if (vendor != nullptr)
                 {
-                    primaryHubReached_ = false;
                     vendorGuid_ = vendor->guid;
                     vendorEntry_ = vendor->entryId;
 
@@ -2017,27 +2281,8 @@ namespace Bot
                     serviceSearchMode_ ? ServiceSearchWaitTicks : VendorSearchWaitTicks;
                 if (tick >= stateStartedTick_ + waitTicks)
                 {
-                    if (serviceSearchMode_)
-                    {
-                        maintenanceUnmet_ = true;
-                        Debug::Logger::Info(
-                            "MAINTENANCE 14G.5.1: no additional service NPC became visible within bounded search window; returning to grind.");
-                        FinishVendorAndReturn(world, tick);
-                    }
-                    else if (primaryHubReached_)
-                    {
-                        primaryHubReached_ = false;
-                        Debug::Logger::Info(
-                            "VENDOR ROUTING 14L.2: Wuark was not visible within the bounded Razor Hill wait window; starting local MerchantFrame-proven fallback discovery.");
-                        if (!StartAlternateServiceSearch(world, tick))
-                            FinishVendorAndReturn(world, tick);
-                    }
-                    else
-                    {
-                        Fail(
-                            "preferred Wuark merchant was not visible within the bounded search window and no dynamic service search was active.",
-                            tick);
-                    }
+                    if (!StartAlternateServiceSearch(world, tick))
+                        Fail("selected service hub merchant not visible; failover exhausted", tick);
                 }
                 return;
             }
@@ -2049,16 +2294,21 @@ namespace Bot
                 {
                     vendorNavigator_.reset();
                     remoteHubRouting_ = false;
-                    primaryHubReached_ = false;
                     if (liveVendor->distance <= InteractionDistance)
                     {
                         if (!IssueInteraction(*liveVendor, tick))
-                            Fail("vendor interaction failed after cached-anchor reacquisition.", tick);
+                        {
+                            if (!StartAlternateServiceSearch(world, tick))
+                                Fail("selected merchant interaction failed", tick);
+                        }
                         return;
                     }
 
                     if (!StartVendorNavigation(world, *liveVendor, tick))
-                        Fail("failed to route from cached vendor anchor to live vendor.", tick);
+                    {
+                        if (!StartAlternateServiceSearch(world, tick))
+                            Fail("selected merchant final route failed", tick);
+                    }
                     return;
                 }
 
@@ -2075,10 +2325,10 @@ namespace Bot
                     if (remoteHubRouting_)
                     {
                         remoteHubRouting_ = false;
-                        primaryHubReached_ = true;
-                        serviceSearchMode_ = false;
                         Debug::Logger::Info(
-                            "VENDOR ROUTING 14L.2: Razor Hill service hub reached; waiting for preferred Wuark before any fallback merchant discovery.");
+                            "VENDOR 14V.1: selected service hub reached entry=" +
+                            std::to_string(vendorEntry_) +
+                            "; waiting for its live merchant.");
                         SetState(VendorState::SearchingVendor, tick);
                     }
                     else
@@ -2088,26 +2338,15 @@ namespace Bot
                 }
                 else if (vendorNavigator_->Failed())
                 {
+                    const auto failure = vendorNavigator_->LastPlanFailure();
                     vendorNavigator_.reset();
-                    if (remoteHubRouting_)
-                    {
-                        remoteHubRouting_ = false;
-                        primaryHubReached_ = false;
-                        Fail("NavMesh route to Razor Hill Wuark service hub failed.", tick);
-                    }
-                    else if (
-                        Distance2D(
-                            world.player.x,
-                            world.player.y,
-                            grindHome_.x,
-                            grindHome_.y) <= HomeArrivalDistance)
-                    {
-                        SetState(VendorState::SearchingVendor, tick);
-                    }
-                    else if (!StartHomeNavigation(world, tick, false))
-                    {
-                        Fail("cached vendor anchor route failed and fallback home navigation could not start.", tick);
-                    }
+                    Debug::Logger::Info(
+                        "VENDOR 14V.1: selected hub navigation failed reason=" +
+                        std::string(Navigation::NavigationInitTelemetryPolicy::ReasonName(failure)));
+                    if (!StartAlternateServiceSearch(
+                            world, tick,
+                            Navigation::NavigationInitTelemetryPolicy::ReasonName(failure)))
+                        Fail("selected service hub route failed and failover exhausted", tick);
                 }
                 return;
             }
@@ -2144,6 +2383,7 @@ namespace Bot
 
                 if (vendorNavigator_->Failed())
                 {
+                    const auto failure = vendorNavigator_->LastPlanFailure();
                     const auto* vendor = FindVendorByGuid(world);
                     vendorNavigator_.reset();
                     if (vendor != nullptr && vendor->distance <= NavFailureDirectFallbackRadius)
@@ -2164,7 +2404,12 @@ namespace Bot
 
                     if (serviceSearchMode_)
                     {
-                        if (!StartAlternateServiceSearch(world, tick))
+                        Debug::Logger::Info(
+                            "VENDOR 14V.1: merchant route failed reason=" +
+                            std::string(Navigation::NavigationInitTelemetryPolicy::ReasonName(failure)));
+                        if (!StartAlternateServiceSearch(
+                                world, tick,
+                                Navigation::NavigationInitTelemetryPolicy::ReasonName(failure)))
                             FinishVendorAndReturn(world, tick);
                     }
                     else
@@ -2358,8 +2603,14 @@ namespace Bot
                 if (MerchantOpen())
                 {
                     const auto* verifiedMerchant = FindVendorByGuid(world);
-                    if (verifiedMerchant != nullptr)
-                        LearnVerifiedMerchant(*verifiedMerchant);
+                    if (verifiedMerchant == nullptr || verifiedMerchant->entryId != vendorEntry_ ||
+                        verifiedMerchant->guid != vendorGuid_ || verifiedMerchant->distance > InteractionDistance)
+                    {
+                        if (!StartAlternateServiceSearch(world, tick, "merchant_actor_unverified"))
+                            Fail("MerchantFrame opened without matching live selected actor", tick);
+                        return;
+                    }
+                    LearnVerifiedMerchant(*verifiedMerchant);
 
                     Debug::Logger::Info("GRIND 14G.1 VENDOR: MerchantFrame open.");
                     lastSaleTick_ = 0;
@@ -2594,6 +2845,12 @@ namespace Bot
                     return;
                 }
 
+                if (tick >= stateStartedTick_ + MerchantOpenTimeoutTicks)
+                {
+                    maintenanceUnmet_ = true;
+                    Fail("maintenance evidence deadline expired; no further purchase/repair commands",tick);
+                    return;
+                }
                 if (!RunMaintenanceStep(world, tick))
                     FinishVendorAndReturn(world, tick);
                 return;
@@ -2625,6 +2882,12 @@ namespace Bot
             homeNavigator_.reset();
             vendorNavigator_.reset();
             returnNavigator_.reset();
+            hubProbeNavigator_.reset();
+            tripCandidates_.clear();
+            hubShortlist_.clear();
+            selectedHubIndex_ = InvalidHubIndex;
+            failoverFromEntry_ = 0;
+            hubProbeIndex_ = 0;
             CloseNpcFrames();
             state_ = VendorState::Idle;
             vendorGuid_ = 0;
@@ -2637,14 +2900,12 @@ namespace Bot
             lastDirectMoveTick_ = 0;
             blockedBagSlots_.clear();
             loggedSaleDecisions_.clear();
-            metadataWaitStartedTick_ = 0;
-            nextMetadataRetryTick_ = 0;
-            lastMetadataPendingCount_ = -1;
             candidatePendingVerification_ = false;
             requestedMaintenance_ = MaintenanceNeed{};
             maintenanceAtStart_ = MaintenanceSnapshot{};
             lastMaintenanceSnapshot_ = MaintenanceSnapshot{};
             bagPressureTrigger_ = false;
+            bagPressureSatisfied_ = true;
             serviceSearchMode_ = false;
             remoteHubRouting_ = false;
             repairSatisfied_ = true;
@@ -2668,7 +2929,8 @@ namespace Bot
         {
             return (homeNavigator_ && homeNavigator_->InitializationProgressing()) ||
                 (vendorNavigator_ && vendorNavigator_->InitializationProgressing()) ||
-                (returnNavigator_ && returnNavigator_->InitializationProgressing());
+                (returnNavigator_ && returnNavigator_->InitializationProgressing()) ||
+                (hubProbeNavigator_ && hubProbeNavigator_->InitializationProgressing());
         }
         bool IsActive() const
         {
@@ -2683,6 +2945,15 @@ namespace Bot
         int UnsellableSlotsSkipped() const { return unsellableSlotsSkipped_; }
         std::uint32_t VendorEntry() const { return vendorEntry_; }
         bool MaintenanceUnmet() const { return maintenanceUnmet_; }
+        MaintenanceOutcome Outcome() const
+        {
+            if (state_ == VendorState::Failed)
+                return maintenanceUnmet_ ? MaintenanceOutcome::TemporarilyUnavailable
+                                         : MaintenanceOutcome::TerminalFailure;
+            if (state_ == VendorState::Done)
+                return maintenanceUnmet_ ? MaintenanceOutcome::StillRequired : MaintenanceOutcome::Satisfied;
+            return MaintenanceOutcome::InProgress;
+        }
         int RepairActions() const { return repairActions_; }
         int FoodPurchases() const { return foodPurchases_; }
         int DrinkPurchases() const { return drinkPurchases_; }
@@ -2694,6 +2965,11 @@ namespace Bot
         static bool ProbeMaintenance(MaintenanceSnapshot& snapshot)
         {
             return ProbeMaintenanceSnapshotInternal(snapshot);
+        }
+
+        static bool ProbeFoodInventoryDiagnostic(std::string& result)
+        {
+            return ProbeFoodInventoryDiagnosticInternal(result);
         }
     };
 }

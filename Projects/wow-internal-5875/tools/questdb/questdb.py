@@ -8,6 +8,7 @@ import os
 import re
 import sqlite3
 import sys
+import quest_metadata
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
@@ -24,6 +25,7 @@ TARGET_TABLES = {
     "creature_loot_template",
     "gameobject_loot_template",
 }
+TARGET_TABLES |= quest_metadata.TABLES
 
 CLASS_IDS = {
     "warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4,
@@ -361,6 +363,7 @@ def upsert_quest(conn: sqlite3.Connection, d: Dict[str, Any], target_patch: int)
     conn.execute(
         "INSERT OR REPLACE INTO quest VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", vals
     )
+    quest_metadata.quest(conn, qid, d)
     conn.execute("DELETE FROM quest_objective WHERE quest_id=?", (qid,))
     for slot in range(1, 5):
         text = str(first(d, f"objectivetext{slot}", default="") or "")
@@ -388,6 +391,8 @@ def upsert_quest(conn: sqlite3.Connection, d: Dict[str, Any], target_patch: int)
 
 
 def import_row(conn: sqlite3.Connection, table: str, d: Dict[str, Any], target_patch: int) -> None:
+    if quest_metadata.preserve(conn, table, d):
+        return
     if table == "quest_template":
         upsert_quest(conn, d, target_patch)
         return
@@ -470,6 +475,7 @@ def import_sql(sql_path: Path, db_path: Path, target_patch: int) -> None:
         db_path.unlink()
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    conn.executescript(quest_metadata.SCHEMA)
     schemas: Dict[str,List[str]] = {}
     seen = {t:0 for t in TARGET_TABLES}
     inserted = {t:0 for t in TARGET_TABLES}
@@ -516,6 +522,15 @@ def mask_allows(required_mask: int, token: Optional[str], lookup: Dict[str,int])
     rid = lookup[key]
     bit = 1 << (rid - 1)
     return (required_mask & bit) != 0
+
+
+def load_config(path: Path) -> Dict[str, Any]:
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    if "extends" in cfg:
+        base = json.loads((path.parent / cfg["extends"]).read_text(encoding="utf-8"))
+        base.update(cfg)
+        cfg = base
+    return cfg
 
 
 def spawn_rows(conn: sqlite3.Connection, source_type: str, entry: int, map_id: Optional[int] = None) -> List[Dict[str,Any]]:
@@ -580,6 +595,7 @@ def quest_record(conn: sqlite3.Connection, qid: int, map_id: Optional[int] = Non
         if obj["kind"] == "item":
             obj["loot_sources"] = quest_sources_for_item(conn,obj["item_id"],map_id)
         q["objectives"].append(obj)
+    quest_metadata.enrich(conn, q)
     return q
 
 
@@ -606,6 +622,14 @@ def area_catalog(conn: sqlite3.Connection, cfg: Dict[str,Any], cls: Optional[str
 
         for qid in (cfg.get("additional_quest_ids") or []):
             qids.add(int(qid))
+        if cfg.get("include_local_class_quests"):
+            for (qid,) in conn.execute("""SELECT DISTINCT q.quest_id FROM quest q
+                JOIN quest_giver g ON g.quest_id=q.quest_id AND g.source_type='creature'
+                JOIN creature_spawn s ON s.entry=g.entry
+                WHERE q.zone_or_sort<0 AND q.required_classes!=0 AND s.map_id=?
+                AND s.x BETWEEN ? AND ? AND s.y BETWEEN ? AND ?""",
+                (map_id,bounds["min_x"],bounds["max_x"],bounds["min_y"],bounds["max_y"])):
+                qids.add(qid)
 
         # Backward-compatible spatial discovery when no zone selector exists.
         if not zone_ids and not qids:
@@ -627,9 +651,10 @@ def area_catalog(conn: sqlite3.Connection, cfg: Dict[str,Any], cls: Optional[str
         r=conn.execute("SELECT min_level,max_level,required_classes,required_races FROM quest WHERE quest_id=?",(qid,)).fetchone()
         if not r: continue
         minlvl,maxlvl,cmask,rmask=map(int,r)
+        if cfg.get("maximum_min_level") is not None and minlvl > int(cfg["maximum_min_level"]): continue
         if level is not None and level < minlvl: continue
         if maxlvl and level is not None and level > maxlvl: continue
-        if not mask_allows(cmask,cls,CLASS_IDS): continue
+        if not cfg.get("include_other_classes", False) and not mask_allows(cmask,cls,CLASS_IDS): continue
         if not mask_allows(rmask,race,RACE_IDS): continue
         q=quest_record(conn,qid,map_id)
         if q: quests.append(q)
@@ -724,7 +749,8 @@ def _runtime_objective_steps(conn: sqlite3.Connection, q: Dict[str,Any], cfg: Di
         kind=o.get("kind")
         obj_type="Unknown"; target_entry=0; item_id=0; object_entry=0
         required=max(1,int(o.get("required_count",0) or 0))
-        target_name=""; source_spawns=[]; go_type=-1; go_loot_id=0
+        target_name=""; source_spawns=[]; go_type=-1; go_loot_id=0; gossip_credit=""
+        semantic_ambiguous=False
 
         if kind=="creature" and int(o.get("target_entry",0)):
             target_entry=int(o["target_entry"])
@@ -744,6 +770,13 @@ def _runtime_objective_steps(conn: sqlite3.Connection, q: Dict[str,Any], cfg: Di
                 obj_type="Unknown"
             else:
                 obj_type="KillMob"
+                if q.get("metadata", {}).get("SpecialFlags") == 0:
+                    gossip_credit = quest_metadata.gossip_credit(conn, target_entry) or ""
+                    if gossip_credit:
+                        obj_type="TalkToNpc"
+                # Creature counters can receive kill OR gossip credit. A menu
+                # without a proven simple credit action is not proof of a kill.
+                semantic_ambiguous=bool(quest_metadata.npc_metadata(conn,target_entry).get("gossipmenuid")) and not gossip_credit
         elif kind=="gameobject" and int(o.get("target_entry",0)):
             obj_type="InteractGameObject"
             object_entry=int(o["target_entry"])
@@ -788,6 +821,8 @@ def _runtime_objective_steps(conn: sqlite3.Connection, q: Dict[str,Any], cfg: Di
             "gameobject_type":go_type,
             "gameobject_loot_id":go_loot_id,
             "objective_spawns":source_spawns,
+            "gossip_credit":gossip_credit,
+            "semantic_ambiguous":semantic_ambiguous,
         })
     return steps
 
@@ -850,6 +885,8 @@ def runtime_profile_for_quest(conn: sqlite3.Connection, q: Dict[str,Any], cfg: D
         target_name=str(turnin.get("name","") if turnin else q.get("title",""))
         source_spawns=[]
         go_type=-1; go_loot_id=0
+        if q.get("area_trigger_ids") or (q.get("metadata", {}).get("SpecialFlags", 0) or 0) & 2:
+            obj_type="ExploreOrAreaTrigger"
     else:
         primary=steps[0]
         obj_type=primary["objective_type"]
@@ -879,7 +916,7 @@ def runtime_profile_for_quest(conn: sqlite3.Connection, q: Dict[str,Any], cfg: D
         "quest_id":qid, "title":str(q.get("title","") or ""),
         "min_level":int(q.get("min_level",0)), "max_level":int(q.get("max_level",0)),
         "giver_entry":giver_entry, "turnin_entry":turnin_entry,
-        "expected_objective_count":len(steps),
+        "expected_objective_count":-1 if obj_type=="ExploreOrAreaTrigger" and not steps else len(steps),
         "objective_type":obj_type, "target_entry":target_entry, "item_id":item_id,
         "object_entry":object_entry, "required_count":required,
         "target_name":target_name, "route_group":route, "priority":priority,
@@ -894,8 +931,19 @@ def runtime_profile_for_quest(conn: sqlite3.Connection, q: Dict[str,Any], cfg: D
         "prev_quest_id":int(q.get("prev_quest_id",0) or 0),
         "next_in_chain":int(q.get("next_in_chain",0) or 0),
         "breadcrumb_for_quest_id":int(q.get("breadcrumb_for_quest_id",0) or 0),
+        "required_races":int(q.get("required_races",0) or 0),
+        "required_classes":int(q.get("required_classes",0) or 0),
+        "required_condition":int(q.get("required_condition",0) or 0),
+        "zone_or_sort":int(q.get("zone_or_sort",0) or 0),
+        "next_quest_id":int(q.get("next_quest_id",0) or 0),
         "automatable":automatable,
         "support_note":"; ".join(support_reasons) if support_reasons else "supported",
+        "metadata": q.get("metadata", {}),
+        "prerequisite_clauses": q.get("prerequisite_clauses", []),
+        "exclusive_peers": q.get("exclusive_peers", []),
+        "area_trigger_ids": q.get("area_trigger_ids", []),
+        "giver_type": giver.get("source_type", "") if giver else "",
+        "turnin_type": turnin.get("source_type", "") if turnin else "",
     }
 
 
@@ -907,7 +955,18 @@ def _arrival_for_type(obj_type: str) -> float:
 
 def export_runtime_catalog(conn: sqlite3.Connection, cfg: Dict[str,Any], cls: Optional[str], race: Optional[str], out_path: Path) -> None:
     cat=area_catalog(conn,cfg,cls,race,None)
+    regional_ids={q["quest_id"] for q in cat["quests"]}
+    # Non-regional authored references supply enrichment only. They must not
+    # create newly discoverable generated profiles as a side effect.
+    for qid in sorted(set(cfg.get("authored_metadata_ids", [])) - regional_ids):
+        q=quest_record(conn,qid,int(cfg["map_id"]))
+        if q is None:
+            raise ValueError(f"authored quest {qid} has no local source record")
+        cat["quests"].append(q)
+    cat["quests"].sort(key=lambda q:q["quest_id"])
     profiles=[runtime_profile_for_quest(conn,q,cfg) for q in cat["quests"]]
+    dbc=quest_metadata.client_triggers(cfg.get("area_trigger_dbc"))
+    spheres={q["quest_id"]:quest_metadata.verified_spheres(q,dbc) for q in cat["quests"]}
     out_path.parent.mkdir(parents=True,exist_ok=True)
     lines=[
         "# wow-internal questdb runtime catalog v2",
@@ -924,6 +983,30 @@ def export_runtime_catalog(conn: sqlite3.Connection, cfg: Dict[str,Any], cls: Op
             1 if p.get("late_wave",False) else 0
         ]
         lines.append("\t".join(tsv_escape(x) for x in fields))
+        if p["quest_id"] not in regional_ids:
+            lines.append(f"H\t{p['quest_id']}\tenrichment_only")
+        if any(o.get("semantic_ambiguous") for o in p.get("objectives",[])):
+            lines.append(f"U\t{p['quest_id']}\tambiguous_creature_credit")
+        # Optional source metadata; no SQLite scan is needed inside WoW.
+        # Preserve signed NextQuestId. Do not reinterpret it as a prerequisite.
+        lines.append("\t".join(tsv_escape(x) for x in [
+            "M", p["quest_id"], p["required_races"], p["required_classes"],
+            p["max_level"], p["zone_or_sort"], p["required_condition"], p["next_quest_id"]]))
+        if p["metadata"]:
+            lines.append("\t".join(tsv_escape(x) for x in ["N", p["quest_id"],
+                *[p["metadata"].get(f) if p["metadata"].get(f) is not None else "-" for f in quest_metadata.FIELDS],
+                p["giver_type"], p["turnin_type"]]))
+            for clause in p["prerequisite_clauses"]:
+                lines.append("\t".join(map(str, ["R", p["quest_id"],
+                    "active" if clause["active"] else "rewarded",
+                    "resolved" if clause["resolved"] else "unresolved", *clause["ids"]])))
+            for peer in p["exclusive_peers"]:
+                lines.append(f"R\t{p['quest_id']}\texclusive\t{peer}")
+            for trigger in p["area_trigger_ids"]:
+                lines.append(f"R\t{p['quest_id']}\tarea\t{trigger}")
+            for t in spheres[p["quest_id"]]:
+                lines.append("\t".join(map(str,["A",p["quest_id"],t["id"],t["build"],
+                    t["mapid"],t["x"],t["y"],t["z"],t["radius"]])))
 
         for i,s in enumerate(p["giver_spawns"][:8],1):
             lines.append("\t".join(tsv_escape(x) for x in ["G",p["quest_id"],int(s["map_id"]),s["x"],s["y"],s["z"],5.0,f"QuestDB giver spawn {i}"]))
@@ -937,6 +1020,8 @@ def export_runtime_catalog(conn: sqlite3.Connection, cfg: Dict[str,Any], cls: Op
                 o["target_entry"],o["item_id"],o["object_entry"],o["required_count"],
                 o["target_name"],o["gameobject_type"],o["gameobject_loot_id"]
             ]))
+            if o.get("gossip_credit"):
+                lines.append("\t".join(tsv_escape(x) for x in ["GC",p["quest_id"],oi,o["gossip_credit"]]))
             arrival=_arrival_for_type(o["objective_type"])
             for si,spawn in enumerate((o.get("objective_spawns") or [])[:64],1):
                 lines.append("\t".join(tsv_escape(x) for x in [
@@ -998,6 +1083,8 @@ def main() -> int:
     a=sub.add_parser("area"); a.add_argument("--db",required=True,type=Path); a.add_argument("--config",required=True,type=Path); a.add_argument("--class",dest="cls",default=None); a.add_argument("--race",default=None); a.add_argument("--level",type=int,default=None); a.add_argument("--json-out",type=Path); a.add_argument("--text-out",type=Path)
     a=sub.add_parser("find-item"); a.add_argument("--db",required=True,type=Path); a.add_argument("item_id",type=int); a.add_argument("--map",type=int,default=None)
     a=sub.add_parser("runtime-catalog"); a.add_argument("--db",required=True,type=Path); a.add_argument("--config",required=True,type=Path); a.add_argument("--class",dest="cls",default=None); a.add_argument("--race",default=None); a.add_argument("--out",required=True,type=Path)
+    a.add_argument("--area-trigger-dbc",type=Path,default=None)
+    a.add_argument("--authored-ids",type=Path,default=None)
     a=sub.add_parser("support-report"); a.add_argument("--db",required=True,type=Path); a.add_argument("--config",required=True,type=Path); a.add_argument("--class",dest="cls",default=None); a.add_argument("--race",default=None); a.add_argument("--out",type=Path)
     args=p.parse_args()
     if args.cmd=="import-sql":
@@ -1009,15 +1096,18 @@ def main() -> int:
             q=quest_record(conn,args.quest_id,args.map); print(json.dumps(q,ensure_ascii=False,indent=2) if q else "null")
         elif args.cmd=="find-item": print(json.dumps(quest_sources_for_item(conn,args.item_id,args.map),ensure_ascii=False,indent=2))
         elif args.cmd=="area":
-            cfg=json.loads(args.config.read_text(encoding="utf-8")); cat=area_catalog(conn,cfg,args.cls,args.race,args.level); text=summarize_area(cat); print(text)
+            cfg=load_config(args.config); cat=area_catalog(conn,cfg,args.cls,args.race,args.level); text=summarize_area(cat); print(text)
             if args.json_out:
                 args.json_out.parent.mkdir(parents=True,exist_ok=True); args.json_out.write_text(json.dumps(cat,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
             if args.text_out:
                 args.text_out.parent.mkdir(parents=True,exist_ok=True); args.text_out.write_text(text+"\n",encoding="utf-8")
         elif args.cmd=="runtime-catalog":
-            cfg=json.loads(args.config.read_text(encoding="utf-8")); export_runtime_catalog(conn,cfg,args.cls,args.race,args.out)
+            cfg=load_config(args.config); cfg["area_trigger_dbc"]=args.area_trigger_dbc
+            if args.authored_ids:
+                cfg["authored_metadata_ids"]=[int(value) for value in args.authored_ids.read_text().split()]
+            export_runtime_catalog(conn,cfg,args.cls,args.race,args.out)
         elif args.cmd=="support-report":
-            cfg=json.loads(args.config.read_text(encoding="utf-8")); text=support_report(conn,cfg,args.cls,args.race); print(text)
+            cfg=load_config(args.config); text=support_report(conn,cfg,args.cls,args.race); print(text)
             if args.out:
                 args.out.parent.mkdir(parents=True,exist_ok=True); args.out.write_text(text+"\n",encoding="utf-8")
     finally:

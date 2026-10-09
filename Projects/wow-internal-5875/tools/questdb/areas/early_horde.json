@@ -1,0 +1,11 @@
+{
+  "extends": "durotar.json",
+  "id": "early_orc_horde",
+  "name": "Durotar and Barrens, Orc-compatible, all classes, minimum level <= 25",
+  "zone_or_sort_ids": [14, 17, 363],
+  "maximum_min_level": 25,
+  "include_other_classes": true,
+  "include_local_class_quests": true,
+  "bounds": {"min_x": -6000, "max_x": 2500, "min_y": -7000, "max_y": 0},
+  "notes": "Catalogue coverage only. Existing Durotar priorities are inherited. Unsupported and ambiguous entries remain present; live offers and QuestGraph authorize execution."
+}

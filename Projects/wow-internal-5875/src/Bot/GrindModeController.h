@@ -7,6 +7,8 @@
 #include "GrindBagMonitor.h"
 #include "GrindLevelPolicy.h"
 #include "GrindTargetPolicy.h"
+#include "PullSafetyCandidateTelemetry.h"
+#include "SafeTargetSelector.h"
 #include "ManualVendorModePolicy.h"
 #include "UnattendedMaintenanceWaitPolicy.h"
 #include "MovementController.h"
@@ -63,6 +65,7 @@ namespace Bot
         static constexpr int VendorTriggerFreeSlots = 1;
         static constexpr std::uint64_t BagProbeIntervalTicks = 8; // 2 s
         static constexpr std::uint64_t MaintenanceProbeIntervalTicks = 40; // 10 s
+        static constexpr int MaintenanceMetadataRetryReportLimit = 12;
         static constexpr std::uint64_t MaintenanceRetryBackoffTicks = 2400; // 10 min
         static constexpr std::uint64_t UrgentMaintenanceRetryBackoffTicks = 480; // 2 min
         static constexpr std::uint64_t BagPressureVendorRetryBackoffTicks = 480; // 2 min
@@ -108,6 +111,8 @@ namespace Bot
         int migrationRegionAdvances_ = 0;
         LocalScan lastLocalScan_{};
         VendorController vendor_{};
+        bool vendorAutomationEnabled_ = false;
+        std::string lastManualFoodInventory_{};
         MaintenanceNeed manualVendorRequestedNeed_{};
         UnattendedMaintenanceWaitPolicy unattendedMaintenanceWait_{};
         bool maintenanceBlockedLogged_ = false;
@@ -115,6 +120,9 @@ namespace Bot
         std::uint64_t firstAidIdleSinceTick_ = 0;
         AdaptiveDangerMemory dangerMemory_{};
         MaintenanceSnapshot maintenance_{};
+        std::string lastMaintenanceReadinessState_{};
+        int maintenanceMetadataRetries_ = 0;
+        bool maintenanceRetryLimitLogged_ = false;
         std::uint64_t nextMaintenanceProbeTick_ = 0;
         std::uint64_t maintenanceSuppressedUntil_ = 0;
         std::uint64_t startupVendorGraceUntil_ = 0;
@@ -146,6 +154,10 @@ namespace Bot
         int roamLegsStarted_ = 0;
         int roamLegsArrived_ = 0;
         int roamLegsFailed_ = 0;
+        int navigationFailures_ = 0;
+        Navigation::NavigationPlanFailure lastNavigationFailure_ =
+            Navigation::NavigationPlanFailure::None;
+        bool lastNavigationFailureWasApproach_ = false;
         int autonomyMovementRecoveries_ = 0;
         int runtimeSupervisorResets_ = 0;
         int runtimeSupervisorEscalations_ = 0;
@@ -153,6 +165,9 @@ namespace Bot
         int antiAfkNavigationActions_ = 0;
         int antiAfkAcquisitionActions_ = 0;
         int antiAfkFallbackPulses_ = 0;
+        std::uint64_t nextUnsafePullLogTick_ = 0;
+        std::uint64_t nextPullCandidateLogTick_ = 0;
+        int lastApproachPredictedAdds_ = 0;
 
         std::uint64_t nextBagProbeTick_ = 0;
         GrindBagMonitor::Snapshot bags_{};
@@ -171,6 +186,23 @@ namespace Bot
                 case GrindModeState::Failed: return "Failed";
                 default: return "Unknown";
             }
+        }
+
+        void RecordNavigationFailure(
+            Navigation::NavigationPlanFailure reason,
+            bool approach,
+            const char* phase,
+            std::uint64_t targetGuid = 0)
+        {
+            ++navigationFailures_;
+            lastNavigationFailure_ = reason;
+            lastNavigationFailureWasApproach_ = approach;
+            Debug::Logger::Info(
+                std::string("GRIND 15A NAVIGATION FAILURE phase=") + phase +
+                " reason=" + Navigation::NavigationInitTelemetryPolicy::ReasonName(reason) +
+                " targetGuid=" + std::to_string(
+                    approach ? (targetGuid != 0 ? targetGuid : approachGuid_) : 0) +
+                " failures=" + std::to_string(navigationFailures_));
         }
 
         static float Distance2D(
@@ -332,37 +364,70 @@ namespace Bot
             CombatController& combat,
             std::uint64_t tick)
         {
-            const Objects::UnitState* best = nullptr;
-            double bestScore = std::numeric_limits<double>::infinity();
-            for (const auto& unit : world.units)
+            auto snapshot = SafeTargetSelector::Capture(
+                world,
+                [this, &world, &combat, tick](const Objects::UnitState& unit)
+                {
+                    return MatchesGrindCandidate(world, unit) &&
+                        unit.distance > CombatHandoffDistance &&
+                        unit.distance <= MaximumApproachCandidateDistance &&
+                        !IsApproachBlacklisted(unit.guid, tick) &&
+                        !combat.IsTemporaryGrindTargetBlacklisted(unit.guid, tick);
+                },
+                [&world](const Objects::UnitState& unit)
+                {
+                    return unit.targetGuid == world.activePlayerGuid &&
+                        unit.distance >= 0.0f && unit.distance <= 60.0f;
+                });
+            for (std::size_t i = 0; i < snapshot.units.size(); ++i)
             {
-                if (!MatchesGrindCandidate(world, unit))
+                if (!snapshot.units[i].eligible)
                     continue;
-
-                if (
-                    unit.distance <= CombatHandoffDistance ||
-                    unit.distance > MaximumApproachCandidateDistance ||
-                    IsApproachBlacklisted(unit.guid, tick) ||
-                    combat.IsTemporaryGrindTargetBlacklisted(unit.guid, tick))
-                {
-                    continue;
-                }
-
-                const Navigation::NavPoint point{unit.x, unit.y, unit.z};
-                const double score = static_cast<double>(unit.distance) +
-                    static_cast<double>(dangerMemory_.RiskAt(
-                        MapId, point, world.player.level)) * 25.0 +
-                    static_cast<double>(
-                        Navigation::NavigationHazardMemory::Instance().RiskAt(
-                            MapId, point)) * 90.0;
-                if (best == nullptr || score < bestScore)
-                {
-                    best = &unit;
-                    bestScore = score;
-                }
+                const auto* unit = snapshot.At(i);
+                const Navigation::NavPoint point{unit->x, unit->y, unit->z};
+                snapshot.units[i].existingRouteRisk =
+                    dangerMemory_.RiskAt(MapId, point, world.player.level) * 25.0f +
+                    Navigation::NavigationHazardMemory::Instance().RiskAt(
+                        MapId, point) * 90.0f;
             }
+            const auto selected = PullSafetyPolicy::Select(
+                snapshot.units, RecoveryController::HealthPercent(world.player));
+            if (tick >= nextPullCandidateLogTick_)
+            {
+                nextPullCandidateLogTick_ = tick + 20;
+                PullSafetyCandidateTelemetry::Emit(
+                    snapshot.units,
+                    RecoveryController::HealthPercent(world.player),
+                    selected, "grind_approach");
+            }
+            if (selected.decision == PullSafetyDecision::NoSafeCandidate &&
+                tick >= nextUnsafePullLogTick_)
+            {
+                nextUnsafePullLogTick_ = tick + 20;
+                Debug::Logger::Info(
+                    "PULL SAFETY NO SAFE TARGET mode=grind_approach candidateCount=" +
+                    std::to_string(selected.candidateCount) +
+                    " rejectedCount=" + std::to_string(selected.rejectedCount));
+            }
+            if (selected.decision != PullSafetyDecision::Voluntary)
+                return nullptr;
+            lastApproachPredictedAdds_ = selected.selected.predictedAdds;
+            return snapshot.At(selected.selectedIndex);
+        }
 
-            return best;
+        bool HasRawApproachCandidate(
+            const Objects::WorldState& world,
+            CombatController& combat,
+            std::uint64_t tick)
+        {
+            for (const auto& unit : world.units)
+                if (MatchesGrindCandidate(world, unit) &&
+                    unit.distance > CombatHandoffDistance &&
+                    unit.distance <= MaximumApproachCandidateDistance &&
+                    !IsApproachBlacklisted(unit.guid, tick) &&
+                    !combat.IsTemporaryGrindTargetBlacklisted(unit.guid, tick))
+                    return true;
+            return false;
         }
 
         bool HasCombatRangeCandidate(
@@ -645,6 +710,16 @@ namespace Bot
             MaintenanceSnapshot next{};
             if (!VendorController::ProbeMaintenance(next))
             {
+                // A failed readback cannot preserve a previous authoritative
+                // zero after bags or item-cache state may have changed.
+                maintenance_.foodCountKnown = false;
+                maintenance_.drinkCountKnown = false;
+                if (lastMaintenanceReadinessState_ != "probe_unavailable")
+                {
+                    Debug::Logger::Info(
+                        "MAINTENANCE INVENTORY READINESS state=probe_unavailable foodCountKnown=no drinkCountKnown=no");
+                    lastMaintenanceReadinessState_ = "probe_unavailable";
+                }
                 Debug::Logger::Info(
                     "MAINTENANCE 14G.5.1: probe unavailable; deferring maintenance decision.");
                 return;
@@ -655,20 +730,80 @@ namespace Bot
                 maintenance_.powerType != next.powerType ||
                 maintenance_.foodCount != next.foodCount ||
                 maintenance_.drinkCount != next.drinkCount ||
+                maintenance_.foodCountKnown != next.foodCountKnown ||
+                maintenance_.drinkCountKnown != next.drinkCountKnown ||
                 std::fabs(
                     maintenance_.minimumDurabilityPercent -
                     next.minimumDurabilityPercent) >= 1.0f;
 
+            const bool foodWasRequired =
+                AutonomousMaintenancePolicy::Evaluate(maintenance_).food;
             maintenance_ = next;
+            const std::string readinessState =
+                maintenance_.inventoryPendingItems > 0 ? "inventory_pending" :
+                maintenance_.metadataPendingItems > 0 ? "metadata_pending" :
+                maintenance_.tooltipPendingItems > 0 ? "tooltip_pending" :
+                maintenance_.foodCountKnown ? "ready" : "classification_pending";
+            const bool readinessChanged =
+                readinessState != lastMaintenanceReadinessState_;
+            if (readinessChanged)
+                maintenanceRetryLimitLogged_ = false;
+            if (readinessState == "ready")
+                maintenanceMetadataRetries_ = 0;
+            else
+                maintenanceMetadataRetries_ = std::min(
+                    MaintenanceMetadataRetryReportLimit,
+                    maintenanceMetadataRetries_ + 1);
+            if (readinessChanged ||
+                (readinessState != "ready" &&
+                 maintenanceMetadataRetries_ == MaintenanceMetadataRetryReportLimit &&
+                 !maintenanceRetryLimitLogged_))
+            {
+                Debug::Logger::Info(
+                    "MAINTENANCE INVENTORY READINESS state=" + readinessState +
+                    " foodStatus=" + (maintenance_.foodCountKnown
+                        ? (maintenance_.foodCount == 0 ? "known_zero_food" : "known_food_count")
+                        : "unknown") +
+                    " foodCountKnown=" + (maintenance_.foodCountKnown ? "yes" : "no") +
+                    " drinkCountKnown=" + (maintenance_.drinkCountKnown ? "yes" : "no") +
+                    " food=" + std::to_string(maintenance_.foodCount) +
+                    " unresolvedItems=" + std::to_string(maintenance_.unresolvedItems) +
+                    " metadataPending=" + std::to_string(maintenance_.metadataPendingItems) +
+                    " tooltipPending=" + std::to_string(maintenance_.tooltipPendingItems) +
+                    " inventoryPending=" + std::to_string(maintenance_.inventoryPendingItems) +
+                    " retry=" + std::to_string(maintenanceMetadataRetries_) +
+                    " retryLimitReached=" +
+                    (maintenanceMetadataRetries_ == MaintenanceMetadataRetryReportLimit
+                        ? "yes" : "no"));
+                maintenanceRetryLimitLogged_ =
+                    readinessState != "ready" &&
+                    maintenanceMetadataRetries_ == MaintenanceMetadataRetryReportLimit;
+            }
+            lastMaintenanceReadinessState_ = readinessState;
             if (changed)
             {
                 Debug::Logger::Info(
                     "MAINTENANCE 14G.5.1: status durability=" +
                     std::to_string(maintenance_.minimumDurabilityPercent) +
                     "% food=" + std::to_string(maintenance_.foodCount) +
+                    " foodCountKnown=" + (maintenance_.foodCountKnown ? "yes" : "no") +
                     " drink=" + std::to_string(maintenance_.drinkCount) +
+                    " drinkCountKnown=" + (maintenance_.drinkCountKnown ? "yes" : "no") +
                     " powerType=" + std::to_string(maintenance_.powerType) +
                     " money=" + std::to_string(maintenance_.money));
+            }
+            if (state_ == GrindModeState::WaitingForManualVendor &&
+                (foodWasRequired ||
+                 AutonomousMaintenancePolicy::Evaluate(maintenance_).food))
+            {
+                std::string inventory;
+                if (VendorController::ProbeFoodInventoryDiagnostic(inventory) &&
+                    inventory != lastManualFoodInventory_)
+                {
+                    lastManualFoodInventory_ = inventory;
+                    Debug::Logger::Info(
+                        "MAINTENANCE FOOD INVENTORY SNAPSHOT " + inventory);
+                }
             }
         }
 
@@ -861,6 +996,7 @@ namespace Bot
                     RoamArrivalDistance,
                     "post-death danger escape"))
             {
+                RecordNavigationFailure(nav->LastPlanFailure(), false, "post_death_escape_start");
                 auto& failed = sectors_[next];
                 failed.cooldownUntil = tick + FailedSectorCooldownTicks;
                 ++failed.failures;
@@ -930,6 +1066,8 @@ namespace Bot
                     std::string("grind approach entry=") +
                         std::to_string(candidate->entryId)))
             {
+                RecordNavigationFailure(
+                    nav->LastPlanFailure(), true, "approach_start", candidate->guid);
                 approachBlacklistUntil_[candidate->guid] =
                     tick + ApproachBlacklistTicks;
                 Debug::Logger::Info(
@@ -947,7 +1085,9 @@ namespace Bot
             Debug::Logger::Info("GRIND 14G.2: APPROACH DISTANT GRIND TARGET");
             Debug::Logger::Info(
                 "entry=" + std::to_string(approachEntry_) +
-                " distance=" + std::to_string(candidate->distance));
+                " distance=" + std::to_string(candidate->distance) +
+                " predictedAdds=" +
+                std::to_string(lastApproachPredictedAdds_));
             Debug::Logger::Info("================================");
 
             SetState(GrindModeState::ApproachingTarget);
@@ -973,6 +1113,18 @@ namespace Bot
                 return;
             }
 
+            if (RecoveryController::HealthPercent(world.player) <
+                PullSafetyPolicy::MinimumVoluntaryHealthPercent)
+            {
+                Debug::Logger::Info(
+                    "PULL SAFETY GATE decision=wait reason=low_health mode=grind_approach");
+                MovementController::HoldPosition(world.player);
+                ResetApproach();
+                SetState(GrindModeState::Grinding);
+                combat.Update(world, tick);
+                return;
+            }
+
             const auto* target = FindUnitByGuid(world, approachGuid_);
             if (
                 target == nullptr ||
@@ -980,6 +1132,40 @@ namespace Bot
             {
                 Debug::Logger::Info(
                     "GRIND 14G.2: approach target disappeared/became invalid; resuming scan.");
+                ResetApproach();
+                SetState(GrindModeState::Grinding);
+                return;
+            }
+
+            // The neighborhood can change while a long approach is in
+            // progress. Revalidate the owned GUID before another nav update
+            // or combat handoff; a newly packed group is not a safe pull.
+            const auto currentPull = SafeTargetSelector::Capture(
+                world,
+                [this, &world](const Objects::UnitState& unit)
+                {
+                    return unit.guid == approachGuid_ &&
+                        MatchesGrindCandidate(world, unit);
+                },
+                [&world](const Objects::UnitState& unit)
+                {
+                    return unit.targetGuid == world.activePlayerGuid;
+                });
+            const auto currentSafety = PullSafetyPolicy::Select(
+                currentPull.units,
+                RecoveryController::HealthPercent(world.player));
+            if (currentSafety.decision != PullSafetyDecision::Voluntary)
+            {
+                PullSafetyCandidateTelemetry::Emit(
+                    currentPull.units,
+                    RecoveryController::HealthPercent(world.player),
+                    currentSafety, "grind_approach_recheck");
+                Debug::Logger::Info(
+                    "PULL SAFETY REJECT mode=grind_approach guid=" +
+                    std::to_string(approachGuid_) +
+                    " reason=surroundings_changed decision=" +
+                    PullSafetyPolicy::DecisionName(currentSafety.decision));
+                MovementController::HoldPosition(world.player);
                 ResetApproach();
                 SetState(GrindModeState::Grinding);
                 return;
@@ -1016,6 +1202,8 @@ namespace Bot
 
             if (approachNavigator_->Failed())
             {
+                RecordNavigationFailure(
+                    approachNavigator_->LastPlanFailure(), true, "approach_update");
                 approachBlacklistUntil_[approachGuid_] =
                     tick + ApproachBlacklistTicks;
                 Debug::Logger::Info(
@@ -1063,7 +1251,8 @@ namespace Bot
             if (
                 FindDirectAggressor(world) != nullptr ||
                 HasCombatRangeCandidate(world, combat, tick) ||
-                HasApproachCandidate(world, combat, tick))
+                HasApproachCandidate(world, combat, tick) ||
+                HasRawApproachCandidate(world, combat, tick))
             {
                 roamPreflight_.reset();
                 roamPreflightSector_ = InvalidSectorIndex;
@@ -1135,6 +1324,7 @@ namespace Bot
                         std::to_string(next) +
                         (grayMigrationActive_ ? " gray-migration" : " empty-search")))
             {
+                RecordNavigationFailure(nav->LastPlanFailure(), false, "roam_start");
                 if (nav->LastPlanFailure() ==
                     Navigation::NavigationPlanFailure::WaterTraversalDisabled)
                     Debug::Logger::Info(
@@ -1241,6 +1431,8 @@ namespace Bot
 
             if (roamNavigator_->Failed())
             {
+                RecordNavigationFailure(
+                    roamNavigator_->LastPlanFailure(), false, "roam_update");
                 Debug::Logger::Info(
                     "NAV OBJECTIVE ABANDON owner=Grinding objective=roam"
                     " sharedNavigationTerminal=yes reason=" +
@@ -1362,7 +1554,8 @@ namespace Bot
 
             if (FindDirectAggressor(world) != nullptr ||
                 HasCombatRangeCandidate(world, combat, tick) ||
-                HasApproachCandidate(world, combat, tick))
+                HasApproachCandidate(world, combat, tick) ||
+                HasRawApproachCandidate(world, combat, tick))
             {
                 roamPreflight_.reset();
                 roamPreflightSector_ = InvalidSectorIndex;
@@ -1392,6 +1585,11 @@ namespace Bot
         }
 
     public:
+        void SetVendorAutomationEnabled(bool enabled)
+        {
+            vendorAutomationEnabled_ = enabled;
+        }
+
         bool Start(
             const Objects::WorldState& world,
             CombatController& combat,
@@ -1419,6 +1617,10 @@ namespace Bot
 
             nextBagProbeTick_ = tick;
             nextMaintenanceProbeTick_ = tick;
+            maintenance_ = MaintenanceSnapshot{};
+            lastMaintenanceReadinessState_.clear();
+            maintenanceMetadataRetries_ = 0;
+            maintenanceRetryLimitLogged_ = false;
             manualVendorRequestedNeed_ = MaintenanceNeed{};
             maintenanceSuppressedUntil_ = 0;
             unattendedMaintenanceWait_.Reset();
@@ -1475,6 +1677,9 @@ namespace Bot
                 "MAINTENANCE 14G.5.1: <=40% durability schedules repair, <=15% is urgent; food/drink restock target=12 with cash reserve, and drink is mana-user only.");
             Debug::Logger::Info(
                 "VENDOR 14L.2.1: STARTUP VENDOR GRACE armed for 120 seconds; non-urgent food/drink/repair maintenance cannot hijack bot startup, while bag pressure and <=15% urgent repair remain immediate.");
+            Debug::Logger::Info(
+                std::string("GRIND MANUAL VENDOR MODE: vendorAutomationEnabled=") +
+                (vendorAutomationEnabled_ ? "yes" : "no"));
             Debug::Logger::Info(
                 "FIRST AID 14J.1: bandages are crafted only after a genuine idle dwell; movement/approach/roam are never interrupted. Live gray/trivial recipes remain excluded.");
             Debug::Logger::Info(
@@ -1533,7 +1738,7 @@ namespace Bot
                         tick, freshBagRead, bags_.valid, bags_.freeSlots,
                         VendorTriggerFreeSlots,
                         CombatSafeForVendor(combat) || combat.State() == CombatState::Idle,
-                        true);
+                        vendorAutomationEnabled_);
                     if (decision == MaintenanceWaitDecision::RetryVendor)
                     {
                         Debug::Logger::Info("MAINTENANCE WAIT state=retry attempt=" +
@@ -1572,10 +1777,14 @@ namespace Bot
                 }
                 else
                 {
-                    if (!ManualVendorModePolicy::RequirementsSatisfied(
+                    const bool requirementsSatisfied =
+                        ManualVendorModePolicy::RequirementsSatisfied(
                             bags_.valid, bags_.freeSlots,
                             VendorTriggerFreeSlots, maintenance_,
-                            manualVendorRequestedNeed_))
+                            manualVendorRequestedNeed_);
+                    if (ManualVendorModePolicy::Decide(
+                            vendorAutomationEnabled_, true, false,
+                            requirementsSatisfied) != ManualVendorDecision::ResumeGrind)
                         return;
                 }
 
@@ -1892,6 +2101,33 @@ namespace Bot
                 !postDeathEscapePending_ &&
                 !dangerEscapeActive_)
             {
+                const auto vendorDecision = ManualVendorModePolicy::Decide(
+                    vendorAutomationEnabled_, false, true, false);
+                if (vendorDecision == ManualVendorDecision::EnterManualWait)
+                {
+                    ResetApproach();
+                    ResetRoam();
+                    firstAid_.Abort("manual vendor intervention required");
+                    firstAidIdleSinceTick_ = 0;
+                    const bool holdIssued =
+                        MovementController::HoldPosition(world.player);
+                    lastManualFoodInventory_.clear();
+                    manualVendorRequestedNeed_ = maintenanceNeed;
+                    SetState(GrindModeState::WaitingForManualVendor);
+                    Debug::Logger::Info(
+                        "GRIND MANUAL VENDOR REQUIRED need=" +
+                        ManualVendorModePolicy::NeedName(
+                            bagPressure, maintenanceNeed) +
+                        " automaticVendor=disabled" +
+                        " bagPressure=" + (bagPressure ? "yes" : "no") +
+                        " food=" + (maintenanceNeed.food ? "yes" : "no") +
+                        " drink=" + (maintenanceNeed.drink ? "yes" : "no") +
+                        " holdIssued=" + (holdIssued ? "yes" : "no"));
+                    return;
+                }
+                if (!ManualVendorModePolicy::MayStartVendor(vendorDecision))
+                    return;
+
                 ResetApproach();
                 ResetRoam();
 
@@ -2147,6 +2383,15 @@ namespace Bot
         static constexpr std::uint32_t MapIdValue()
         {
             return MapId;
+        }
+
+        // Read-only endpoint risk for diagnostic escape-route comparison.
+        // This does not select a sector or mutate the grind route.
+        float EscapeDiagnosticDangerRiskAt(
+            const Navigation::NavPoint& point,
+            std::uint32_t playerLevel) const
+        {
+            return dangerMemory_.RiskAt(MapId, point, playerLevel);
         }
 
         bool ForceAntiAfkSafeguard(
@@ -2511,6 +2756,26 @@ namespace Bot
         int RoamLegsStarted() const { return roamLegsStarted_; }
         int RoamLegsArrived() const { return roamLegsArrived_; }
         int RoamLegsFailed() const { return roamLegsFailed_; }
+        int NavigationFailures() const { return navigationFailures_; }
+        Navigation::NavigationPlanFailure LastNavigationFailure() const
+        {
+            return lastNavigationFailure_;
+        }
+        bool LastNavigationFailureWasApproach() const
+        {
+            return lastNavigationFailureWasApproach_;
+        }
+        std::uint64_t ApproachGuid() const { return approachGuid_; }
+        const char* NavigationStateName() const
+        {
+            if (approachNavigator_)
+                return approachNavigator_->StateName();
+            if (roamNavigator_)
+                return roamNavigator_->StateName();
+            if (state_ == GrindModeState::Vendoring)
+                return "vendor_owned";
+            return "none";
+        }
         bool GrayMigrationActive() const { return grayMigrationActive_; }
         std::uint32_t GrayLevel(std::uint32_t playerLevel) const
         {

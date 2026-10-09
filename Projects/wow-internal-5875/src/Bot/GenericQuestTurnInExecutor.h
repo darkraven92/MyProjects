@@ -4,6 +4,9 @@
 #include "ClickToMoveController.h"
 #include "GameThreadDispatcher.h"
 #include "QuestPlannerTypes.h"
+#include "QuestTurnInAlternatePolicy.h"
+#include "QuestAcquisitionPolicy.h"
+#include "ObjectiveDefensiveCombatGuard.h"
 #include "ValleyQuestNpcDestinations.h"
 
 #include "../Debug/Logger.h"
@@ -13,6 +16,7 @@
 
 #include <windows.h>
 
+#include <array>
 #include <cstdint>
 #include <cmath>
 #include <cstdlib>
@@ -21,6 +25,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace Bot
 {
@@ -29,6 +34,8 @@ namespace Bot
         Idle,
         FindingNpc,
         RoutingToNpc,
+        SelectingAlternateApproach,
+        RoutingAlternateApproach,
         ApproachingNpc,
         AdvancingDialog,
         EvaluatingReward,
@@ -66,6 +73,10 @@ namespace Bot
 
         GenericQuestTurnInState state_ = GenericQuestTurnInState::Idle;
         const QuestProfile* profile_ = nullptr;
+        QuestProfile actorProfile_{};
+        bool actorInitialized_=false, defenseHeld_=false;
+        ObjectiveDefensiveCombatGuard defense_{};
+        Objects::PlayerState lastPlayer_{};
         std::uint64_t startTick_ = 0;
         std::uint64_t lastMoveTick_ = 0;
         std::uint64_t lastInteractionTick_ = 0;
@@ -83,6 +94,21 @@ namespace Bot
         bool routingToLiveNpc_ = false;
         Navigation::NavPoint liveNpcDestination_{};
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> turnInNavigator_{};
+        std::unique_ptr<Navigation::GenericNavMeshPathFollower> alternateProbe_{};
+        Objects::PlayerState alternateProbeOrigin_{};
+        Navigation::NavPoint alternateFailurePosition_{};
+        Navigation::NavPoint alternateFinalDestination_{};
+        Navigation::NavPoint alternateStageDestination_{};
+        Navigation::DirectedPolyTransition inheritedBadEdge_{};
+        std::array<Navigation::NavPoint,
+            QuestTurnInAlternatePolicy::MaximumCandidates> alternateCandidates_{};
+        std::vector<Navigation::NavPoint> triedAlternateStages_{};
+        Navigation::NavigationFailureEvidence lastRouteEvidence_{};
+        Navigation::NavigationFailureEvidence primaryRouteEvidence_{};
+        std::size_t alternateCandidateIndex_ = 0;
+        std::uint64_t alternateProbeStartTick_ = 0;
+        std::uint32_t alternateMapId_ = 1;
+        int strategicLegs_ = 0;
         ClassAwareRewardController rewardController_{};
 
         static std::string Hex32(std::uintptr_t value)
@@ -116,6 +142,10 @@ namespace Bot
                 case GenericQuestTurnInState::Idle: return "Idle";
                 case GenericQuestTurnInState::FindingNpc: return "FindingNpc";
                 case GenericQuestTurnInState::RoutingToNpc: return "RoutingToNpc";
+                case GenericQuestTurnInState::SelectingAlternateApproach:
+                    return "SelectingAlternateApproach";
+                case GenericQuestTurnInState::RoutingAlternateApproach:
+                    return "RoutingAlternateApproach";
                 case GenericQuestTurnInState::ApproachingNpc: return "ApproachingNpc";
                 case GenericQuestTurnInState::AdvancingDialog: return "AdvancingDialog";
                 case GenericQuestTurnInState::EvaluatingReward: return "EvaluatingReward";
@@ -140,6 +170,8 @@ namespace Bot
 
         void Fail(const std::string& reason)
         {
+            if(lastPlayer_.valid) MovementController::HoldPosition(lastPlayer_);
+            turnInNavigator_.reset();
             Debug::Logger::Info("================================");
             Debug::Logger::Info("QUEST PLANNER 11C: TURN-IN FAILED");
             Debug::Logger::Info("Reason: " + reason);
@@ -255,10 +287,284 @@ namespace Bot
             {
                 if (!unit.valid || unit.guid == 0 || unit.entryId != profile_->turnInEntry)
                     continue;
-                if (best == nullptr || unit.distance < best->distance)
+                if (best == nullptr || unit.distance < best->distance ||
+                    (unit.distance==best->distance && unit.guid<best->guid))
                     best = &unit;
             }
             return best;
+        }
+
+        bool ResolveTurnInSeed(
+            Navigation::NavPoint& destination,
+            std::uint32_t& mapId) const
+        {
+            if (profile_ == nullptr)
+                return false;
+            if (profile_->turnInDestination.valid)
+            {
+                const auto& seed = profile_->turnInDestination;
+                destination = {seed.x, seed.y, seed.z};
+                mapId = seed.mapId;
+                return true;
+            }
+            const auto* seed =
+                ValleyQuestNpcDestinations::Find(profile_->turnInEntry);
+            if (seed == nullptr)
+                return false;
+            destination = {seed->x, seed->y, seed->z};
+            mapId = seed->mapId;
+            return true;
+        }
+
+        bool BeginAlternateAfterRouteFailure(
+            const Objects::WorldState& world,
+            std::uint64_t tick,
+            const char* leg)
+        {
+            if (turnInNavigator_ == nullptr || profile_ == nullptr ||
+                !turnInNavigator_->Failed())
+                return false;
+            lastRouteEvidence_ = turnInNavigator_->FailureEvidence();
+            if (strategicLegs_ == 0)
+                primaryRouteEvidence_ = lastRouteEvidence_;
+            if (!inheritedBadEdge_.Valid() &&
+                lastRouteEvidence_.learnedTransition.Valid())
+                inheritedBadEdge_ = lastRouteEvidence_.learnedTransition;
+
+            alternateFailurePosition_ = {
+                world.player.x, world.player.y, world.player.z};
+            alternateProbeOrigin_ = world.player;
+            const auto* liveNpc = FindTurnInNpc(world);
+            if (liveNpc != nullptr)
+            {
+                alternateFinalDestination_ = {
+                    liveNpc->x, liveNpc->y, liveNpc->z};
+                alternateMapId_ = 1;
+            }
+            else if (routingToLiveNpc_)
+            {
+                alternateFinalDestination_ = liveNpcDestination_;
+                alternateMapId_ = 1;
+            }
+            else if (!ResolveTurnInSeed(
+                         alternateFinalDestination_, alternateMapId_))
+            {
+                return false;
+            }
+
+            Debug::Logger::Info(
+                "QUEST 16B.3 ROUTE FAILURE questId=" +
+                std::to_string(profile_->questId) +
+                " phase=turnin leg=" + leg +
+                " attempt=" + std::to_string(strategicLegs_) +
+                " failureReason=" +
+                Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                    lastRouteEvidence_.reason) +
+                " failurePosition=(" + Float(world.player.x) + "," +
+                Float(world.player.y) + "," + Float(world.player.z) + ")" +
+                " destinationEntry=" + std::to_string(profile_->turnInEntry) +
+                " failedFromPoly=" + Hex64(lastRouteEvidence_.failedTransition.from) +
+                " failedToPoly=" + Hex64(lastRouteEvidence_.failedTransition.to) +
+                " learnedFromPoly=" + Hex64(inheritedBadEdge_.from) +
+                " learnedToPoly=" + Hex64(inheritedBadEdge_.to) +
+                " corridorFingerprint=" +
+                std::to_string(lastRouteEvidence_.corridorFingerprint));
+            turnInNavigator_.reset();
+            alternateProbe_.reset();
+
+            if (!QuestTurnInAlternatePolicy::MayRecover(
+                    true, lastRouteEvidence_.reason, strategicLegs_))
+                return false;
+            if (!QuestTurnInAlternatePolicy::CanGenerate(
+                    alternateFailurePosition_, alternateFinalDestination_))
+                return false;
+            alternateCandidates_ = QuestTurnInAlternatePolicy::Generate(
+                alternateFailurePosition_, alternateFinalDestination_);
+            alternateCandidateIndex_ = 0;
+            SetState(GenericQuestTurnInState::SelectingAlternateApproach);
+            return true;
+        }
+
+        void AdvanceAlternateSelection(
+            const Objects::WorldState& world,
+            std::uint64_t tick)
+        {
+            const auto* liveNpc = FindTurnInNpc(world);
+            if (liveNpc != nullptr)
+            {
+                alternateFinalDestination_ = {
+                    liveNpc->x, liveNpc->y, liveNpc->z};
+                if (liveNpc->distance <= InteractionDistance)
+                {
+                    alternateProbe_.reset();
+                    SetState(GenericQuestTurnInState::FindingNpc);
+                    return;
+                }
+            }
+
+            if (alternateCandidateIndex_ >= alternateCandidates_.size())
+            {
+                Fail("no bounded reachable alternate turn-in approach remained.");
+                return;
+            }
+
+            const Navigation::NavPoint candidate =
+                alternateCandidates_[alternateCandidateIndex_];
+            if (!alternateProbe_)
+            {
+                alternateProbe_ = std::make_unique<
+                    Navigation::GenericNavMeshPathFollower>();
+                alternateProbeStartTick_ = tick;
+                const Navigation::GenericNavMeshStartOptions options{
+                    false, true, inheritedBadEdge_};
+                if (!alternateProbe_->Start(
+                        alternateProbeOrigin_, tick, candidate,
+                        alternateMapId_, 2.0f,
+                        "quest turn-in alternate planning probe", true,
+                        options))
+                {
+                    alternateProbe_.reset();
+                    ++alternateCandidateIndex_;
+                }
+                return;
+            }
+
+            alternateProbe_->Update(alternateProbeOrigin_, tick);
+            const auto result = alternateProbe_->PlanningOnlyResult();
+            const bool timedOut = tick >= alternateProbeStartTick_ &&
+                tick - alternateProbeStartTick_ >=
+                    QuestTurnInAlternatePolicy::MaximumProbeTicks;
+            if (result.status == Navigation::RouteCostProbeStatus::Pending &&
+                !timedOut)
+                return;
+
+            const auto& hazards =
+                Navigation::NavigationHazardMemory::Instance();
+            const float currentRisk = hazards.RiskAt(
+                alternateMapId_, alternateFailurePosition_);
+            const float candidateRisk = hazards.RiskAt(
+                alternateMapId_, candidate);
+            const bool complete =
+                result.status == Navigation::RouteCostProbeStatus::Reachable &&
+                alternateProbe_->PlanningOnlyReachedDestination();
+            const Navigation::DirectedPolyTransition rejectedEdge =
+                inheritedBadEdge_.Valid()
+                    ? inheritedBadEdge_ : primaryRouteEvidence_.failedTransition;
+            const bool crossesFailedEdge =
+                alternateProbe_->PlanningOnlyCorridorContainsTransition(
+                    rejectedEdge) ||
+                alternateProbe_->PlanningOnlyCorridorContainsTransition(
+                    lastRouteEvidence_.failedTransition);
+            const bool accepted = QuestTurnInAlternatePolicy::Accept(
+                alternateFailurePosition_, candidate, result.pathLength,
+                complete, crossesFailedEdge, currentRisk, candidateRisk,
+                triedAlternateStages_);
+            Debug::Logger::Info(
+                "QUEST 16B.3 ALTERNATE decision=" +
+                std::string(accepted ? "selected" : "rejected") +
+                " candidate=(" + Float(candidate.x) + "," +
+                Float(candidate.y) + "," + Float(candidate.z) + ")" +
+                " distance=" + Float(QuestTurnInAlternatePolicy::Distance2D(
+                    alternateFailurePosition_, candidate)) +
+                " routeCost=" + Float(result.pathLength) +
+                " complete=" + (complete ? "yes" : "no") +
+                " crossesFailedTransition=" +
+                (crossesFailedEdge ? "yes" : "no") +
+                " reason=" + (timedOut ? "probe_timeout" :
+                    accepted ? "bounded_reachable_egress" :
+                    "unsafe_or_unreachable_egress"));
+            alternateProbe_.reset();
+            ++alternateCandidateIndex_;
+            if (!accepted)
+                return;
+
+            turnInNavigator_ = std::make_unique<
+                Navigation::GenericNavMeshPathFollower>();
+            const Navigation::GenericNavMeshStartOptions options{
+                false, false, inheritedBadEdge_};
+            if (!turnInNavigator_->Start(
+                    world.player, tick, candidate, alternateMapId_, 2.5f,
+                    "quest turn-in strategic local egress", true, options))
+            {
+                turnInNavigator_.reset();
+                return;
+            }
+            alternateStageDestination_ = candidate;
+            triedAlternateStages_.push_back(candidate);
+            ++strategicLegs_;
+            SetState(GenericQuestTurnInState::RoutingAlternateApproach);
+        }
+
+        void UpdateAlternateApproach(
+            const Objects::WorldState& world,
+            std::uint64_t tick)
+        {
+            const auto* liveNpc = FindTurnInNpc(world);
+            if (liveNpc != nullptr && liveNpc->distance <= InteractionDistance)
+            {
+                turnInNavigator_.reset();
+                SetState(GenericQuestTurnInState::FindingNpc);
+                return;
+            }
+            if (turnInNavigator_ == nullptr)
+            {
+                Fail("strategic turn-in approach lost navigation ownership.");
+                return;
+            }
+            turnInNavigator_->Update(world.player, tick);
+            if (turnInNavigator_->Failed())
+            {
+                if (!BeginAlternateAfterRouteFailure(world, tick, "egress"))
+                    Fail("bounded strategic turn-in approaches exhausted.");
+                return;
+            }
+            if (!turnInNavigator_->Arrived())
+                return;
+            turnInNavigator_.reset();
+            if (!QuestTurnInAlternatePolicy::StageReached(
+                    alternateFailurePosition_,
+                    Navigation::NavPoint{
+                        world.player.x, world.player.y, world.player.z}))
+            {
+                Fail("alternate turn-in approach arrived without meaningful displacement.");
+                return;
+            }
+
+            Debug::Logger::Info(
+                "QUEST 16B.3 RETRY attempt=" +
+                std::to_string(strategicLegs_) + " from=(" +
+                Float(world.player.x) + "," + Float(world.player.y) + "," +
+                Float(world.player.z) + ") destinationEntry=" +
+                std::to_string(profile_->turnInEntry) +
+                " stage=(" + Float(alternateStageDestination_.x) + "," +
+                Float(alternateStageDestination_.y) + "," +
+                Float(alternateStageDestination_.z) + ")");
+            if (liveNpc != nullptr)
+            {
+                if (!StartLiveNpcNavigation(
+                        world, *liveNpc, tick, "strategic alternate reached"))
+                    Fail("failed to start turn-in NPC route after alternate approach.");
+            }
+            else if (routingToLiveNpc_)
+            {
+                // The last live position remains a search hint only. If the
+                // NPC reappears the normal live-XYZ handoff takes precedence.
+                turnInNavigator_ = std::make_unique<
+                    Navigation::GenericNavMeshPathFollower>();
+                const Navigation::GenericNavMeshStartOptions options{
+                    true, false, inheritedBadEdge_};
+                if (!turnInNavigator_->Start(
+                        world.player, tick, liveNpcDestination_, 1,
+                        LiveNpcNavArrivalDistance,
+                        "last live turn-in NPC position", true, options))
+                    Fail("failed to retry last live turn-in NPC position.");
+                else
+                    SetState(GenericQuestTurnInState::RoutingToNpc);
+            }
+            else if (!StartTurnInSeedNavigation(world, tick))
+            {
+                Fail("failed to retry turn-in search seed after alternate approach.");
+            }
         }
 
 
@@ -319,13 +625,17 @@ namespace Bot
                 seedX, seedY, seedZ
             };
 
+            const Navigation::GenericNavMeshStartOptions options{
+                true, false, inheritedBadEdge_};
+
             if (!turnInNavigator_->Start(
                     world.player,
                     tick,
                     destination,
                     seedMapId,
                     TurnInSeedArrivalDistance,
-                    std::string("turn-in search seed: ") + seedLabel))
+                    std::string("turn-in search seed: ") + seedLabel,
+                    true, options))
             {
                 turnInNavigator_.reset();
                 return false;
@@ -372,7 +682,10 @@ namespace Bot
                     liveNpcDestination_,
                     1,
                     LiveNpcNavArrivalDistance,
-                    "live turn-in NPC entry " + std::to_string(npc.entryId)))
+                    "live turn-in NPC entry " + std::to_string(npc.entryId),
+                    true,
+                    Navigation::GenericNavMeshStartOptions{
+                        true, false, inheritedBadEdge_}))
             {
                 turnInNavigator_.reset();
                 routingToLiveNpc_ = false;
@@ -408,16 +721,14 @@ namespace Bot
             return true;
         }
 
-        bool IssueInteraction(const Objects::UnitState& npc, std::uint64_t tick)
+    public:
+        // Shared build-5875 interaction primitive; no dialogue or quest policy.
+        static bool InteractUnitGuid(std::uint64_t guid)
         {
-            if (interactionAttempts_ >= MaximumInteractionAttempts)
-                return false;
-
             const auto functionAddress = OnRightClickUnitAddress();
             if (!IsExecutable(functionAddress))
                 return false;
-
-            const std::uintptr_t objectAddress = FindObjectAddressByGuid(npc.guid);
+            const std::uintptr_t objectAddress = FindObjectAddressByGuid(guid);
             if (objectAddress == 0)
                 return false;
 
@@ -428,13 +739,6 @@ namespace Bot
             bool onGameThread = false;
             const std::uint32_t npcThis = static_cast<std::uint32_t>(objectAddress);
 
-            Debug::Logger::Info("================================");
-            Debug::Logger::Info("QUEST PLANNER 11C: interacting with turn-in NPC.");
-            Debug::Logger::Info("Quest: " + std::to_string(profile_->questId) + " " + profile_->title);
-            Debug::Logger::Info("NPC entry: " + std::to_string(npc.entryId));
-            Debug::Logger::Info("NPC GUID: " + Hex64(npc.guid));
-            Debug::Logger::Info("NPC object: " + Hex32(objectAddress));
-
             const bool dispatched = GameThreadDispatcher::Invoke(
                 [&]()
                 {
@@ -443,11 +747,39 @@ namespace Bot
                         onRightClickUnit(npcThis, 0);
                 });
 
-            Debug::Logger::Info("================================");
+            return dispatched && onGameThread;
+        }
 
-            if (!dispatched || !onGameThread)
+        static bool RunQuestLua(const std::string& script, const char* variable, std::string& output)
+        {
+            if (!IsExecutable(LuaDoStringAddress()) || !IsExecutable(GetTextAddress())) return false;
+            using DoString = bool (__fastcall*)(const char*, const char*);
+            using GetText = const char* (__fastcall*)(char*, std::uint32_t, int);
+            bool ok = false;
+            const bool dispatched = GameThreadDispatcher::Invoke([&] {
+                if (!GameThreadDispatcher::IsGameThread()) return;
+                if (!reinterpret_cast<DoString>(LuaDoStringAddress())(script.c_str(),
+                    "wow-internal/GenericQuestTurnInExecutor.lua")) return;
+                const char* raw = reinterpret_cast<GetText>(GetTextAddress())(
+                    const_cast<char*>(variable), 0xFFFFFFFFu, 0);
+                if (raw && *raw)
+                {
+                    char buffer[128]{};
+                    std::strncpy(buffer, raw, sizeof(buffer) - 1);
+                    output = buffer;
+                    ok = true;
+                }
+            });
+            return dispatched && ok;
+        }
+
+    private:
+        bool IssueInteraction(const Objects::UnitState& npc, std::uint64_t tick)
+        {
+            if (interactionAttempts_ >= MaximumInteractionAttempts || !InteractUnitGuid(npc.guid))
                 return false;
-
+            Debug::Logger::Info("QUEST PLANNER 11C: interacting with turn-in NPC. Quest=" +
+                std::to_string(profile_->questId) + " entry=" + std::to_string(npc.entryId) + " GUID=" + Hex64(npc.guid));
             npcGuid_ = npc.guid;
             ++interactionAttempts_;
             lastInteractionTick_ = tick;
@@ -503,40 +835,8 @@ namespace Bot
                 "WOW_INTERNAL_GENERIC_TURNIN_STATE='gossip_select'; SelectGossipActiveQuest(q); f=1; break; end; q=q+1; end; "
                 "if f==0 then WOW_INTERNAL_GENERIC_TURNIN_STATE='gossip_not_found'; end; end";
 
-            using DoStringFunction = bool (__fastcall*)(const char*, const char*);
-            using GetTextFunction = const char* (__fastcall*)(char*, std::uint32_t, int);
-            const auto doString = reinterpret_cast<DoStringFunction>(doStringAddress);
-            const auto getText = reinterpret_cast<GetTextFunction>(getTextAddress);
-
-            char result[128]{};
-            bool onGameThread = false;
-            bool luaExecuted = false;
-            bool gotText = false;
-
-            const bool dispatched = GameThreadDispatcher::Invoke(
-                [&]()
-                {
-                    onGameThread = GameThreadDispatcher::IsGameThread();
-                    if (!onGameThread)
-                        return;
-
-                    luaExecuted = doString(
-                        script.c_str(),
-                        "wow-internal/GenericQuestTurnInExecutor.lua");
-                    if (!luaExecuted)
-                        return;
-
-                    const char* raw = getText(
-                        const_cast<char*>(ResultVariable), 0xFFFFFFFFu, 0);
-                    if (raw != nullptr && *raw != '\0')
-                    {
-                        std::strncpy(result, raw, sizeof(result) - 1);
-                        result[sizeof(result) - 1] = '\0';
-                        gotText = true;
-                    }
-                });
-
-            if (!dispatched || !onGameThread || !luaExecuted || !gotText)
+            std::string result;
+            if (!RunQuestLua(script, ResultVariable, result))
                 return false;
 
             ++dialogActions_;
@@ -600,8 +900,13 @@ namespace Bot
 
         void TryCompleteAfterRemoval()
         {
-            if (!questRemovalObserved_ || !RewardVerified())
+            if (!QuestAcquisitionPolicy::VerifiedTurnIn(true,questRemovalObserved_,RewardVerified()))
                 return;
+
+            Debug::Logger::Info("QUEST TURNIN VERIFY quest="+std::to_string(profile_->questId)+
+                " result=confirmed reason=reward_action_and_live_log_removal");
+            if(lastPlayer_.valid) MovementController::HoldPosition(lastPlayer_);
+            turnInNavigator_.reset();
 
             Debug::Logger::Info("================================");
             Debug::Logger::Info("QUEST PLANNER 11C: TURN-IN PASS");
@@ -629,7 +934,7 @@ namespace Bot
         bool Start(const QuestProfile& profile, std::uint64_t tick)
         {
             if (state_ != GenericQuestTurnInState::Idle ||
-                profile.turnInEntry == 0 || profile.title == nullptr || profile.title[0] == '\0')
+                profile.turnInIsGameObject || profile.turnInEntry == 0 || profile.title == nullptr || profile.title[0] == '\0')
             {
                 return false;
             }
@@ -641,7 +946,9 @@ namespace Bot
                 return false;
             }
 
-            profile_ = &profile;
+            actorProfile_=profile;
+            profile_ = &actorProfile_;
+            actorInitialized_=false; defenseHeld_=false;
             startTick_ = tick;
             lastMoveTick_ = 0;
             lastInteractionTick_ = 0;
@@ -659,6 +966,20 @@ namespace Bot
             routingToLiveNpc_ = false;
             liveNpcDestination_ = Navigation::NavPoint{};
             turnInNavigator_.reset();
+            alternateProbe_.reset();
+            alternateProbeOrigin_ = {};
+            alternateFailurePosition_ = {};
+            alternateFinalDestination_ = {};
+            alternateStageDestination_ = {};
+            inheritedBadEdge_ = {};
+            alternateCandidates_ = {};
+            triedAlternateStages_.clear();
+            lastRouteEvidence_ = {};
+            primaryRouteEvidence_ = {};
+            alternateCandidateIndex_ = 0;
+            alternateProbeStartTick_ = 0;
+            alternateMapId_ = 1;
+            strategicLegs_ = 0;
 
             Debug::Logger::Info("================================");
             Debug::Logger::Info("QUEST PLANNER PHASE 11C: GENERIC TURN-IN START");
@@ -673,7 +994,7 @@ namespace Bot
             return true;
         }
 
-        void Update(const Objects::WorldState& world, std::uint64_t tick)
+        void Update(const Objects::WorldState& world, CombatController& combat, std::uint64_t tick)
         {
             if (state_ == GenericQuestTurnInState::Idle ||
                 state_ == GenericQuestTurnInState::Done ||
@@ -682,6 +1003,28 @@ namespace Bot
             {
                 return;
             }
+
+            if(!world.player.valid || !world.player.health) return;
+            lastPlayer_=world.player;
+            if(!actorInitialized_)
+            {
+                actorInitialized_=true;
+                if(!actorProfile_.turnInDestinations.empty())
+                    actorProfile_.turnInDestination=QuestAcquisitionPolicy::SelectDestination(actorProfile_.turnInDestination,
+                        actorProfile_.turnInDestinations,world.player.x,world.player.y,world.player.z);
+                defense_.Reset(world,"quest turn-in");
+                Debug::Logger::Info("QUEST TURNIN ACTOR quest="+std::to_string(profile_->questId)+
+                    " type=npc entry="+std::to_string(profile_->turnInEntry)+" result=source_actor_selected");
+            }
+            const auto defense=defense_.Update(world,combat,turnInNavigator_.get(),0,tick);
+            if(defense!=ObjectiveDefenseUpdate::Clear)
+            {
+                if(!defenseHeld_ && !turnInNavigator_) MovementController::HoldPosition(world.player);
+                defenseHeld_=true;
+                if(defense==ObjectiveDefenseUpdate::Failed) Fail("defensive recovery interrupted turn-in");
+                return;
+            }
+            defenseHeld_=false;
 
             if (tick >= startTick_ + OverallTimeoutTicks)
             {
@@ -721,6 +1064,17 @@ namespace Bot
                 return;
             }
 
+            if (state_ == GenericQuestTurnInState::SelectingAlternateApproach)
+            {
+                AdvanceAlternateSelection(world, tick);
+                return;
+            }
+            if (state_ == GenericQuestTurnInState::RoutingAlternateApproach)
+            {
+                UpdateAlternateApproach(world, tick);
+                return;
+            }
+
             const auto* npc = FindTurnInNpc(world);
             if (npc == nullptr)
             {
@@ -730,14 +1084,9 @@ namespace Bot
 
                     if (turnInNavigator_->Failed())
                     {
-                        if (routingToLiveNpc_)
-                        {
-                            Fail("NavMesh routing to the last live turn-in NPC position failed after the NPC left WorldState.");
-                        }
-                        else
-                        {
-                            Fail("NavMesh routing to turn-in NPC search seed failed.");
-                        }
+                        if (!BeginAlternateAfterRouteFailure(
+                                world, tick, "npc_search"))
+                            Fail("NavMesh routing to turn-in NPC search seed failed; bounded alternate recovery unavailable.");
                         return;
                     }
 
@@ -865,7 +1214,9 @@ namespace Bot
                         }
                         else
                         {
-                            Fail("NavMesh routing to live turn-in NPC failed.");
+                            if (!BeginAlternateAfterRouteFailure(
+                                    world, tick, "live_npc"))
+                                Fail("NavMesh routing to live turn-in NPC failed; bounded alternate recovery unavailable.");
                         }
                         return;
                     }

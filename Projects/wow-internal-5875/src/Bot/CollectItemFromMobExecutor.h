@@ -2,6 +2,8 @@
 
 #include "CombatController.h"
 #include "IObjectiveExecutor.h"
+#include "ObjectiveAnchorSelectionPolicy.h"
+#include "QuestObjectiveDispatchPolicy.h"
 #include "ValleyOfTrialsProfiles.h"
 
 #include "../Debug/Logger.h"
@@ -13,8 +15,10 @@
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace Bot
 {
@@ -30,12 +34,15 @@ namespace Bot
 
         ObjectiveExecutorState state_ =
             ObjectiveExecutorState::Idle;
+        std::string failureReason_{};
 
         const QuestProfile* profile_ =
             nullptr;
 
-        Navigation::GenericNavMeshPathFollower
-            navigator_{};
+        std::unique_ptr<Navigation::GenericNavMeshPathFollower> navigator_ =
+            std::make_unique<Navigation::GenericNavMeshPathFollower>();
+        std::vector<std::size_t> attemptedAnchorIndices_{};
+        bool sourceAnchorFallbackEnabled_ = false;
 
         std::uint64_t executingStartTick_ =
             0;
@@ -48,6 +55,8 @@ namespace Bot
 
         bool waitingForDefensiveRecovery_ =
             false;
+
+        bool waitingForPullHealth_ = false;
 
         bool defensiveTargetAcquisitionPending_ =
             false;
@@ -343,7 +352,7 @@ namespace Bot
 
             if (pauseNavigation)
             {
-                navigator_.PauseForCombat(
+                navigator_->PauseForCombat(
                     world.player,
                     "live unit targetGuid matches local player GUID"
                 );
@@ -388,7 +397,7 @@ namespace Bot
                 return false;
             }
 
-            if (!navigator_.ResumeAfterCombat(
+            if (!navigator_->ResumeAfterCombat(
                     world.player,
                     tick))
             {
@@ -526,7 +535,7 @@ namespace Bot
                 "================================"
             );
 
-            navigator_.PauseForCombat(
+            navigator_->PauseForCombat(
                 world.player,
                 "new exact client target entered <=8 yd during planner ownership"
             );
@@ -615,7 +624,7 @@ namespace Bot
                 world
             );
 
-            navigator_.PauseForCombat(
+            navigator_->PauseForCombat(
                 world.player,
                 "player HP dropped during planner-owned navigation"
             );
@@ -1029,6 +1038,7 @@ namespace Bot
             CombatController& combat,
             const std::string& reason)
         {
+            failureReason_ = reason;
             DisablePlannerTarget(
                 combat
             );
@@ -1056,23 +1066,97 @@ namespace Bot
             );
         }
 
+        bool TryAlternateSourceAnchor(
+            const Objects::PlayerState& player, std::uint64_t tick)
+        {
+            if (!sourceAnchorFallbackEnabled_ || profile_ == nullptr ||
+                navigator_ == nullptr)
+                return false;
+
+            const auto failure = navigator_->LastPlanFailure();
+            // A missing/unknown navigator initialization is not evidence
+            // against this spawn. Only a terminal route-specific failure may
+            // move the objective to another source-backed anchor.
+            if (failure == Navigation::NavigationPlanFailure::None ||
+                failure == Navigation::NavigationPlanFailure::InitializationFailed ||
+                failure == Navigation::NavigationPlanFailure::OtherUnknown)
+                return false;
+
+            while (attemptedAnchorIndices_.size() <
+                ObjectiveAnchorSelectionPolicy::MaximumCandidates)
+            {
+                const auto selected =
+                    ObjectiveAnchorSelectionPolicy::SelectAlternate(
+                        *profile_, player.x, player.y, player.z,
+                        attemptedAnchorIndices_);
+                if (!selected.valid)
+                    break;
+                attemptedAnchorIndices_.push_back(selected.index);
+                const auto& anchor =
+                    profile_->searchDestinations[selected.index];
+                auto next = std::make_unique<
+                    Navigation::GenericNavMeshPathFollower>();
+                const bool started = next->Start(player, tick,
+                    {anchor.x, anchor.y, anchor.z}, anchor.mapId,
+                    anchor.arrivalDistance, anchor.label);
+                Debug::Logger::Info(
+                    "OBJECTIVE ANCHOR FAILOVER quest=" +
+                    std::to_string(profile_->questId) +
+                    " previousFailure=" +
+                    Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                        failure) +
+                    " selectedIndex=" + std::to_string(selected.index) +
+                    " attempt=" +
+                    std::to_string(attemptedAnchorIndices_.size()) + "/" +
+                    std::to_string(
+                        ObjectiveAnchorSelectionPolicy::MaximumCandidates) +
+                    " destination=(" + std::to_string(anchor.x) + "," +
+                    std::to_string(anchor.y) + "," +
+                    std::to_string(anchor.z) + ")" +
+                    " result=" + (started ? "started" : "start_failed"));
+                if (!started)
+                    continue;
+                navigator_ = std::move(next);
+                navigationLastHealth_ = player.health;
+                navigationTargetBaseline_ = player.targetGuid;
+                return true;
+            }
+
+            Debug::Logger::Info("OBJECTIVE ANCHOR FAILOVER quest=" +
+                std::to_string(profile_->questId) +
+                " attempted=" +
+                std::to_string(attemptedAnchorIndices_.size()) +
+                " result=exhausted reason=no_distinct_source_backed_anchor");
+            return false;
+        }
+
     public:
+        // Parent resource objectives may stop this collector once the needed
+        // item is actually in the bag. Never abandon an owned combat/loot
+        // episode to do so; the caller retries after combat settles.
+        bool ReleaseAfterResourceAcquired(
+            const Objects::PlayerState& player,
+            CombatController& combat)
+        {
+            if (combat.LockedGuid() != 0 ||
+                (combat.State() != CombatState::Idle &&
+                 combat.State() != CombatState::AcquiringTarget &&
+                 combat.State() != CombatState::PostKillDelay))
+                return false;
+            if (state_ == ObjectiveExecutorState::Navigating &&
+                !navigator_->PauseForCombat(player, "quest resource acquired"))
+                return false;
+            DisablePlannerTarget(combat);
+            SetState(ObjectiveExecutorState::ReadyForTurnIn);
+            return true;
+        }
+
         bool Supports(
             const QuestProfile& profile) const override
         {
-            const bool collect =
-                profile.objective.type ==
-                    QuestObjectiveType::CollectItemFromMob &&
-                profile.objective.itemId != 0;
-
-            const bool kill =
-                profile.objective.type ==
-                    QuestObjectiveType::KillMob;
-
-            return
-                (collect || kill) &&
-                profile.objective.targetEntry != 0 &&
-                profile.destination.valid;
+            return QuestObjectiveDispatchPolicy::Executor(profile.objective.type) ==
+                    QuestExecutorKind::Mob &&
+                QuestObjectiveDispatchPolicy::SupportsMaterialized(profile);
         }
 
         bool Start(
@@ -1093,6 +1177,14 @@ namespace Bot
 
             profile_ =
                 &profile;
+
+            attemptedAnchorIndices_.clear();
+            const auto primaryAnchor =
+                ObjectiveAnchorSelectionPolicy::PrimarySearchIndex(profile);
+            sourceAnchorFallbackEnabled_ = primaryAnchor.valid &&
+                profile.searchDestinations.size() > 1;
+            if (sourceAnchorFallbackEnabled_)
+                attemptedAnchorIndices_.push_back(primaryAnchor.index);
 
             Debug::Logger::Info(
                 "================================"
@@ -1190,7 +1282,7 @@ namespace Bot
                 profile.destination.z
             };
 
-            if (!navigator_.Start(
+            if (!navigator_->Start(
                     world.player,
                     tick,
                     destination,
@@ -1198,6 +1290,11 @@ namespace Bot
                     profile.destination.arrivalDistance,
                     profile.destination.label))
             {
+                if (TryAlternateSourceAnchor(world.player, tick))
+                {
+                    SetState(ObjectiveExecutorState::Navigating);
+                    return true;
+                }
                 Fail(
                     combat,
                     "generic NavMesh route failed to start."
@@ -1282,6 +1379,35 @@ namespace Bot
                     tick
                 );
 
+                return;
+            }
+
+            if (waitingForPullHealth_)
+            {
+                if (TryBeginDirectAggressorDefense(
+                        world, combat, tick, "pull health wait", false))
+                {
+                    waitingForPullHealth_ = false;
+                    return;
+                }
+                if (HealthPercent(world.player) <
+                        PullSafetyPolicy::MinimumVoluntaryHealthPercent &&
+                    (combat.State() == CombatState::AcquiringTarget ||
+                     combat.State() == CombatState::Recovering))
+                    combat.Update(world, tick);
+                if (HealthPercent(world.player) <
+                        PullSafetyPolicy::MinimumVoluntaryHealthPercent ||
+                    combat.State() == CombatState::Recovering)
+                    return;
+                waitingForPullHealth_ = false;
+                if (!navigator_->ResumeAfterCombat(world.player, tick))
+                {
+                    Fail(combat, "NavMesh route failed to resume after pull-health wait.");
+                    return;
+                }
+                Debug::Logger::Info(
+                    "PULL SAFETY READY mode=quest_objective hpPct=" +
+                    Float(HealthPercent(world.player)));
                 return;
             }
 
@@ -1375,10 +1501,41 @@ namespace Bot
                     ObjectiveExecutorState::
                         Navigating)
             {
+                if (TryBeginDirectAggressorDefense(
+                        world, combat, tick, "planner navigation", true))
+                    return;
+
+                if (HealthPercent(world.player) <
+                    PullSafetyPolicy::MinimumVoluntaryHealthPercent)
+                {
+                    if (!navigator_->PauseForCombat(
+                            world.player, "waiting for safe voluntary pull health"))
+                    {
+                        // The route can complete on this same snapshot.
+                        // CombatController still owns the low-HP recovery
+                        // gate after the normal arrived handoff.
+                        if (navigator_->Arrived())
+                        {
+                            EnablePlannerTarget(combat);
+                            executingStartTick_ = tick;
+                            SetState(ObjectiveExecutorState::Executing);
+                            return;
+                        }
+                        Fail(combat, "NavMesh route could not pause for pull-health wait.");
+                        return;
+                    }
+                    waitingForPullHealth_ = true;
+                    Debug::Logger::Info(
+                        "PULL SAFETY GATE mode=quest_objective hpPct=" +
+                        Float(HealthPercent(world.player)) +
+                        " decision=wait reason=low_health");
+                    return;
+                }
+
                 /*
                  * Prefer real objective-target data over the static seed.
-                 * This check intentionally runs before generic defensive
-                 * preemption so the live objective target keeps normal objective semantics.
+                 * CombatController still selects the safest eligible GUID;
+                 * this only transfers ownership from the route to combat.
                  */
                 const auto* liveTarget =
                     FindObjectiveTarget(
@@ -1396,7 +1553,7 @@ namespace Bot
                      * route explicitly before combat takes ownership so the
                      * player cannot keep running through the live target.
                      */
-                    navigator_.PauseForCombat(
+                    navigator_->PauseForCombat(
                         world.player,
                         "live objective target entered combat handoff range"
                     );
@@ -1418,16 +1575,6 @@ namespace Bot
                         "NavMesh ownership handed to combat."
                     );
 
-                    return;
-                }
-
-                if (TryBeginDirectAggressorDefense(
-                        world,
-                        combat,
-                        tick,
-                        "planner navigation",
-                        true))
-                {
                     return;
                 }
 
@@ -1456,13 +1603,15 @@ namespace Bot
                 navigationLastHealth_ =
                     world.player.health;
 
-                navigator_.Update(
+                navigator_->Update(
                     world.player,
                     tick
                 );
 
-                if (navigator_.Failed())
+                if (navigator_->Failed())
                 {
+                    if (TryAlternateSourceAnchor(world.player, tick))
+                        return;
                     Fail(
                         combat,
                         "generic NavMesh follower failed."
@@ -1471,7 +1620,7 @@ namespace Bot
                     return;
                 }
 
-                if (navigator_.Arrived())
+                if (navigator_->Arrived())
                 {
                     EnablePlannerTarget(
                         combat
@@ -1500,6 +1649,15 @@ namespace Bot
                     ObjectiveExecutorState::
                         Executing)
             {
+                // A new add after the previous objective fight must be
+                // defended against before acquiring another quest mob.
+                // The existing defensive handoff restores objective routing
+                // from live quest state after the attacker is resolved.
+                if (combat.LockedGuid() == 0 &&
+                    TryBeginDirectAggressorDefense(
+                        world, combat, tick, "objective acquisition", false))
+                    return;
+
                 if (
                     tick >=
                         executingStartTick_ +
@@ -1548,6 +1706,11 @@ namespace Bot
                 );
         }
 
+        const char* FailureReason() const override
+        {
+            return failureReason_.empty() ? nullptr : failureReason_.c_str();
+        }
+
         const QuestProfile* Profile() const
         {
             return
@@ -1558,7 +1721,7 @@ namespace Bot
             Navigator() const
         {
             return
-                navigator_;
+                *navigator_;
         }
     };
 }

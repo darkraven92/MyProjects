@@ -1,9 +1,11 @@
 #pragma once
 
 #include "GameThreadDispatcher.h"
+#include "ConsumableClassificationPolicy.h"
 #include "FirstAidController.h"
 #include "MovementController.h"
 #include "PlayerPostureController.h"
+#include "PullSafetyPolicy.h"
 
 #include "../Debug/Logger.h"
 #include "../Objects/PlayerSnapshot.h"
@@ -43,7 +45,8 @@ namespace Bot
     class RecoveryController
     {
     private:
-        static constexpr float EnterHealthPercent = 70.0f;
+        static constexpr float EnterHealthPercent =
+            PullSafetyPolicy::MinimumVoluntaryHealthPercent;
         static constexpr float ExitHealthPercent = 95.0f;
         static constexpr float EnterManaPercent = 60.0f;
         static constexpr float ExitManaPercent = 90.0f;
@@ -314,25 +317,17 @@ namespace Bot
                     "if not WOW_INTERNAL_RECOVERY_TOOLTIP then "
                     "WOW_INTERNAL_RECOVERY_TOOLTIP=CreateFrame('GameTooltip','WOW_INTERNAL_RECOVERY_TOOLTIP',UIParent,'GameTooltipTemplate'); "
                     "WOW_INTERNAL_RECOVERY_TOOLTIP:SetOwner(UIParent,'ANCHOR_NONE'); end; "
-                    "local tt=WOW_INTERNAL_RECOVERY_TOOLTIP; "
+                    "local tt=WOW_INTERNAL_RECOVERY_TOOLTIP; " +
+                    std::string(ConsumableClassificationPolicy::LuaDefinition()) +
                     "for b=0,4 do for s=1,GetContainerNumSlots(b) do "
                     "local link=GetContainerItemLink(b,s); if link then "
                     "local _,_,_,ilvl,req=GetItemInfo(link); ilvl=ilvl or 0; req=req or 0; "
                     "if req<=lvl then "
                     "tt:ClearLines(); tt:SetBagItem(b,s); "
-                    "local isf=0; local isd=0; "
-                    "for i=1,tt:NumLines() do "
-                    "local l=getglobal('WOW_INTERNAL_RECOVERY_TOOLTIPTextLeft'..i); "
-                    "if l and l:GetText() then local t=string.lower(l:GetText()); "
-                    "if string.find(t,'health over') and string.find(t,'eating') then isf=1 end; "
-                    "if string.find(t,'mana over') and string.find(t,'drinking') then isd=1 end; end; "
-                    "local r=getglobal('WOW_INTERNAL_RECOVERY_TOOLTIPTextRight'..i); "
-                    "if r and r:GetText() then local t=string.lower(r:GetText()); "
-                    "if string.find(t,'health over') and string.find(t,'eating') then isf=1 end; "
-                    "if string.find(t,'mana over') and string.find(t,'drinking') then isd=1 end; end; end; "
+                    "local isf,isd=classifyConsumable(tt); "
                     "local score=req*10000+ilvl; "
-                    "if isf==1 and score>fscore then fscore=score; fb=b; fs=s end; "
-                    "if isd==1 and score>dscore then dscore=score; db=b; ds=s end; "
+                    "if isf and score>fscore then fscore=score; fb=b; fs=s end; "
+                    "if isd and score>dscore then dscore=score; db=b; ds=s end; "
                     "end; end; end; end; "
                     "WOW_INTERNAL_RECOVERY_RESULT=p..'|'..m..'|'..mm..'|'..fb..'|'..fs..'|'..db..'|'..ds;";
             }

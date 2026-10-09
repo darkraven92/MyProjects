@@ -6,19 +6,27 @@
 #include "PlayerPostureController.h"
 #include "AutonomySupervisor.h"
 #include "ActiveBotAfkSafeguard.h"
+#include "AfkDiagnosticTracker.h"
 #include "SharedAfkController.h"
 #include "WaterEvidenceObserve5875.h"
 #include "LivingWaterBlockPolicy.h"
-#include "AfkDiagnosticTracker.h"
 #include "DisconnectDiagnosticPolicy.h"
+#include "ConnectionEvidence5875.h"
 #include "RuntimeRobustnessSupervisor.h"
 #include "CombatController.h"
 #include "DeathRecoveryController.h"
+#include "BotDeathOwnershipPolicy.h"
 #include "GrindModeController.h"
+#include "GrindEnduranceDiagnosticPolicy.h"
+#include "GrindTargetPolicy.h"
+#include "EscapeDecisionPolicy.h"
+#include "EscapeEvaluationEpisodePolicy.h"
+#include "EscapeRouteDiagnostic.h"
 #include "ExperienceTracker.h"
 #include "QuestStateReader.h"
 #include "QuestPlannerProbe.h"
 #include "QuestPlannerRuntimeController.h"
+#include "QuestFocusPolicy.h"
 #include "TargetSelector.h"
 #include "VileFamiliarsTurnInController.h"
 
@@ -29,11 +37,14 @@
 
 #include <windows.h>
 
+#include <cerrno>
 #include <cstdint>
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
+#include <cstdlib>
 #include <iomanip>
+#include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -135,6 +146,22 @@ namespace Bot
                         "session_teardown");
                 }
             } navMeshSessionLifetime;
+            static std::uint64_t generation = 0;
+            const auto monitorGeneration = ++generation;
+            Debug::Logger::Event("BOT SESSION START worldMonitorGeneration=" +
+                std::to_string(monitorGeneration));
+            // All ordinary exits unwind the local controllers. This trace
+            // does not add a restart or change any ownership decision.
+            struct SessionExitTrace
+            {
+                std::uint64_t generation;
+                const char* reason = "monitor_return";
+                ~SessionExitTrace()
+                {
+                    Debug::Logger::Event("BOT SESSION STOP worldMonitorGeneration=" +
+                        std::to_string(generation) + " reason=" + reason);
+                }
+            } sessionExit{monitorGeneration};
             Debug::Logger::Info(
                 "=== WorldMonitor started ==="
             );
@@ -359,6 +386,7 @@ namespace Bot
 
             if (!combat.Start(0))
             {
+                sessionExit.reason = "combat_start_failed";
                 Debug::Logger::Info(
                     "WorldMonitor: "
                     "CombatController failed to start."
@@ -368,9 +396,14 @@ namespace Bot
             }
 
             GrindModeController grindMode;
+            grindMode.SetVendorAutomationEnabled(
+                runtimeControl.VendorAutomationEnabled(false));
             ExperienceTracker experienceTracker;
             AutonomySupervisor autonomySupervisor;
             Navigation::NavigationInitializationObservation lastAutonomyInitialization{};
+            EscapeDecisionPolicy escapeDiagnostic;
+            EscapeEvaluationEpisodePolicy escapeEvaluationEpisode;
+            EscapeRouteDiagnostic escapeRouteDiagnostic;
             ActiveBotAfkSafeguard antiAfkSafeguard;
             SharedAfkController sharedAfk;
             std::string lastAfkSafetyDecision;
@@ -381,9 +414,31 @@ namespace Bot
 
             QuestPlannerRuntimeController
                 questPlannerRuntime;
+            int questFocusId = 0;
 
             if (!TemporaryGrindModeEnabled)
             {
+                // Optional explicit one-quest diagnostic scope. Invalid
+                // input fails closed instead of enabling the whole catalogue.
+                const char* requested =
+                    std::getenv("WOW_INTERNAL_QUEST_FOCUS_ID");
+                const auto focusConfiguration =
+                    QuestFocusPolicy::ParseConfiguration(requested);
+                const bool configured = focusConfiguration.configured;
+                questFocusId = focusConfiguration.questId;
+                questPlannerRuntime.ConfigureFocusQuest(questFocusId);
+                Debug::Logger::Info(
+                    std::string("QUEST 16A FOCUS configuration=") +
+                    QuestFocusPolicy::ConfigurationName(focusConfiguration.kind));
+                Debug::Logger::Info(
+                    std::string("QUEST 16B FOCUS configured=") +
+                    (configured ? "yes" : "no") +
+                    " rawValue=" +
+                    (configured ? std::string(requested).substr(0, 32)
+                                : requested != nullptr ? "<empty>" : "<unset>") +
+                    " parsedQuestId=" + std::to_string(questFocusId) +
+                    " result=" +
+                    QuestFocusPolicy::ConfigurationName(focusConfiguration.kind));
                 ClassAwareRewardController::
                     RunReadOnlyProbe();
 
@@ -392,6 +447,9 @@ namespace Bot
             }
             else
             {
+                Debug::Logger::Info(
+                    "QUEST 16B FOCUS configured=unknown rawValue=<not_read> "
+                    "parsedQuestId=0 result=quest_mode_inactive");
                 Debug::Logger::Info(
                     "GRIND 14G.1: skipped quest planner/reward probe initialization for temporary grind test."
                 );
@@ -437,12 +495,31 @@ namespace Bot
             float movementAnchorY = 0.0f;
             float movementAnchorZ = 0.0f;
             std::uint64_t lastMeaningfulMovementMs = 0;
+            std::uint64_t enduranceCombatStarts = 0;
+            std::uint64_t enduranceDeaths = 0;
+            std::uint64_t enduranceManualVendorPauses = 0;
+            std::uint64_t enduranceUnexpectedIdleEvents = 0;
+            GrindEnduranceEdgeTracker enduranceEdges;
+            bool enduranceGrindFailed = false;
+            bool enduranceCombatFailed = false;
+            bool enduranceDeathFailed = false;
+            int observedNavigationFailures = 0;
+            int observedLootFailures = 0;
 
             std::uint64_t previousUiTargetGuid =
                 0;
 
             std::uint32_t previousPlayerHealth =
                 0xFFFFFFFF;
+
+            std::uint64_t deathRecoveryEpisode = 0;
+            bool deathEntryPendingLogged = false;
+            bool hp1ReconciliationActive = false;
+            bool hp1EpisodeLogged = false;
+            bool hp1ReconciliationStallLogged = false;
+            bool hp1AliveEmptyWorldLogged = false;
+            bool terminalDeathOwnerLogged = false;
+            std::uint64_t hp1ReconciliationStartTick = 0;
 
             std::uint32_t previousPowerRaw =
                 0xFFFFFFFF;
@@ -461,6 +538,8 @@ namespace Bot
                 if (!runtimeControl.IsOpen() && runtimeControl.OpenExisting())
                 {
                     runtimeControl.MarkRuntimeAttached(activeGuiMode);
+                    grindMode.SetVendorAutomationEnabled(
+                        runtimeControl.VendorAutomationEnabled(false));
                     Debug::Logger::Info(
                         "GUI CONTROL 14H.2: external control channel attached after runtime startup.");
                 }
@@ -473,6 +552,7 @@ namespace Bot
                 if (guiUnloadRequested)
                 {
                     sharedAfk.Reset();
+                    sessionExit.reason = "gui_stop_or_unload_requested";
                     runtimeControl.MarkRuntimeState(
                         Control::BotRunState::Unloading,
                         static_cast<LONG>(tick & 0x7FFFFFFFULL));
@@ -556,6 +636,24 @@ namespace Bot
 
                 if (diagnosticEvent != DisconnectDiagnosticEvent::None)
                 {
+                    // Source-verified read-only predicates; no disconnect/UI
+                    // action is inferred from ObjectManager or historical screen.
+                    const auto connection = ConnectionEvidence5875::Observe(
+                        Wow5875::Client::Base(), [](std::uintptr_t address, auto& value)
+                        {
+                            SIZE_T copied = 0;
+                            return ReadProcessMemory(GetCurrentProcess(),
+                                reinterpret_cast<const void*>(address), &value,
+                                sizeof(value), &copied) && copied == sizeof(value);
+                        });
+                    Debug::Logger::Info(std::string("CONNECTION EVIDENCE world=") +
+                        (snapshotValid ? "valid" : "unavailable") +
+                        " sourceVerified=" + (connection.signaturesKnown ? "yes" : "no") +
+                        " serverConnection=" + (connection.serverConnectionKnown
+                            ? (connection.serverConnected ? "yes" : "no") : "unknown") +
+                        " lastGlueScreen=" + connection.lastGlueScreen +
+                        " glueVisibility=unknown dialogState=unknown processAlive=yes" +
+                        " decision=observe_only reason=" + connection.reason);
                     const char* classification = snapshotValid
                         ? (diagnosticEvent == DisconnectDiagnosticEvent::SnapshotRecovered
                             ? "snapshot_recovered_cause_unknown" : "healthy")
@@ -607,6 +705,22 @@ namespace Bot
                     if (consecutiveWorldFailures == 0)
                         Navigation::DetourNavigationProvider::InvalidateSessionCache(
                             "world_unload_or_snapshot_gap");
+                    // Two terminal manual-alive probes must belong to a
+                    // continuous run of valid snapshots for the same player.
+                    deathRecovery.InvalidateTerminalAliveEvidenceOnWorldGap();
+                    escapeDiagnostic.Reset();
+                    const EscapeEvaluationEpisodeInput invalidEscapeWorld{};
+                    const auto escapeEvent =
+                        escapeEvaluationEpisode.Observe(invalidEscapeWorld);
+                    if (escapeEvent.kind ==
+                        EscapeEvaluationEpisodeEventKind::Cancel)
+                    {
+                        escapeRouteDiagnostic.Reset();
+                        Debug::Logger::Info(
+                            "ESCAPE 15C.1 EPISODE CANCEL reason=" +
+                            std::string(EscapeEvaluationEpisodePolicy::ReasonName(
+                                escapeEvent.reason)));
+                    }
                     ++consecutiveWorldFailures;
                     sharedAfk.Reset();
 
@@ -823,6 +937,120 @@ namespace Bot
                     }
                 }
 
+                // A dead/ghost player must not give a quest executor one
+                // update in which to turn death into an objective failure.
+                // The existing recovery controller performs the authoritative
+                // Lua confirmation; this preflight only gates mode ownership.
+                deathRecovery.ObserveClearlyAlivePosition(world);
+                const bool deathBootstrap =
+                    world.player.health == 1 &&
+                    deathRecovery.ConfirmDeathWhileIdle(world, tick);
+                const bool deathShouldOwn = BotDeathOwnershipPolicy::ShouldOwn(
+                    deathRecovery.IsActive(), deathRecovery.IsFailed(),
+                    world.player.valid, world.player.health,
+                    world.player.maxHealth, deathBootstrap);
+                const bool freshIdleAliveProbe =
+                    deathRecovery.FreshIdleAliveConfirmed(tick);
+                const bool normalModeHeldForReconciliation =
+                    BotDeathOwnershipPolicy::HoldNormalMode(
+                        deathShouldOwn, world.player.valid,
+                        world.player.health, world.player.maxHealth,
+                        freshIdleAliveProbe, !world.units.empty());
+                const bool ambiguousHp1Hold =
+                    normalModeHeldForReconciliation && !deathShouldOwn;
+                if (ambiguousHp1Hold && !deathEntryPendingLogged)
+                {
+                    deathEntryPendingLogged = true;
+                    Debug::Logger::Info(
+                        "DEATH RECOVERY ENTRY GATE reason=hp1_probe_pending"
+                        " state=" + std::string(deathRecovery.StateName()) +
+                        " valid=" + (world.player.valid ? "yes" : "no") +
+                        " hp=" + std::to_string(world.player.health) +
+                        "/" + std::to_string(world.player.maxHealth));
+                }
+                else if (!ambiguousHp1Hold)
+                    deathEntryPendingLogged = false;
+
+                if (ambiguousHp1Hold)
+                {
+                    if (BotDeathOwnershipPolicy::BeginReconciliationHold(
+                            hp1ReconciliationActive, ambiguousHp1Hold))
+                    {
+                        hp1ReconciliationActive = true;
+                        MovementController::HoldPosition(world.player);
+                    }
+                    if (!hp1EpisodeLogged)
+                    {
+                        hp1EpisodeLogged = true;
+                        hp1ReconciliationStartTick = tick;
+                        Debug::Logger::Info(
+                            "WORLD RECONCILIATION reason=hp1_ambiguous"
+                            " hp=" + std::to_string(world.player.health) +
+                            "/" + std::to_string(world.player.maxHealth) +
+                            " units=" + std::to_string(world.units.size()) +
+                            " objectsSeen=" + std::to_string(world.objectsSeen) +
+                            " unitObjectsSeen=" + std::to_string(world.unitObjectsSeen) +
+                            " unitReadFailures=" + std::to_string(world.unitReadFailures) +
+                            " enumerationInterrupted=" +
+                            (world.objectEnumerationInterrupted ? "yes" : "no") +
+                            " probeState=" + deathRecovery.IdleProbeStateName(tick) +
+                            " deathOwner=no mode=" +
+                            (TemporaryGrindModeEnabled ? "Grind" : "Questing"));
+                    }
+                    if (!hp1ReconciliationStallLogged &&
+                        tick >= hp1ReconciliationStartTick +
+                            DeathRecoveryPolicy::StatusLogTicks * 4)
+                    {
+                        hp1ReconciliationStallLogged = true;
+                        Debug::Logger::Info(
+                            "WORLD RECONCILIATION STALL reason=hp1_ambiguous"
+                            " ageTicks=" +
+                            std::to_string(tick - hp1ReconciliationStartTick) +
+                            " probeState=" + deathRecovery.IdleProbeStateName(tick) +
+                            " units=" + std::to_string(world.units.size()) +
+                            " objectsSeen=" + std::to_string(world.objectsSeen) +
+                            " unitObjectsSeen=" + std::to_string(world.unitObjectsSeen) +
+                            " unitReadFailures=" + std::to_string(world.unitReadFailures) +
+                            " enumerationInterrupted=" +
+                            (world.objectEnumerationInterrupted ? "yes" : "no"));
+                    }
+                    if (freshIdleAliveProbe && world.units.empty() &&
+                        !hp1AliveEmptyWorldLogged)
+                    {
+                        hp1AliveEmptyWorldLogged = true;
+                        Debug::Logger::Info(
+                            "WORLD RECONCILIATION reason=alive_probe_world_empty"
+                            " probeState=alive deathOwner=no units=0"
+                            " objectsSeen=" + std::to_string(world.objectsSeen) +
+                            " unitObjectsSeen=" + std::to_string(world.unitObjectsSeen) +
+                            " unitReadFailures=" + std::to_string(world.unitReadFailures));
+                    }
+                }
+                else
+                {
+                    hp1ReconciliationActive = false;
+                    if (world.player.health != 1)
+                    {
+                        hp1EpisodeLogged = false;
+                        hp1ReconciliationStallLogged = false;
+                        hp1AliveEmptyWorldLogged = false;
+                    }
+                }
+                if (deathRecovery.IsFailed() && !terminalDeathOwnerLogged)
+                {
+                    terminalDeathOwnerLogged = true;
+                    Debug::Logger::Info(
+                        std::string("WORLD RECONCILIATION reason=terminal_death_recovery_failure"
+                        " deathOwner=yes mode=") +
+                        (TemporaryGrindModeEnabled ? "Grind" : "Questing") +
+                        " grindState=" + grindMode.StateName() +
+                        " hp=" + std::to_string(world.player.health) +
+                        "/" + std::to_string(world.player.maxHealth) +
+                        " units=" + std::to_string(world.units.size()));
+                }
+                else if (!deathRecovery.IsFailed())
+                    terminalDeathOwnerLogged = false;
+
                 // P0.4-TEMP: the verified SWIMMING bit is sufficient to stop
                 // living autonomous navigation, but not to infer a breathable
                 // surface or dry ground. DeathRecovery retains Ghost ownership.
@@ -924,7 +1152,8 @@ namespace Bot
                 // Phase 11A data-driven quest planner probe
                 // =====================================
 
-                if (!TemporaryGrindModeEnabled)
+                if (!TemporaryGrindModeEnabled &&
+                    !normalModeHeldForReconciliation)
                 {
                     questPlannerProbe.Update(
                         tick
@@ -935,7 +1164,9 @@ namespace Bot
                 // Read-only quest state probe
                 // =====================================
 
-                if (!TemporaryGrindModeEnabled && (tick % 20) == 0)
+                if (!TemporaryGrindModeEnabled &&
+                    !normalModeHeldForReconciliation && questFocusId == 0 &&
+                    (tick % 20) == 0)
                 {
                     QuestStateReader::Snapshot nextQuestState{};
 
@@ -1018,8 +1249,11 @@ namespace Bot
                 // Phase 11B generic objective execution
                 // =====================================
 
-                if (!TemporaryGrindModeEnabled)
+                if (!TemporaryGrindModeEnabled &&
+                    !normalModeHeldForReconciliation)
                 {
+                    questPlannerRuntime.SetVendorAutomationEnabled(
+                        runtimeControl.VendorAutomationEnabled(false));
                     questPlannerRuntime.Update(
                         world,
                         combat,
@@ -1032,6 +1266,7 @@ namespace Bot
                 // =====================================
 
                 if (
+                    !normalModeHeldForReconciliation &&
                     navMeshReturn.Arrived() &&
                     !vileFamiliarsTurnInStartAttempted &&
                     haveQuestState &&
@@ -1051,25 +1286,13 @@ namespace Bot
                     }
                 }
 
-                bool deathRecoveryOwnedTick = false;
+                bool deathRecoveryOwnedTick = normalModeHeldForReconciliation;
 
                 // =====================================
                 // Phase 14G.4.2 death / corpse recovery
                 // =====================================
 
-                if (TemporaryGrindModeEnabled)
-                    deathRecovery.ObserveClearlyAlivePosition(world);
-
-                const bool deathBootstrap =
-                    TemporaryGrindModeEnabled &&
-                    world.player.health == 1 &&
-                    deathRecovery.ConfirmDeathWhileIdle(world, tick);
-
-                if (TemporaryGrindModeEnabled &&
-                    (deathRecovery.IsActive() ||
-                     deathRecovery.IsFailed() ||
-                     (world.player.maxHealth > 0 && world.player.health == 0) ||
-                     deathBootstrap))
+                if (deathShouldOwn)
                 {
                     deathRecoveryOwnedTick = true;
 
@@ -1077,27 +1300,45 @@ namespace Bot
                     {
                         Navigation::NavPoint deathRecordPosition{
                             world.player.x, world.player.y, world.player.z};
-                        if (!deathBootstrap ||
-                            deathRecovery.LastClearlyAlivePosition(deathRecordPosition))
+                        if (TemporaryGrindModeEnabled &&
+                            (!deathBootstrap ||
+                             deathRecovery.LastClearlyAlivePosition(deathRecordPosition)))
                         {
                             grindMode.RecordDeath(
                                 world, tick, deathRecordPosition);
                         }
 
+                        if (!TemporaryGrindModeEnabled)
+                            questPlannerRuntime.ObserveDeathAtOwnershipBoundary(
+                                world, combat, tick);
+
                         combat.SuspendForDeathRecovery(
                             world.player,
                             tick);
 
-                        grindMode.SuspendForDeathRecovery(
-                            world,
-                            combat,
-                            tick);
+                        if (TemporaryGrindModeEnabled)
+                            grindMode.SuspendForDeathRecovery(
+                                world, combat, tick);
+                        else
+                            questPlannerRuntime.SuspendForDeathRecovery(
+                                world, combat, tick);
 
-                        if (!deathRecovery.Start(
+                        if (deathRecovery.Start(
                                 world,
                                 tick,
                                 GrindModeController::MapIdValue(),
                                 deathBootstrap))
+                        {
+                            ++deathRecoveryEpisode;
+                            Debug::Logger::Info(
+                                "DEATH RECOVERY ENTER episode=" +
+                                std::to_string(deathRecoveryEpisode) +
+                                " mode=" +
+                                std::string(TemporaryGrindModeEnabled
+                                    ? "Grind" : "Questing") +
+                                " reason=player_dead");
+                        }
+                        else
                         {
                             Debug::Logger::Info(
                                 "DEATH RECOVERY 14G.4.2: start deferred; retrying from next live world snapshot.");
@@ -1113,15 +1354,32 @@ namespace Bot
 
                     if (deathRecovery.IsDone())
                     {
+                        const bool rearmed =
+                            deathRecovery.RearmAfterConfirmedAlive();
                         combat.ResumeAfterDeathRecovery(tick);
-                        grindMode.ResumeAfterDeathRecovery(
-                            world,
-                            combat,
-                            tick);
+                        if (TemporaryGrindModeEnabled)
+                            grindMode.ResumeAfterDeathRecovery(
+                                world, combat, tick);
+                        else
+                            questPlannerRuntime.ResumeAfterDeathRecovery(tick);
+
+                        Debug::Logger::Info(
+                            "DEATH RECOVERY EXIT episode=" +
+                            std::to_string(deathRecoveryEpisode) +
+                            " resumeMode=" +
+                            std::string(TemporaryGrindModeEnabled
+                                ? "Grind" : "Questing") +
+                            " aliveConfirmed=yes");
 
                         AutonomySample resetSample{};
                         autonomySupervisor.Update(resetSample, tick);
-                        deathRecovery.Reset();
+                        Debug::Logger::Info(
+                            "DEATH RECOVERY REARM episode=" +
+                            std::to_string(deathRecoveryEpisode) +
+                            " nextEpisode=" +
+                            std::to_string(deathRecoveryEpisode + 1) +
+                            " state=" + deathRecovery.StateName() +
+                            " result=" + (rearmed ? "armed" : "failed"));
                     }
                 }
 
@@ -1187,6 +1445,138 @@ namespace Bot
                     );
                 }
 
+                if (!TemporaryGrindModeEnabled)
+                    questPlannerRuntime.ObserveIdle(world,combat,tick,
+                        deathRecoveryOwnedTick || normalModeHeldForReconciliation ||
+                        navMeshReturn.OwnsMovement() || navMeshReturn.Arrived() ||
+                        vileFamiliarsTurnIn.IsActive() || vileFamiliarsTurnIn.IsDone() || vileFamiliarsTurnIn.Failed());
+
+                // Phase 15A observes ownership outcomes without altering them.
+                bool manualWaitEntered = false;
+                bool manualWaitCleared = false;
+                if (TemporaryGrindModeEnabled)
+                {
+                    const bool combatActive =
+                        combat.State() == CombatState::WarriorChargeFacing ||
+                        combat.State() == CombatState::WarriorOpening ||
+                        combat.State() == CombatState::Chasing ||
+                        combat.State() == CombatState::Fighting;
+                    const GrindEnduranceEdges edges = enduranceEdges.Observe(
+                        combatActive,
+                        deathRecoveryOwnedTick,
+                        grindMode.State() == GrindModeState::WaitingForManualVendor);
+                    if (edges.combatStarted)
+                        ++enduranceCombatStarts;
+                    if (edges.deathStarted)
+                        ++enduranceDeaths;
+                    manualWaitEntered = edges.manualVendorEntered;
+                    manualWaitCleared = edges.manualVendorCleared;
+                    if (manualWaitEntered)
+                        ++enduranceManualVendorPauses;
+                }
+
+                const auto logEnduranceInterruption =
+                    [&](GrindInterruptionReason reason,
+                        const char* event,
+                        RuntimeRobustnessReason watchdogReason)
+                {
+                    const std::uint64_t targetGuid = combat.LockedGuid() != 0
+                        ? combat.LockedGuid() : grindMode.ApproachGuid();
+                    std::string targetDistance = "unknown";
+                    for (const auto& unit : world.units)
+                    {
+                        if (unit.valid && unit.guid == targetGuid && targetGuid != 0)
+                        {
+                            targetDistance = Float(unit.distance);
+                            break;
+                        }
+                    }
+                    const auto& maintenance = grindMode.Maintenance();
+                    const std::uint64_t diagnosticNowMs = GetTickCount64();
+                    const std::string maintenanceNeed = maintenance.valid
+                        ? ManualVendorModePolicy::NeedName(
+                            false, AutonomousMaintenancePolicy::Evaluate(maintenance))
+                        : "unknown";
+                    Debug::Logger::Info(
+                        std::string("GRIND 15A INTERRUPTION event=") + event +
+                        " reason=" + GrindEnduranceDiagnosticPolicy::Name(reason) +
+                        " utc=" + UtcTimestamp() +
+                        " tick=" + std::to_string(tick) +
+                        " grindState=" + grindMode.StateName() +
+                        " combatState=" + combat.StateName() +
+                        " navigationState=" + grindMode.NavigationStateName() +
+                        " targetGuid=" + Hex64(targetGuid) +
+                        " targetDistance=" + targetDistance +
+                        " movementAgeMs=" + (haveMovementAnchor
+                            ? std::to_string(diagnosticNowMs >= lastMeaningfulMovementMs
+                                ? diagnosticNowMs - lastMeaningfulMovementMs : 0)
+                            : "unknown") +
+                        " lastMeaningfulProgressAgeTicks=" +
+                        std::to_string(runtimeRobustness.ProgressAgeTicks(tick)) +
+                        " maintenanceNeed=" + maintenanceNeed +
+                        " bagsFree=" + (grindMode.Bags().valid
+                            ? std::to_string(grindMode.Bags().freeSlots) : "unknown") +
+                        " deathOwnership=" + (deathRecoveryOwnedTick ? "yes" : "no") +
+                        " vendorOwnership=" +
+                        (grindMode.State() == GrindModeState::Vendoring ? "yes" : "no") +
+                        " watchdogOwner=" + RuntimeActivityOwnerName(runtimeRobustness.Owner()) +
+                        " watchdogReason=" + GrindEnduranceDiagnosticPolicy::WatchdogName(watchdogReason) +
+                        " lastNavigationFailure=" + Navigation::NavigationInitTelemetryPolicy::ReasonName(
+                            grindMode.LastNavigationFailure()));
+                };
+
+                if (TemporaryGrindModeEnabled)
+                {
+                    if (manualWaitEntered)
+                        logEnduranceInterruption(
+                            GrindInterruptionReason::ManualVendorRequired,
+                            "manual_vendor_wait_entered", RuntimeRobustnessReason::None);
+                    if (manualWaitCleared)
+                        Debug::Logger::Info(
+                            "GRIND 15A INTENTIONAL WAIT CLEARED utc=" + UtcTimestamp() +
+                            " tick=" + std::to_string(tick) +
+                            " state=" + grindMode.StateName());
+                    if (grindMode.NavigationFailures() != observedNavigationFailures)
+                    {
+                        observedNavigationFailures = grindMode.NavigationFailures();
+                        GrindInterruptionFacts facts{};
+                        facts.navigationFailure = true;
+                        facts.approachFailure = grindMode.LastNavigationFailureWasApproach();
+                        facts.navigationReason = grindMode.LastNavigationFailure();
+                        logEnduranceInterruption(
+                            GrindEnduranceDiagnosticPolicy::Classify(facts),
+                            "navigation_failed", RuntimeRobustnessReason::None);
+                    }
+                    if (combat.LootsFailed() != observedLootFailures)
+                    {
+                        observedLootFailures = combat.LootsFailed();
+                        GrindInterruptionFacts facts{};
+                        facts.lootFailed = true;
+                        logEnduranceInterruption(
+                            GrindEnduranceDiagnosticPolicy::Classify(facts),
+                            "loot_failed", RuntimeRobustnessReason::None);
+                    }
+                    if (deathRecovery.IsFailed() && !enduranceDeathFailed)
+                    {
+                        GrindInterruptionFacts facts{};
+                        facts.deathRecoveryFailed = true;
+                        logEnduranceInterruption(
+                            GrindEnduranceDiagnosticPolicy::Classify(facts),
+                            "death_recovery_failed", RuntimeRobustnessReason::None);
+                    }
+                    enduranceDeathFailed = deathRecovery.IsFailed();
+                    if (grindMode.Failed() && !enduranceGrindFailed)
+                        logEnduranceInterruption(
+                            GrindInterruptionReason::OtherUnknown,
+                            "grind_failed", RuntimeRobustnessReason::None);
+                    enduranceGrindFailed = grindMode.Failed();
+                    if (combat.Failed() && !enduranceCombatFailed)
+                        logEnduranceInterruption(
+                            GrindInterruptionReason::OtherUnknown,
+                            "combat_failed", RuntimeRobustnessReason::None);
+                    enduranceCombatFailed = combat.Failed();
+                }
+
                 // =====================================
                 // Phase 14K.1.7 active-bot AFK safeguard
                 // =====================================
@@ -1200,6 +1590,7 @@ namespace Bot
                         world.player.maxHealth > 0 &&
                         world.player.health > 0 &&
                         grindMode.State() != GrindModeState::Failed &&
+                        grindMode.State() != GrindModeState::WaitingForManualVendor &&
                         combat.State() != CombatState::Failed;
 
                     antiAfkSample.safeIdle =
@@ -1268,6 +1659,229 @@ namespace Bot
                 // =====================================
                 // Phase 14G.4.1 autonomy supervisor
                 // =====================================
+
+                const auto observeEscapeDiagnostic =
+                    [&](bool combatOwned, bool combatHardStall)
+                {
+                    EscapeDecisionInput input{};
+                    input.combatOwned = combatOwned;
+                    input.combatHardStall = combatHardStall;
+                    input.playerGuid = world.activePlayerGuid;
+                    input.lifeEpisode =
+                        static_cast<std::uint64_t>(enduranceDeaths);
+                    input.observedAtMs = nowMs;
+                    input.targetGuid = combatOwned ? combat.LockedGuid() : 0;
+                    input.playerHealthKnown = world.player.valid &&
+                        world.player.maxHealth > 0 && world.player.health > 0;
+                    if (input.playerHealthKnown)
+                        input.playerHealthPct =
+                            RecoveryController::HealthPercent(world.player);
+                    input.aggressorsKnown = world.activePlayerGuid != 0;
+                    bool targetPresent = false;
+                    bool targetAlive = false;
+                    bool targetVitalsKnown = false;
+
+                    if (combatOwned && input.targetGuid != 0)
+                    {
+                        for (const auto& unit : world.units)
+                        {
+                            if (unit.valid && unit.guid == input.targetGuid)
+                            {
+                                targetPresent = true;
+                                targetAlive = unit.health > 0;
+                                targetVitalsKnown = unit.maxHealth > 0;
+                                if (targetAlive && targetVitalsKnown)
+                                {
+                                    input.targetHealthKnown = true;
+                                    input.targetHealthPct = 100.0f *
+                                        static_cast<float>(unit.health) /
+                                        static_cast<float>(unit.maxHealth);
+                                }
+                            }
+                            // Positive, current-snapshot evidence only. A
+                            // transiently cleared UNIT_FIELD_TARGET may
+                            // undercount; it must not invent an aggressor.
+                            if (input.aggressorsKnown &&
+                                GrindTargetPolicy::LooksLikeCombatCreature(unit) &&
+                                unit.targetGuid == world.activePlayerGuid &&
+                                unit.distance >= 0.0f &&
+                                unit.distance <=
+                                    EscapeDecisionPolicy::LocalAggressorRadius)
+                            {
+                                ++input.observedDirectAggressors;
+                            }
+                        }
+                    }
+
+                    const EscapeDecisionAssessment assessment =
+                        escapeDiagnostic.Observe(input);
+                    const CombatHealthTrendAssessment healthTrend =
+                        escapeDiagnostic.HealthTrend();
+
+                    // A candidate starts one target-bound evaluation. A
+                    // transient hard-stall pulse clearing may downgrade the
+                    // decision to Warning without cancelling that evaluation.
+                    EscapeEvaluationEpisodeInput episodeInput{};
+                    episodeInput.worldValid = true;
+                    episodeInput.playerAlive = world.player.valid &&
+                        world.player.health > 0 && world.player.maxHealth > 0;
+                    episodeInput.combatOwned = combatOwned;
+                    episodeInput.targetGuid = input.targetGuid;
+                    episodeInput.targetPresent = targetPresent;
+                    episodeInput.targetAlive = targetAlive;
+                    episodeInput.targetVitalsKnown = targetVitalsKnown;
+                    episodeInput.playerHealthKnown = input.playerHealthKnown;
+                    episodeInput.playerHealthPct = input.playerHealthPct;
+                    episodeInput.decision = assessment.decision;
+                    const auto episodeEvent =
+                        escapeEvaluationEpisode.Observe(episodeInput);
+                    std::optional<EscapeRouteSelection> routeResult;
+                    if (episodeEvent.kind ==
+                        EscapeEvaluationEpisodeEventKind::Start)
+                    {
+                        routeResult = escapeRouteDiagnostic.Begin(
+                            world, grindMode, input.targetGuid, tick);
+                        Debug::Logger::Info(
+                            "ESCAPE 15C.1 EPISODE START reason=" +
+                            std::string(EscapeEvaluationEpisodePolicy::ReasonName(
+                                episodeEvent.reason)) +
+                            " targetGuid=" + Hex64(input.targetGuid) +
+                            " healthPct=" + Float(input.playerHealthPct));
+                        Debug::Logger::Info(
+                            "ESCAPE 15C.1 ROUTE decision=probing" +
+                            std::string(" candidateCount=") +
+                            std::to_string(escapeRouteDiagnostic.CandidateCount()) +
+                            " origin=(" + Float(world.player.x) + "," +
+                            Float(world.player.y) + "," +
+                            Float(world.player.z) + ")" +
+                            " targetGuid=" + Hex64(input.targetGuid) +
+                            " mode=planning_only_route_or_expanded");
+                    }
+                    else if (episodeEvent.kind ==
+                             EscapeEvaluationEpisodeEventKind::Keep)
+                    {
+                        Debug::Logger::Info(
+                            "ESCAPE 15C.1 EPISODE KEEP reason=" +
+                            std::string(EscapeEvaluationEpisodePolicy::ReasonName(
+                                episodeEvent.reason)) +
+                            " targetGuid=" + Hex64(input.targetGuid) +
+                            " healthPct=" + Float(input.playerHealthPct));
+                    }
+                    else if (episodeEvent.kind ==
+                             EscapeEvaluationEpisodeEventKind::Cancel)
+                    {
+                        escapeRouteDiagnostic.Reset();
+                        Debug::Logger::Info(
+                            "ESCAPE 15C.1 EPISODE CANCEL reason=" +
+                            std::string(EscapeEvaluationEpisodePolicy::ReasonName(
+                                episodeEvent.reason)) +
+                            " targetGuid=" + Hex64(input.targetGuid));
+                    }
+
+                    if (escapeEvaluationEpisode.Active() && !routeResult &&
+                        escapeRouteDiagnostic.Active())
+                        routeResult = escapeRouteDiagnostic.Step(tick);
+                    if (routeResult)
+                    {
+                            const auto& selected = *routeResult;
+                            const bool available = selected.decision ==
+                                EscapeRouteDecisionKind::CandidateAvailable;
+                            const auto& generation =
+                                escapeRouteDiagnostic.Generation();
+                            const auto& evidence =
+                                escapeRouteDiagnostic.Evidence();
+                            Debug::Logger::Info(
+                                "ESCAPE 15C.1 ROUTE decision=" +
+                                std::string(EscapeRouteSelectionPolicy::DecisionName(
+                                    selected.decision)) +
+                                " candidateCount=" +
+                                std::to_string(generation.candidates.size()) +
+                                " evaluatedCount=" +
+                                std::to_string(escapeRouteDiagnostic.EvaluatedCount()) +
+                                " candidateIndex=" +
+                                (escapeRouteDiagnostic.EvaluatedCount() > 0
+                                    ? std::to_string(
+                                        escapeRouteDiagnostic.LastCandidateIndex())
+                                    : std::string("unknown")) +
+                                " probeTicks=" +
+                                std::to_string(escapeRouteDiagnostic.LastProbeTicks()) +
+                                " episodeTicks=" +
+                                std::to_string(escapeRouteDiagnostic.LastEpisodeTicks()) +
+                                " reachableCount=" +
+                                std::to_string(selected.reachableCount) +
+                                " currentMinAggressorDistance=" +
+                                Float(selected.currentMinimumThreatDistance) +
+                                " selectedMinAggressorDistance=" +
+                                (available ? Float(selected.selectedMinimumThreatDistance)
+                                           : std::string("unknown")) +
+                                " selectedDestination=" + (available
+                                    ? "(" + Float(generation.candidates[
+                                        selected.selectedIndex].destination.x) + "," +
+                                        Float(generation.candidates[
+                                        selected.selectedIndex].destination.y) + "," +
+                                        Float(generation.candidates[
+                                        selected.selectedIndex].destination.z) + ")"
+                                    : std::string("unknown")) +
+                                " routeCost=" + (available
+                                    ? Float(selected.routeCost) : std::string("unknown")) +
+                                " dangerCurrent=" + (available
+                                    ? Float(evidence[selected.selectedIndex].currentDeathRisk)
+                                    : std::string("unknown")) +
+                                " dangerSelected=" + (available
+                                    ? Float(evidence[selected.selectedIndex].destinationDeathRisk)
+                                    : std::string("unknown")) +
+                                " navHazardCurrent=" + (available
+                                    ? Float(evidence[selected.selectedIndex].currentNavHazardRisk)
+                                    : std::string("unknown")) +
+                                " navHazardSelected=" + (available
+                                    ? Float(evidence[selected.selectedIndex].destinationNavHazardRisk)
+                                    : std::string("unknown")) +
+                                " movementCommands=" +
+                                std::to_string(escapeRouteDiagnostic.MovementCommands()) +
+                                " reason=" + selected.reason);
+                        const auto completeEvent =
+                            escapeEvaluationEpisode.Complete();
+                        Debug::Logger::Info(
+                            "ESCAPE 15C.1 EPISODE COMPLETE reason=" +
+                            std::string(EscapeEvaluationEpisodePolicy::ReasonName(
+                                completeEvent.reason)) +
+                            " decision=" +
+                            EscapeRouteSelectionPolicy::DecisionName(
+                                selected.decision) +
+                            " targetGuid=" + Hex64(input.targetGuid));
+                    }
+                    if (!assessment.changed)
+                        return;
+                    Debug::Logger::Info(
+                        "ESCAPE 15C.0 DECISION decision=" +
+                        std::string(EscapeDecisionPolicy::DecisionName(
+                            assessment.decision)) +
+                        " reason=" + EscapeDecisionPolicy::ReasonName(
+                            assessment.reason) +
+                        " healthPct=" + (input.playerHealthKnown
+                            ? Float(input.playerHealthPct) : std::string("unknown")) +
+                        " targetHealthPct=" + (input.targetHealthKnown
+                            ? Float(input.targetHealthPct) : std::string("unknown")) +
+                        " aggressors=" + (input.aggressorsKnown
+                            ? std::to_string(input.observedDirectAggressors)
+                            : std::string("unknown")) +
+                        " multiAggro=" +
+                            (input.observedDirectAggressors >= 2 ? "yes" : "no") +
+                        " hardStall=" + (combatHardStall ? "yes" : "no") +
+                        " corroboratedSamples=" +
+                            std::to_string(assessment.corroboratedSamples) +
+                        " recentHealthLossPct=" +
+                            Float(healthTrend.recentHealthLossPct) +
+                        " trendSamples=" +
+                            std::to_string(healthTrend.trendSamples) +
+                        " declineObservations=" +
+                            std::to_string(healthTrend.declineObservations) +
+                        " deteriorating=" +
+                            (healthTrend.deteriorating ? "yes" : "no") +
+                        " targetGuid=" + Hex64(input.targetGuid) +
+                        " combatState=" + combat.StateName() +
+                        " grindState=" + grindMode.StateName());
+                };
 
                 if (TemporaryGrindModeEnabled && !deathRecoveryOwnedTick)
                 {
@@ -1339,6 +1953,11 @@ namespace Bot
                     const AutonomyEvent autonomyEvent =
                         autonomySupervisor.Update(autonomySample, tick);
 
+                    observeEscapeDiagnostic(
+                        autonomySample.activity == AutonomyActivity::Combat,
+                        autonomyEvent.kind == AutonomyEventKind::HardStall &&
+                            autonomyEvent.activity == AutonomyActivity::Combat);
+
                     if (autonomyEvent.kind == AutonomyEventKind::SoftStall)
                     {
                         Debug::Logger::Info(
@@ -1366,6 +1985,11 @@ namespace Bot
                                 " position=" + Float(world.player.x) + "," +
                                     Float(world.player.y) + "," + Float(world.player.z));
                         }
+                        logEnduranceInterruption(
+                            autonomyEvent.activity == AutonomyActivity::Combat
+                                ? GrindInterruptionReason::CombatHardStall
+                                : GrindInterruptionReason::NavigationFailure,
+                            "autonomy_hard_stall", RuntimeRobustnessReason::None);
                         const std::string reason =
                             "no meaningful physical/HP progress for " +
                             std::to_string(autonomyEvent.stalledTicks) +
@@ -1392,6 +2016,7 @@ namespace Bot
                 {
                     AutonomySample resetSample{};
                     autonomySupervisor.Update(resetSample, tick);
+                    observeEscapeDiagnostic(false, false);
                 }
 
                 // =====================================
@@ -1406,6 +2031,7 @@ namespace Bot
                         world.player.maxHealth > 0 &&
                         world.player.health > 0 &&
                         grindMode.State() != GrindModeState::Failed &&
+                        grindMode.State() != GrindModeState::WaitingForManualVendor &&
                         combat.State() != CombatState::Failed;
                     robustnessSample.level = world.player.level;
                     robustnessSample.currentXp = world.player.currentXp;
@@ -1489,6 +2115,33 @@ namespace Bot
                                 : robustnessSample.navigationInitializationPending ? "navigation_initialization_owner"
                                 : robustnessSample.navigationOwned ? "navigation_movement_owner"
                                 : "actual_owner_handoff"));
+                    }
+
+                    if (robustnessEvent.kind != RuntimeRobustnessEventKind::None)
+                    {
+                        GrindInterruptionFacts facts{};
+                        facts.watchdogReason = robustnessEvent.reason;
+                        facts.recoveryBlocked =
+                            robustnessSample.recoveryNoSupplyStalled;
+                        facts.noTarget =
+                            robustnessEvent.owner == RuntimeActivityOwner::Acquisition &&
+                            combat.LockedGuid() == 0 &&
+                            grindMode.ApproachGuid() == 0 &&
+                            grindMode.LocalSuitableCount() == 0;
+                        facts.intentionalWait =
+                            robustnessSample.navigationInitializationPending;
+                        const GrindInterruptionReason classification =
+                            GrindEnduranceDiagnosticPolicy::Classify(facts);
+                        const char* eventName =
+                            robustnessEvent.kind == RuntimeRobustnessEventKind::Watching
+                                ? "watch"
+                                : (robustnessEvent.kind == RuntimeRobustnessEventKind::Recovery
+                                    ? "bounded_recovery" : "escalated_recovery");
+                        logEnduranceInterruption(
+                            classification, eventName, robustnessEvent.reason);
+                        if (robustnessEvent.kind != RuntimeRobustnessEventKind::Watching &&
+                            GrindEnduranceDiagnosticPolicy::CountsAsUnexpectedIdle(classification))
+                            ++enduranceUnexpectedIdleEvents;
                     }
 
                     if (robustnessEvent.kind ==
@@ -1614,6 +2267,25 @@ namespace Bot
                     runtimeRobustness.Reset();
                 }
 
+                if (TemporaryGrindModeEnabled && tick != 0 && (tick % 240) == 0)
+                {
+                    Debug::Logger::Info(
+                        "GRIND 15A SESSION utc=" + UtcTimestamp() +
+                        " tick=" + std::to_string(tick) +
+                        " kills=" + std::to_string(combat.Kills()) +
+                        " lootAttempts=" + std::to_string(combat.Loot().TotalLootAttempts()) +
+                        " lootSuccesses=" + std::to_string(combat.LootsSucceeded()) +
+                        " combatStarts=" + std::to_string(enduranceCombatStarts) +
+                        " navigationFailures=" + std::to_string(grindMode.NavigationFailures()) +
+                        " deaths=" + std::to_string(enduranceDeaths) +
+                        " successfulDeathRecoveries=" +
+                        std::to_string(deathRecovery.Recoveries()) +
+                        " manualVendorPauses=" +
+                        std::to_string(enduranceManualVendorPauses) +
+                        " unexpectedIdleEvents=" +
+                        std::to_string(enduranceUnexpectedIdleEvents));
+                }
+
                 // =====================================
                 // Periodic status
                 // =====================================
@@ -1695,6 +2367,10 @@ namespace Bot
                         Debug::Logger::Info(
                             std::string("Grind14G2: state=") +
                             grindMode.StateName() +
+                            " normalModeUpdate=" +
+                            (deathRecoveryOwnedTick ? "no" : "yes") +
+                            " deathOwner=" +
+                            (deathShouldOwn ? "yes" : "no") +
                             " grayMigration=" +
                             (grindMode.GrayMigrationActive() ? "yes" : "no") +
                             " grayBoundary=" +
@@ -2366,6 +3042,7 @@ namespace Bot
 
                 if (combat.Failed())
                 {
+                    sessionExit.reason = "combat_controller_failed";
                     Debug::Logger::Info(
                         "WorldMonitor: "
                         "CombatController entered "

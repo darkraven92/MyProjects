@@ -2,6 +2,7 @@
 
 #include "GameThreadDispatcher.h"
 #include "IObjectiveExecutor.h"
+#include "QuestObjectiveDispatchPolicy.h"
 #include "ObjectiveDefensiveCombatGuard.h"
 #include "TargetController.h"
 #include "ValleyOfTrialsProfiles.h"
@@ -14,6 +15,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -37,6 +39,7 @@ namespace Bot
         static constexpr std::uint64_t MaximumObjectiveTicks = 1600;
 
         ObjectiveExecutorState state_ = ObjectiveExecutorState::Idle;
+        std::string failureReason_{};
         const QuestProfile* profile_ = nullptr;
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> navigator_{};
         std::uint64_t objectiveStartTick_ = 0;
@@ -157,9 +160,14 @@ namespace Bot
             return Wow5875::Client::Base() + GetTextRva;
         }
 
-        bool UseQuestItem(std::string& result)
+    public:
+        // Shared, build-5875-verified bag-link/UseContainerItem path. The
+        // returned "used" token means dispatch was issued, not that the
+        // quest effect or objective succeeded; callers must verify live state.
+        static bool UseQuestItemById(
+            std::uint32_t itemId, std::string& result)
         {
-            if (profile_ == nullptr || profile_->objective.itemId == 0)
+            if (itemId == 0)
                 return false;
 
             const auto doStringAddress = LuaDoStringAddress();
@@ -173,7 +181,7 @@ namespace Bot
             const auto getText = reinterpret_cast<GetTextFunction>(getTextAddress);
 
             const std::string itemNeedle =
-                "item:" + std::to_string(profile_->objective.itemId) + ":";
+                "item:" + std::to_string(itemId) + ":";
 
             const std::string script =
                 "WOW_INTERNAL_USEITEM_RESULT='item_not_found'; "
@@ -217,6 +225,73 @@ namespace Bot
             result = buffer;
             return true;
         }
+
+        // Read-only bag count. A failed Lua read is UNKNOWN, never zero.
+        // Uses the same 1.12.1 bag-link identity as UseQuestItemById.
+        static bool CountQuestItemById(
+            std::uint32_t itemId, std::uint32_t& count)
+        {
+            count = 0;
+            if (itemId == 0)
+                return false;
+            const auto doStringAddress = LuaDoStringAddress();
+            const auto getTextAddress = GetTextAddress();
+            if (!IsExecutable(doStringAddress) || !IsExecutable(getTextAddress))
+                return false;
+
+            using DoStringFunction = bool (__fastcall*)(const char*, const char*);
+            using GetTextFunction = const char* (__fastcall*)(char*, std::uint32_t, int);
+            const auto doString = reinterpret_cast<DoStringFunction>(doStringAddress);
+            const auto getText = reinterpret_cast<GetTextFunction>(getTextAddress);
+            const std::string needle = "item:" + std::to_string(itemId) + ":";
+            const std::string script =
+                "local n=0; local needle='" + needle + "'; "
+                "for b=0,4 do for s=1,GetContainerNumSlots(b) do "
+                "local l=GetContainerItemLink(b,s); "
+                "if l and string.find(l,needle,1,true) then "
+                "local _,c=GetContainerItemInfo(b,s); n=n+(c or 1); "
+                "end; end; end; WOW_INTERNAL_QUEST_ITEM_COUNT=tostring(n)";
+
+            char buffer[32]{};
+            bool onGameThread = false;
+            bool luaExecuted = false;
+            bool gotText = false;
+            const bool dispatched = GameThreadDispatcher::Invoke([&]()
+            {
+                onGameThread = GameThreadDispatcher::IsGameThread();
+                luaExecuted = doString(script.c_str(),
+                    "wow-internal/QuestItemCount.lua");
+                if (!luaExecuted)
+                    return;
+                const char* raw = getText(
+                    const_cast<char*>("WOW_INTERNAL_QUEST_ITEM_COUNT"),
+                    0xFFFFFFFFu, 0);
+                if (raw != nullptr && *raw != '\0')
+                {
+                    std::strncpy(buffer, raw, sizeof(buffer) - 1);
+                    gotText = true;
+                }
+            });
+            if (!dispatched || !onGameThread || !luaExecuted || !gotText)
+                return false;
+            try
+            {
+                const std::string value(buffer);
+                std::size_t consumed = 0;
+                const auto parsed = std::stoul(value, &consumed);
+                if (consumed != value.size() ||
+                    parsed > std::numeric_limits<std::uint32_t>::max())
+                    return false;
+                count = static_cast<std::uint32_t>(parsed);
+                return true;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+
+    private:
 
         bool StartNavigation(
             const Objects::WorldState& world,
@@ -289,6 +364,7 @@ namespace Bot
 
         void Fail(const std::string& reason)
         {
+            failureReason_ = reason;
             navigator_.reset();
             Debug::Logger::Info("================================");
             Debug::Logger::Info("OBJECTIVE 11D.2.1: USE ITEM ON UNIT FAILED");
@@ -301,8 +377,7 @@ namespace Bot
         bool Supports(const QuestProfile& profile) const override
         {
             return profile.objective.type == QuestObjectiveType::UseItemOnUnit &&
-                   profile.objective.targetEntry != 0 &&
-                   profile.objective.itemId != 0;
+                   QuestObjectiveDispatchPolicy::SupportsMaterialized(profile);
         }
 
         bool Start(
@@ -530,7 +605,7 @@ namespace Bot
                 return;
 
             std::string result;
-            if (!UseQuestItem(result))
+            if (!UseQuestItemById(profile_->objective.itemId, result))
             {
                 Fail("FrameScript quest-item use failed.");
                 return;
@@ -567,6 +642,11 @@ namespace Bot
         const char* StateName() const override
         {
             return StateNameInternal(state_);
+        }
+
+        const char* FailureReason() const override
+        {
+            return failureReason_.empty() ? nullptr : failureReason_.c_str();
         }
     };
 }

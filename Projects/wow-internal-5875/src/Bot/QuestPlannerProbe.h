@@ -6,6 +6,7 @@
 
 #include "../Debug/Logger.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -139,11 +140,37 @@ namespace Bot
                 const auto& entry =
                     snapshot.quests[i];
 
+                // Startup snapshot only: explain duplicate-title decisions
+                // without making the diagnostic an alternate identity path.
+                std::vector<const QuestProfile*> titleCandidates;
+                for (const auto& candidate : ValleyOfTrialsProfiles::All())
+                    if (entry.title == candidate.title)
+                        titleCandidates.push_back(&candidate);
+                if (titleCandidates.size() > 1)
+                    for (const auto* candidate : titleCandidates)
+                        Debug::Logger::Info(
+                            "QUEST IDENTITY CANDIDATE title=\"" + entry.title +
+                            "\" quest=" + std::to_string(candidate->questId) +
+                            " expectedRows=" + std::to_string(candidate->expectedObjectiveCount) +
+                            " sourceRows=" + (candidate->sourceObjectiveCount
+                                ? std::to_string(*candidate->sourceObjectiveCount) : "unknown") +
+                            " liveRows=" + std::to_string(entry.objectiveCount) +
+                            " classCompatible=" +
+                            (ValleyOfTrialsProfiles::ClassCompatibleForLiveIdentity(
+                                *candidate, snapshot.classToken) ? "yes" : "no") +
+                            " rowCompatible=" +
+                            ((candidate->expectedObjectiveCount == entry.objectiveCount ||
+                              candidate->expectedObjectiveCount < 0) ? "yes" : "no"));
+
                 const auto* profile =
                     ValleyOfTrialsProfiles::Find(
                         entry,
                         snapshot.classToken
                     );
+
+                Debug::Logger::Info("QUEST IDENTITY RESOLUTION title=\""+entry.title+"\" result="+
+                    (profile ? "resolved" : "unresolved")+" questId="+std::to_string(profile?profile->questId:0)+
+                    " reason="+(profile?"unique_title_rows_class_compatible":"no_unique_compatible_catalogue_identity"));
 
                 Debug::Logger::Info(
                     "Planner quest[" +
@@ -156,6 +183,9 @@ namespace Bot
                     std::to_string(
                         entry.objectiveCount
                     ) +
+                    " completedRows=" +
+                    std::to_string(std::count(entry.objectiveComplete.begin(),
+                        entry.objectiveComplete.end(), true)) +
                     " mappedQuestId=" +
                     (
                         profile == nullptr

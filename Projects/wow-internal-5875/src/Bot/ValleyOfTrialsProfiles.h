@@ -1,7 +1,10 @@
 #pragma once
 
 #include "QuestPlannerTypes.h"
+#include "CrossroadsQuestProfiles.h"
 #include "VanillaQuestDatabase.h"
+#include "QuestProfileMergePolicy.h"
+#include "QuestGraph.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -378,12 +381,11 @@ namespace Bot
             {
                 const auto& fallback = HandAuthored();
                 auto& database = VanillaQuestDatabase::Instance();
-                if (!database.EnsureLoaded())
-                    return fallback;
+                std::vector<QuestProfile> result = database.EnsureLoaded()
+                    ? database.Profiles()
+                    : fallback;
 
-                std::vector<QuestProfile> result = database.Profiles();
-
-                for (const auto& manual : fallback)
+                const auto mergeProfile = [&](const QuestProfile& manual, bool explicitMechanic)
                 {
                     auto it = std::find_if(
                         result.begin(),
@@ -395,16 +397,22 @@ namespace Bot
 
                     if (it == result.end())
                     {
-                        result.push_back(manual);
-                        continue;
+                        const auto* source = database.SourceProfile(manual.questId);
+                        result.push_back(source ? QuestProfileMergePolicy::Merge(manual, *source, true) : manual);
+                        return;
                     }
 
-                    if (it->objective.type == QuestObjectiveType::Unknown ||
-                        PreferHandAuthoredOverride(manual))
-                    {
-                        *it = manual;
-                    }
-                }
+                    *it = QuestProfileMergePolicy::Merge(manual, *it,
+                        explicitMechanic || PreferHandAuthoredOverride(manual) ||
+                        (manual.support == QuestExecutionSupport::VerifiedExistingSubsystem &&
+                         manual.objective.type != QuestObjectiveType::TalkToNpc) ||
+                        it->objective.type == QuestObjectiveType::Unknown);
+                };
+
+                for (const auto& manual : fallback)
+                    mergeProfile(manual, true);
+                for (const auto& crossroads : CrossroadsQuestProfiles::All())
+                    mergeProfile(crossroads, true);
 
                 return result;
             }();
@@ -412,25 +420,44 @@ namespace Bot
             return merged;
         }
 
+        static const QuestGraph& Graph()
+        {
+            static const QuestGraph graph(All());
+            return graph;
+        }
+
+        static bool ClassCompatibleForLiveIdentity(
+            const QuestProfile& profile, const std::string& classToken)
+        {
+            if (profile.classToken != nullptr && profile.classToken[0] != '\0' &&
+                classToken != profile.classToken)
+                return false;
+
+            // Authored class tokens are not the only class restrictions. The
+            // generated catalogue also carries source-backed class masks,
+            // which can disambiguate live quests with identical titles/rows.
+            const auto classMask = QuestEligibilityPolicy::ClassMask(classToken);
+            return !(classMask && profile.requiredClassMask &&
+                *profile.requiredClassMask != 0 &&
+                (*profile.requiredClassMask & *classMask) == 0);
+        }
+
         static const QuestProfile* Find(
             const PlannerQuestLogEntry& entry,
             const std::string& classToken,
             const std::set<int>* completedQuestIds = nullptr,
-            std::uint32_t preferredGiverEntry = 0)
+            std::uint32_t preferredGiverEntry = 0,
+            const std::vector<QuestProfile>* catalogue = nullptr)
         {
             std::vector<const QuestProfile*> candidates;
 
-            for (const auto& profile : All())
+            for (const auto& profile : catalogue ? *catalogue : All())
             {
                 if (entry.title != profile.title)
                     continue;
 
-                if (profile.classToken != nullptr &&
-                    profile.classToken[0] != '\0' &&
-                    classToken != profile.classToken)
-                {
+                if (!ClassCompatibleForLiveIdentity(profile, classToken))
                     continue;
-                }
 
                 candidates.push_back(&profile);
             }
@@ -475,6 +502,9 @@ namespace Bot
                 }
                 if (!wildcardCountMatches.empty())
                     candidates = std::move(wildcardCountMatches);
+                else if (preferredGiverEntry == 0 && std::any_of(candidates.begin(), candidates.end(),
+                    [](const QuestProfile* p) { return p->sourceMetadata.has_value(); }))
+                    return nullptr; // enriched metadata conflicts with live rows
             }
 
             if (candidates.size() == 1)

@@ -24,6 +24,13 @@ namespace Objects
 
         std::vector<UnitState> units;
 
+        // Diagnostic completeness counters: zero successfully decoded units
+        // alone cannot distinguish an empty area from failed unit reads.
+        std::uint32_t objectsSeen = 0;
+        std::uint32_t unitObjectsSeen = 0;
+        std::uint32_t unitReadFailures = 0;
+        bool objectEnumerationInterrupted = false;
+
         bool valid = false;
     };
 
@@ -149,6 +156,7 @@ namespace Objects
                         current,
                         0x40))
                 {
+                    state.objectEnumerationInterrupted = true;
                     break;
                 }
 
@@ -162,6 +170,7 @@ namespace Objects
                                 Object::Type,
                         type))
                 {
+                    state.objectEnumerationInterrupted = true;
                     break;
                 }
 
@@ -171,6 +180,7 @@ namespace Objects
                                 Object::Guid,
                         guid))
                 {
+                    state.objectEnumerationInterrupted = true;
                     break;
                 }
 
@@ -180,8 +190,11 @@ namespace Objects
                                 Object::Next,
                         next))
                 {
+                    state.objectEnumerationInterrupted = true;
                     break;
                 }
+
+                ++state.objectsSeen;
 
                 // -----------------------------------------
                 // Local player
@@ -201,6 +214,7 @@ namespace Objects
 
                 if (type == 3)
                 {
+                    ++state.unitObjectsSeen;
                     UnitState unit{};
 
                     if (UnitSnapshot::Read(
@@ -211,10 +225,15 @@ namespace Objects
                             unit
                         );
                     }
+                    else
+                        ++state.unitReadFailures;
                 }
 
                 if (next == current)
+                {
+                    state.objectEnumerationInterrupted = true;
                     break;
+                }
 
                 current = next;
             }
