@@ -1734,15 +1734,23 @@ namespace Bot
                 ProbeMaintenance(tick);
                 if (unattendedMaintenanceWait_.Active())
                 {
+                    const auto previousProof = unattendedMaintenanceWait_.SpaceObservations();
                     const auto decision = unattendedMaintenanceWait_.Observe(
                         tick, freshBagRead, bags_.valid, bags_.freeSlots,
                         VendorTriggerFreeSlots,
                         CombatSafeForVendor(combat) || combat.State() == CombatState::Idle,
                         vendorAutomationEnabled_);
+                    if (previousProof != unattendedMaintenanceWait_.SpaceObservations())
+                        Debug::Logger::Info("MAINTENANCE BAG PROOF tick=" + std::to_string(tick) +
+                            " fresh=" + (freshBagRead ? "yes" : "no") +
+                            " freeSlots=" + (bags_.valid ? std::to_string(bags_.freeSlots) : "unknown") +
+                            " observations=" + std::to_string(unattendedMaintenanceWait_.SpaceObservations()));
                     if (decision == MaintenanceWaitDecision::RetryVendor)
                     {
                         Debug::Logger::Info("MAINTENANCE WAIT state=retry attempt=" +
                             std::to_string(unattendedMaintenanceWait_.Retries()) +
+                            " tick=" + std::to_string(tick) +
+                            " retryAtTick=" + std::to_string(unattendedMaintenanceWait_.RetryAt()) +
                             " reason=automatic_full_bag_retry");
                         vendor_.ObserveWorld(world);
                         const Navigation::NavPoint resume{
@@ -1919,6 +1927,7 @@ namespace Bot
                     else
                         bags_.valid = false;
                     const bool holdForFullBags =
+                        unattendedMaintenanceWait_.Active() ||
                         ManualVendorModePolicy::HoldAfterFailedTrip(
                             postTripBagsKnown, postTripBags.freeSlots);
                     maintenanceSuppressedUntil_ = tick +
@@ -2005,7 +2014,6 @@ namespace Bot
                     }
                     const bool maintenanceUnmet = vendor_.MaintenanceUnmet();
                     ++vendorTrips_;
-                    unattendedMaintenanceWait_.Reset();
                     maintenanceBlockedLogged_ = false;
                     vendor_.Reset();
                     maintenanceSuppressedUntil_ = maintenanceUnmet
@@ -2025,6 +2033,22 @@ namespace Bot
                     combat.UpdateTemporaryGrindRegion(
                         currentGrindAnchor_,
                         CombatRegionRadius);
+                    // Completing a retry cannot release its existing bag lock
+                    // using just the terminal read. Preserve the retry budget
+                    // and require two scheduled observations in the wait owner.
+                    if (unattendedMaintenanceWait_.Active())
+                    {
+                        unattendedMaintenanceWait_.FailedTrip(tick + BagPressureVendorRetryBackoffTicks);
+                        nextBagProbeTick_ = tick + BagProbeIntervalTicks;
+                        const bool holdIssued = MovementController::HoldPosition(world.player);
+                        SetState(GrindModeState::WaitingForManualVendor);
+                        Debug::Logger::Info("MAINTENANCE WAIT state=confirming_space"
+                            " reason=vendor_retry_completed tick=" + std::to_string(tick) +
+                            " postTripFreeSlots=" + std::to_string(postTripBags.freeSlots) +
+                            " holdIssued=" + (holdIssued ? "yes" : "no") +
+                            " decision=await_two_fresh_bag_reads");
+                        return;
+                    }
                     ProbeBags(tick);
                     ProbeMaintenance(tick, true);
 
@@ -2712,6 +2736,8 @@ namespace Bot
         // Read-evidence invalidation only: no Lua, input or stale object use.
         void InvalidateMaintenanceEvidenceOnWorldGap()
         {
+            if (unattendedMaintenanceWait_.SpaceObservations() != 0)
+                Debug::Logger::Info("MAINTENANCE BAG PROOF observations=0 reason=world_gap");
             unattendedMaintenanceWait_.InvalidateSpaceProof();
             bags_.valid = false;
             maintenance_.valid = false;

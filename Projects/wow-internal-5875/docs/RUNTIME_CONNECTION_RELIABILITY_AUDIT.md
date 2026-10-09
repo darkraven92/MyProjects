@@ -1,5 +1,159 @@
 # R0.1 unattended maintenance / connection audit
 
+## R0.1 maintenance runtime preparation (2026-10-09)
+
+Branch `codex/r01-maintenance-runtime`; starting checkpoint
+`0c6064a4b50f6dad5ff49f8aac149b0e9c01f269`, initially clean. Inspected current
+source against `6b4407f9c3b1109f55052d72f1243f9205b28525` and restored checkpoint
+`a329e0b`. The complete incident reconstruction below remains the historical
+baseline; the excerpt-only account is still superseded. No WoW runtime was
+performed for this change. Maintenance qualification is **RUNTIME PENDING**.
+R0.1b.1's recorded read-only lifecycle **RUNTIME PASS** is unchanged and does
+not qualify maintenance, reconnect, or comprehensive owner reconciliation.
+
+### SOURCE VERIFIED — current target status
+
+| Target | Starting source and disposition |
+| --- | --- |
+| Automatic full-bag retry episode | Present: `UnattendedMaintenanceWaitPolicy::MaximumRetries=2`; retry count survives `FailedTrip`, including rejected starts. Cooldowns remain 480 ticks for bag pressure/urgent repair and 2400 for ordinary maintenance (nominal 2/10 minutes at 250 ms). Initial start failure retains its existing urgent/ordinary backoff. Exhaustion/automation disable produces MaintenanceBlocked. No retry-limit, merchant, navigation or discovery change. |
+| Two-read bag-lock release | Present in the wait owner: scheduled probes every eight ticks; only known freeSlots >1 contributes; stale polls do not count, unknown/full/one-slot reads reset proof, unsafe owners invalidate it. WorldMonitor invalidates bag/maintenance snapshots and partial proof on every world gap. **Concrete terminal-path bypass found and fixed**, described below. |
+| Stopped-wait AFK | Present: WaitingForManualVendor is a healthy-idle candidate, while Vendoring blocks as a transaction. Grind navigation ownership is included; the wait does not receive benign-moving-work permission. SharedAfk retains all combat/death/recovery/navigation/UI/water/unknown movement/native gates. Native 300000 ms, Due 240000 ms, Overdue 270000 ms and movement masks unchanged. No AFK behavior change. |
+| Passive world recovery | Inspected only: unavailable snapshots suspend updates, invalidate navigation cache on entry, bag/maintenance and terminal-alive evidence, and reset SharedAfk. Return rebaselines RuntimeRobustnessSupervisor. This does not establish intended-player identity or comprehensively clear/reconcile stale combat/vendor/navigation owners. No connection action or reconciliation change. |
+
+The two terminal paths in `GrindModeController::Update` bypassed the wait's
+proof gate: a failed retry with one fresh free slot took Grinding, leaving the
+episode active outside its wait owner; a completed retry with one read >1
+reset the episode before taking Grinding. Both could release an existing
+full-bag lock without the two scheduled observations. This is a SOURCE VERIFIED
+control-flow defect, not a new runtime diagnosis of the historical incident.
+
+The failed path now holds whenever an episode is active. The completed path
+preserves successful-trip accounting and ordinary maintenance suppression,
+then keeps the episode/retry count and returns to WaitingForManualVendor.
+Its terminal read does not count toward release; it arms the existing 480-tick
+bag retry cooldown and requires two subsequent scheduled probes. Initial
+trips with no existing episode retain their ordinary completion behavior.
+`state=recovered` resets the episode and permits the ordinary scheduler to
+resume; remaining food/repair needs cannot retain this bag lock indefinitely.
+
+Added sparse evidence needed to qualify this gate:
+
+- `MAINTENANCE BAG PROOF tick=... fresh=... freeSlots=... observations=...`
+  logs changes in the proof count, including a second identical bag read.
+  Existing `GRIND 14G.2: bags` logs suppress unchanged contents and could not
+  independently show that second read. World gaps log proof reset once when
+  partial proof exists, with `observations=0 reason=world_gap`.
+- `MAINTENANCE WAIT state=retry attempt=... tick=... retryAtTick=...`
+  records the consumed retry and its deadline. A start attempt is not proof
+  of merchant interaction or a successful transaction.
+- `MAINTENANCE WAIT state=confirming_space reason=vendor_retry_completed`
+  marks a completed retry retained under the bag lock. `holdIssued` reports
+  dispatch, not measured stillness or AFK input-clock advance.
+
+Focused regressions cover the terminal-path integration contracts, retained
+retry budget, zero/one/two-read proof, stale/unknown reads, one-slot boundary,
+world-gap wiring, and stopped-wait AFK blockers. Existing AFK tests cover
+threshold bands, movement masks and dispatch-versus-clock confirmation.
+`ActiveBotAfkSafeguard` remains the legacy acquisition timer; its request/action
+counters do not replace SharedAfk's native clock evidence. The offline
+`runtime_reliability_audit.py` and its qualification flag remain unchanged:
+it counts explicit events and separates passive world return from reconnect.
+Its changed-bag summary does not prove the new two-read sequence; inspect the
+proof events in the complete log as well.
+
+### RUNTIME OBSERVED / INFERRED / UNKNOWN
+
+RUNTIME OBSERVED: only the previously recorded complete incident and R0.1b.1
+read-only lifecycle evidence below. There is no maintenance runtime PASS for
+this revision. INFERRED: the corrected branches should prevent premature
+release; live qualification must still demonstrate that result.
+UNKNOWN: natural failure/retry/exhaustion behavior on this revision, release
+after a completed or failed retry, guarded stopped-wait AFK delivery, actual
+later unsupported movement flags from the old incident, and comprehensive
+same-player owner reconciliation. OM loss remains world evidence only;
+historical lastGlueScreen remains historical. Live Glue/dialog visibility,
+loading discrimination, interpreter lifetime and safe reconnect eligibility
+remain source gaps. `connection_client_audit.py` is unchanged; its generic
+runtimeQualified stays false and reconnectImplemented stays false.
+
+### Safe manual qualification runbook
+
+1. Use the rebuilt DLL and normal configured Wine prefix/client. Close the
+   previous GUI session, preserve its logs, and start a fresh normal workload
+   session from the project directory:
+
+   ```sh
+   env -u WOW_INTERNAL_CONNECTION_MODE -u WOW_INTERNAL_WATER_MODE -u WOW_INTERNAL_AFK_MODE wine ./build/wow_gui.exe
+   ```
+
+   Choose Grind with automatic vendor enabled in the existing GUI; start only
+   in an ordinary safe, alive in-world situation. Confirm normal Grind startup,
+   `vendorAutomationEnabled=yes` and `AFK CONFIG mode=protect`. Record session
+   time, revision, player GUID and world pointers. Do not use diagnostic AFK
+   qualify mode or alter thresholds to create a stopped wait.
+2. **Natural automatic retry:** observe an ordinary full-bag vendor failure
+   or rejected start. Preserve the entire trip from START through terminal
+   reason and wait entry. In that same uninterrupted episode expect attempts
+   1 and at most 2, each with `tick >= retryAtTick`; correlate failures with
+   their existing cooldown. No third attempt is allowed before a verified
+   recovery/reset. If both retries fail and bags stay full, expect
+   MaintenanceBlocked and no passive-target acquisition or repeated starts.
+   Observe beyond the last deadline plus one bag-probe interval. If a trip
+   succeeds or the episode releases sooner, mark exhaustion unexercised.
+3. **Release:** during a naturally reached hold, ordinary manual inventory
+   maintenance may free space using wanted sales/storage; do not destroy
+   items or arrange dangerous travel. Keep the same running session/episode.
+   One free slot must not release. With >1 free slots, require two
+   `MAINTENANCE BAG PROOF` events with `fresh=yes`, counts 1 then 2 and distinct
+   ticks at least eight apart, followed by `state=recovered` and
+   `GRIND MANUAL VENDOR CLEARED resuming=grind`. A retry finishing with space
+   must still pass this gate; a successful retry first logs confirming_space.
+   Observe subsequent ordinary work. Unknown reads or a single transient read
+   must not produce recovered. Do not inject read failures to exercise this.
+4. **Stopped-wait AFK:** only when the wait occurs naturally in a safe,
+   stationary place, finish manual UI activity, close interactive panels and
+   leave input alone under supervision. At normal native input age Due
+   240000/Overdue 270000 ms, inspect AFK SAFETY QUALIFICATION and production
+   decisions: wait is not vendor-owned, allowed stationary mask is 0x100,
+   unsupportedBits must be zero, and all other guards still apply. An active
+   vendor trip must block AFK. An F12 dispatch/pending result is insufficient:
+   require inputClockAfter != inputClockBefore and
+   `AFK ACTION RESULT result=confirmed reason=client_input_clock_advanced`.
+   AFK clear, if needed, requires its separate client/server evidence. User
+   input during that window makes attribution inconclusive. A legitimate
+   blocker is not permission to bypass the guard; save its raw evidence.
+5. **World boundaries, observation only:** if a world gap occurs naturally,
+   preserve before/gap/return logs. Partial bag proof must reset; return needs
+   two new reads before release. Compare GUID and manager/local-player
+   addresses separately from serverConnection; never label passive return
+   reconnect. Do not manufacture a gap while maintenance owns input. For an
+   optional safe normal logout/Enter World/same-character check, Stop Bot,
+   verify detach, and use the separate action-free R0.1b.1 observer procedure
+   below. That check does not qualify active-maintenance reconciliation.
+6. Stop Bot and verify BOT SESSION STOP / RUNTIME DETACHED / DLL unload with
+   WoW still running. Preserve complete `build/wow-internal.log` and
+   `build/wow-internal.lifecycle.log` before another session. Summarize a copy:
+
+   ```sh
+   python3 tools/runtime_reliability_audit.py build/wow-internal.log
+   rg -n 'MAINTENANCE WAIT|MAINTENANCE BAG PROOF|GRIND FULL BAG BLOCK|GRIND MANUAL VENDOR CLEARED|AFK (SAFETY QUALIFICATION|PRODUCTION|CANDIDATE|ACTION)|DISCONNECT DIAGNOSTIC' build/wow-internal.log
+   ```
+
+Mark each actually exercised condition separately. Natural repeated vendor
+failure/exhaustion, successful/failed retry release, unknown/transient bag
+reads, a gap between partial proof reads, and stopped-wait AFK/native blockers
+remain PENDING unless captured. Do not provoke death, water, network loss,
+process exit, or authentication errors. No credentials are needed or recorded.
+
+Validation: `python3 tools/validate.py --jobs 4` PASS, 105 C++ tests with
+`failures=[]`, 42 audit Python tests, 13 QuestDB Python tests, SQL and all
+10 Lua fixtures. Detailed report: `/tmp/wow-validation-1_xhialc/results.json`.
+`cmake --build build` PASS (MinGW DLL rebuilt); `git diff --check` PASS.
+`git status --short` contains only this document, `GrindModeController.h`,
+`UnattendedMaintenanceWaitPolicy.h` and `unattended_maintenance_wait_test.cpp`.
+No commit made. These are static/build results, not maintenance runtime proof.
+SOURCE GAP — RECONNECT NOT IMPLEMENTED.
+
 ## R0.1b.2 live Glue/UI source research (2026-10-09)
 
 Starting HEAD `72267d4ba0fc303c976834da057134fd51bf00f4` verified on

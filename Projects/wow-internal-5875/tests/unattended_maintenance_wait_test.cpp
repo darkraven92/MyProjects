@@ -46,12 +46,36 @@ int main()
     assert(read(0, true, true, 0, true, false) == D::MaintenanceBlocked);
     assert(p.Retries() == 0); // explicit GUI manual mode never overridden
 
+    // A terminal retry read must not release the active episode, even when
+    // the trip succeeded or a failed return trip left some free slots.
+    for (int terminalSlots : {1, 2, 12})
+    {
+        p.Reset();
+        p.FailedTrip(480);
+        assert(read(480, true, true, 0) == D::RetryVendor);
+        p.FailedTrip(960); // failed retry returns to the same wait episode
+        assert(p.Active() && p.Retries() == 1);
+        assert(p.RetryAt() == 960 && p.SpaceObservations() == 0);
+        assert(read(488, false, true, terminalSlots) != D::Resume);
+        assert(read(496, true, true, terminalSlots) != D::Resume);
+        assert(p.SpaceObservations() == (terminalSlots > 1 ? 1u : 0u));
+        assert(read(497, false, true, terminalSlots) != D::Resume);
+        p.InvalidateSpaceProof(); // successful retry / world gap discards proof
+        assert(p.Active() && p.Retries() == 1);
+        assert(read(504, true, true, 2) == D::Wait);
+        assert(read(512, true, false, 2) == D::Wait);
+        assert(p.SpaceObservations() == 0);
+        assert(read(520, true, true, 2) == D::Wait);
+        assert(read(528, true, true, 2) == D::Resume);
+    }
+
     AfkSafety safe; safe.healthyIdle = true;
     AfkObservation o{true, false, false, 300051, 0, 300000};
     AfkProductionPolicy afk;
     assert(afk.Update(o, safe, 1, false, false).action == AfkAction::InputPulse);
     for (auto field : {&AfkSafety::vendor, &AfkSafety::combat,
-            &AfkSafety::death, &AfkSafety::navigation, &AfkSafety::dialog})
+            &AfkSafety::death, &AfkSafety::navigation, &AfkSafety::dialog,
+            &AfkSafety::recovery, &AfkSafety::water, &AfkSafety::fault})
     {
         auto blocked = safe; blocked.*field = true;
         assert(afk.Update(o, blocked, 1, false, false).action == AfkAction::None);
@@ -77,4 +101,33 @@ int main()
     assert(source.find("unattendedMaintenanceWait_.Observe(") != std::string::npos);
     assert(source.find("reason=two_fresh_bag_space_observations") != std::string::npos);
     assert(source.find("AdoptExactTargetForDefense(world, aggressor->guid, tick)") != std::string::npos);
+    // Integration contracts: both vendor terminal paths must preserve an
+    // existing episode. The policy alone cannot catch these owner bypasses.
+    const auto failedStart = source.find("if (vendor_.Failed())");
+    const auto doneStart = source.find("if (vendor_.IsDone())", failedStart);
+    assert(failedStart != std::string::npos && doneStart != std::string::npos);
+    const auto failed = source.substr(failedStart, doneStart - failedStart);
+    assert(failed.find("const bool holdForFullBags =\n"
+                       "                        unattendedMaintenanceWait_.Active() ||") != std::string::npos);
+    const auto doneEnd = source.find("SetState(GrindModeState::Grinding);", doneStart);
+    assert(doneEnd != std::string::npos);
+    const auto done = source.substr(doneStart, doneEnd - doneStart);
+    assert(done.find("unattendedMaintenanceWait_.Reset()") == std::string::npos);
+    const auto active = done.find("if (unattendedMaintenanceWait_.Active())");
+    assert(active != std::string::npos);
+    const auto confirm = done.substr(active);
+    assert(confirm.find("unattendedMaintenanceWait_.FailedTrip(tick + BagPressureVendorRetryBackoffTicks)") != std::string::npos);
+    assert(confirm.find("nextBagProbeTick_ = tick + BagProbeIntervalTicks") != std::string::npos);
+    assert(confirm.find("SetState(GrindModeState::WaitingForManualVendor)") != std::string::npos);
+    assert(confirm.find("return;") != std::string::npos);
+
+    std::ifstream monitorFile("src/Bot/WorldMonitor.h");
+    assert(monitorFile);
+    const std::string monitor{std::istreambuf_iterator<char>(monitorFile), {}};
+    assert(monitor.find("afkSafety.vendor=grindMode.State()==GrindModeState::Vendoring;") != std::string::npos);
+    assert(monitor.find("grindMode.State()==GrindModeState::WaitingForManualVendor) &&") != std::string::npos);
+    const auto gap = monitor.find("if (!snapshotValid)");
+    const auto invalidate = monitor.find("grindMode.InvalidateMaintenanceEvidenceOnWorldGap();", gap);
+    assert(gap != std::string::npos && invalidate != std::string::npos);
+    assert(invalidate < monitor.find("continue;", gap));
 }

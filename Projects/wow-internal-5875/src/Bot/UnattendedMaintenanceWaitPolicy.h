@@ -23,6 +23,8 @@ namespace Bot
         }
         bool Active() const { return active_; }
         unsigned Retries() const { return retries_; }
+        unsigned SpaceObservations() const { return spaceObservations_; }
+        std::uint64_t RetryAt() const { return retryAt_; }
         void InvalidateSpaceProof() { spaceObservations_ = 0; }
         void Reset() { *this = {}; }
         MaintenanceWaitDecision Observe(std::uint64_t tick, bool freshRead,
