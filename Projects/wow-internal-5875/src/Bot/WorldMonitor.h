@@ -9,7 +9,7 @@
 #include "AfkDiagnosticTracker.h"
 #include "SharedAfkController.h"
 #include "WaterEvidenceObserve5875.h"
-#include "LivingWaterBlockPolicy.h"
+#include "LivingWaterEmergencyPolicy.h"
 #include "DisconnectDiagnosticPolicy.h"
 #include "ConnectionEvidence5875.h"
 #include "ConnectionLifecycleObserver5875.h"
@@ -496,7 +496,7 @@ namespace Bot
 
             DisconnectDiagnosticPolicy disconnectDiagnostic;
             AfkDiagnosticTracker afkDiagnostic;
-            LivingWaterBlockPolicy livingWaterBlock;
+            LivingWaterEmergencyPolicy waterEmergency;
             std::uint32_t lastAfkRawFlags = 0;
             std::uint64_t loopHeartbeat = 0;
             bool haveMovementAnchor = false;
@@ -710,6 +710,7 @@ namespace Bot
 
                 if (!snapshotValid)
                 {
+                    waterEmergency.InvalidateWorld();
                     grindMode.InvalidateMaintenanceEvidenceOnWorldGap();
                     if (consecutiveWorldFailures == 0)
                         Navigation::DetourNavigationProvider::InvalidateSessionCache(
@@ -1065,17 +1066,53 @@ namespace Bot
                 // surface or dry ground. DeathRecovery retains Ghost ownership.
                 const auto waterLife = AfkClient5875::ReadLife(world.player);
                 const bool deathWaterOwner =
-                    AfkDeadGhostPolicy::DeadOrGhost(waterLife) ||
+                    deathShouldOwn || AfkDeadGhostPolicy::DeadOrGhost(waterLife) ||
                     (waterLife == AfkLifeState::Unknown &&
                      (deathRecovery.IsActive() || deathRecovery.IsFailed()));
                 const auto waterEvidence = WaterEvidence5875::Read(world);
                 const bool swimming = waterEvidence.movementKnown &&
                     (waterEvidence.movementFlags &
                      WaterEvidenceTracker5875::SwimmingMask) != 0;
-                const auto waterEvent = livingWaterBlock.Observe(
-                    deathWaterOwner, waterEvidence.movementKnown, swimming);
-                if (waterEvent == LivingWaterBlockEvent::Entered)
+                // The existing water block has priority over ordinary ground
+                // movement. Egress may take its stopped owner only with a
+                // complete threat observation and no live combat/safety owner.
+                const auto waterOwnerSafe = [&](const Objects::WorldState& observed)
                 {
+                    bool threat = observed.objectEnumerationInterrupted ||
+                        observed.unitReadFailures != 0 || observed.units.empty();
+                    bool lockDead = combat.LockedGuid() == 0;
+                    for (const auto& unit : observed.units)
+                    {
+                        if (unit.valid && unit.guid == combat.LockedGuid())
+                            lockDead = unit.health == 0;
+                        if (unit.valid && unit.health > 0 && unit.targetGuid == observed.activePlayerGuid)
+                            threat = true;
+                    }
+                    return TemporaryGrindModeEnabled && !deathShouldOwn &&
+                        !normalModeHeldForReconciliation && !threat && lockDead &&
+                        !combat.Recovery().IsActive() && !grindMode.FirstAidActive() &&
+                        !grindMode.Failed() && !vileFamiliarsTurnIn.IsActive() &&
+                        !questPlannerRuntime.OwnsControl() &&
+                        grindMode.State() != GrindModeState::Vendoring &&
+                        (combat.State() == CombatState::Idle ||
+                         combat.State() == CombatState::AcquiringTarget ||
+                         combat.State() == CombatState::PostKillDelay ||
+                         combat.State() == CombatState::Looting);
+                };
+                const bool waterHandoffSafe = waterLife == AfkLifeState::Alive && waterOwnerSafe(world);
+                const WaterEgressSample waterSample{
+                    world.valid && world.player.valid, waterLife == AfkLifeState::Alive,
+                    deathWaterOwner, waterEvidence.movementKnown, swimming, waterHandoffSafe,
+                    world.activePlayerGuid, world.manager, world.localPlayer, GetTickCount64(),
+                    world.player.x, world.player.y, world.player.z};
+                const auto waterDecision = waterEmergency.Update(waterSample);
+                if (waterDecision.entered)
+                {
+                    Debug::Logger::Info("WATER EMERGENCY state=entered trigger=swimming previousOwner=" +
+                        std::string(combat.StateName()) + " previousGrindOwner=" + grindMode.StateName() +
+                        " previousWriter=" + ClickToMoveController::LastCommand().writer +
+                        " lastSafeKnown=" + (waterEmergency.AnchorKnown() ? "yes" : "no") +
+                        " owner=LivingWaterEmergency");
                     Debug::Logger::Info(
                         "WATER BLOCK state=entered swimmingKnown=yes swimming=yes"
                         " owner=living_workload decision=neutralize_navigation");
@@ -1090,24 +1127,76 @@ namespace Bot
                     navMeshReturn.CancelForLivingWater();
                     questPlannerRuntime.ReleaseNavigationForLivingWater();
                     combat.PauseMovementForLivingWater();
+                    if (waterHandoffSafe) combat.InvalidateIntentForLivingWater(tick);
                     AutonomySample inactiveWaterSample{};
                     autonomySupervisor.Update(inactiveWaterSample, tick);
                     runtimeRobustness.PauseForLivingWater();
-                    Debug::Logger::Info(
-                        "WATER BLOCK state=waiting_manual_recovery"
+                    Debug::Logger::Info("WATER EMERGENCY navigationIntent=invalidated"
                         " exit=three_non_swimming_observations");
                 }
-                else if (waterEvent == LivingWaterBlockEvent::ExitedNonSwimming)
+                if (waterDecision.action == WaterEgressAction::Stop && !waterDecision.entered)
+                {
+                    if (!MovementController::HoldPosition(world.player))
+                    {
+                        Debug::Logger::Info("WATER EMERGENCY state=fault reason=ctm_neutralization_failed decision=stop_session");
+                        return;
+                    }
+                }
+                if (waterDecision.recovered)
+                    Debug::Logger::Info("WATER EMERGENCY state=non_swimming_candidate proof=3/3"
+                        " swimmingKnown=yes swimming=no");
+                if (waterDecision.action == WaterEgressAction::Backtrack)
+                {
+                    const auto& destination = waterEmergency.Destination();
+                    Debug::Logger::Info("WATER EMERGENCY state=attempt attempt=" +
+                        std::to_string(waterEmergency.Attempts()) + " maxAttempts=" +
+                        std::to_string(LivingWaterEmergencyPolicy::MaximumAttempts) +
+                        " destinationSource=recent_same_world_non_swimming_observation destination=(" +
+                        std::to_string(destination.x) + "," + std::to_string(destination.y) + "," +
+                        std::to_string(destination.z) + ") reason=" + waterDecision.reason);
+                    // Fresh identity, life, threat and movement observations
+                    // before dispatch; the earlier tick snapshot is not a
+                    // command authorization across an intervening world gap.
+                    Objects::WorldState commandWorld;
+                    const bool commandValid = Objects::WorldStateReader::Read(commandWorld);
+                    const auto commandWater = WaterEvidence5875::Read(commandWorld);
+                    const WaterEgressSample commandSample{
+                        commandValid, AfkClient5875::ReadLife(commandWorld.player) == AfkLifeState::Alive,
+                        deathWaterOwner, commandWater.movementKnown,
+                        (commandWater.movementFlags & WaterEvidenceTracker5875::SwimmingMask) != 0,
+                        waterOwnerSafe(commandWorld), commandWorld.activePlayerGuid, commandWorld.manager,
+                        commandWorld.localPlayer, GetTickCount64(),
+                        commandWorld.player.x, commandWorld.player.y, commandWorld.player.z};
+                    if (!waterEmergency.CanDispatch(commandSample) ||
+                        !ClickToMoveController::MoveTo(commandWorld.player,
+                            destination.x, destination.y, destination.z, 0.1f))
+                        waterEmergency.DispatchFailed();
+                }
+                else if (waterDecision.event)
+                    Debug::Logger::Info("WATER EMERGENCY state=" + std::string(waterDecision.event) +
+                        " reason=" + waterDecision.reason +
+                        " proof=" + std::to_string(waterDecision.proof) + "/3" +
+                        (std::string(waterDecision.event) == "failed" ? " decision=manual_recovery" : ""));
+                if (waterDecision.recovered)
+                {
+                    if (waterHandoffSafe) combat.InvalidateIntentForLivingWater(tick);
+                    runtimeRobustness.PauseForLivingWater();
                     Debug::Logger::Info(
                         "WATER BLOCK state=exited reason=non_swimming_confirmed"
                         " groundContact=unknown");
-                else if (waterEvent == LivingWaterBlockEvent::ExitedDeathOwnership)
+                    // No workload uses the confirmation snapshot. Re-read the
+                    // world before fresh acquisition/navigation on the next tick.
+                    ++tick;
+                    Sleep(PollIntervalMs);
+                    continue;
+                }
+                else if (waterDecision.deathHandoff)
                     Debug::Logger::Info(
                         "WATER BLOCK state=exited reason=death_recovery_ownership");
-                if (livingWaterBlock.Blocked())
+                if (waterEmergency.Blocked())
                 {
-                    // No ordinary owner or watchdog runs while manual water
-                    // recovery is required. AFK continues observing, but a
+                    // No ordinary owner or watchdog runs during bounded egress
+                    // or terminal manual recovery. AFK observes, but a
                     // water-unsafe candidate is not dispatched speculatively.
                     AfkSafety waterAfkSafety{};
                     waterAfkSafety.recovery = true;

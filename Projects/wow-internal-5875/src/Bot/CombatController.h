@@ -5242,6 +5242,21 @@ namespace Bot
             recovery_.Reset();
         }
 
+        // Called only after the water block owns movement and the monitor has
+        // excluded live combat/safety owners. Never resume the reset Idle loot
+        // FSM from CombatState::Looting, nor replay deferred pre-water corpses.
+        void InvalidateIntentForLivingWater(std::uint64_t tick)
+        {
+            loot_.Reset();
+            recovery_.Reset();
+            ResetTargetState();
+            deferredCorpses_.clear();
+            nextAcquireTick_ = tick + 1;
+            SetState(CombatState::AcquiringTarget);
+            Debug::Logger::Info("WATER EMERGENCY staleIntent=invalidated"
+                " combatTarget=cleared loot=cleared deferredCorpses=cleared");
+        }
+
         void SuspendForDeathRecovery(
             const Objects::PlayerState& player,
             std::uint64_t tick)

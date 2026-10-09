@@ -10,6 +10,7 @@
 #include "CompleteLongStagePolicy.h"
 #include "LocalRecoveryExhaustionPolicy.h"
 #include "SurfaceRecoveryEpisodePolicy.h"
+#include "LocalRecoveryLimits.h"
 #include "SteeringSelectionPolicy.h"
 #include "LocalPortalSteeringPolicy.h"
 #include "IssuedSteeringCommandPolicy.h"
@@ -195,6 +196,7 @@ namespace Navigation
         static constexpr float SurfaceRecoveryProgressThreshold = 0.35f;
         static constexpr std::uint64_t SurfaceRecoveryStallTicks = 18;
         static constexpr int MaximumSurfaceRecoveryAttempts = 4;
+        static_assert(MaximumSurfaceRecoveryAttempts == LocalRecoveryLimits::MaximumSurfaceRecoveryAttempts);
         static constexpr std::size_t SurfaceLookaheadPoints = 4;
         static constexpr float SurfaceLookaheadMaximumDistance = 24.0f;
         static constexpr float SurfaceLookaheadMaximumVerticalDelta = 4.5f;
@@ -256,6 +258,7 @@ namespace Navigation
         static constexpr float LastSafeBacktrackProgressThreshold = 0.35f;
         static constexpr std::uint64_t LastSafeBacktrackStallTicks = 18;
         static constexpr int MaximumLastSafeBacktracks = 2;
+        static_assert(MaximumLastSafeBacktracks == LocalRecoveryLimits::MaximumLastSafeBacktracks);
 
         // Phase 13D.1-13D.4: keep Detour polygon identity through the
         // follower and quarantine repeatedly failing corridor transitions.

@@ -1,5 +1,200 @@
 # P0.4 water / swimming / drowning source gate
 
+## Living-water emergency egress (2026-10-09)
+
+Branch `codex/living-water-emergency-egress`, starting HEAD `937fea2`
+(`maintenance: enforce two-read bag release after vendor retries`), clean
+before edits. That maintenance change is retained. This section supersedes
+the manual-only response below for an eligible, already-swimming living Grind
+player. Ordinary water traversal and autonomous swimming remain disabled.
+**Emergency egress RUNTIME PENDING**; the incident proves the old failure,
+not successful operation of this implementation.
+
+### Complete incident and attribution
+
+Read the complete capture
+`runtime-captures/water-afk-2026-10-09/wow-internal.log`: 46,303 lines,
+3,674,882 bytes, SHA256
+`bd78451871b7d8d9b892b81e6812b908f7e843875e7587660b45aa2895c1ef06`.
+Whole-file chronology/counts were inspected before narrowing the final
+combat/loot/water transition. One session contains 21 verified kills,
+16 Loot PASS completions, four NoLoot completions, and one final unfinished
+Approaching loot operation. There is one water-block entry, no water exit,
+no logged DeathRecovery, no unavailable world snapshot, and no confirmed
+AFK input-clock action. The session ends in requested stop/detach/unload.
+The initial and final BOT SESSION monotonic clocks span 1,871,775 ms.
+
+| Lines | OBSERVED chronology |
+| --- | --- |
+| 149 onward | Session begins in world at 19:28:48 UTC, player GUID `0x1AA56`, manager 146923528. Earlier combat/loot work completes normally. |
+| 14768 | Earlier, separate AFK threshold crossing: inputAge=300009, movement/transport blocker. AFK trouble predates the final water entry; do not attribute the entire session to swimming. |
+| 45755 | Last periodic pre-water WorldState: alive 241/251 HP, position `(216.5681,-5141.9634,1.2569)`, target `0xF130000C22002837`, 14 units. |
+| 45930–46079 | Combat resumes chase as target leaves melee range; direct approach CTM destinations include `(218.131,-5145.386,-0.316)` then `(220.075,-5150.063,-1.501)`. Final chase dispatch completes on game thread 300. |
+| 46146–46168 | Last pre-kill AFK movement word is zero; target reaches 0/100 HP. Kill 21 is verified; AutoAttack STOP dispatch completes, chase stops, corpse is handed to LootController. |
+| 46175–46199 | Loot starts at corpse distance 9.108; Idle→Approaching. `IssueApproach` requests `(222.383,-5155.736,-1.717)`, dispatch completes on thread 300. Writer changes from `MoveToApproachPoint` to `LootController::IssueApproach`; Combat becomes Chasing→Looting. |
+| 46201–46204 | Still alive, movement word `0x1`; AFK deferred under combat/ability owner, inputAge=83632. |
+| 46205–46230 | Known swimming enters water block. Hold CTM to `(221.786,-5154.271,-1.771)` completes; writer changes Loot approach→HoldPosition. Manual-recovery wait starts. AFK reports life=alive, raw/unsupported `0x00200000`, stationary mask `0x100`, reason=swimming; inputAge=83914. |
+| 46231–46258 | HP reaches 251/251; valid-world diagnostics continue. Water entry lies between surrounding UTC diagnostics 19:47:53 and 19:48:53, not at a separately timestamped exact instant. |
+| 46259–46263 | Native Due=240143, Overdue=270229, threshold crossed=300062; blocker remains swimming. Due/Overdue lie between 19:54:54–19:55:55 diagnostics; threshold between 19:55:55–19:56:55. Native clock values are not interchangeable with elapsed water-episode time. |
+| 46271–46303 | Last world diagnostic at 19:59:55 remains valid with movementAgeMs=702907. User Stop Bot dispatches cleanup at `(221.818,-5154.350,-1.771)`, then RUNTIME DETACHED and DLL unload_requested. No automatic water exit is logged. |
+
+**SOURCE VERIFIED ownership path:** normal WorldMonitor→Grind→Combat chase;
+`CombatController` handles verified target death, stops chase/attack and
+starts `LootController`. `LootController::IssueApproach` computes a corpse
+stand-off point and directly dispatches existing CTM Move, without a Detour
+corridor. On the next known-swimming monitor observation, the earlier-priority
+LivingWaterBlock branch neutralizes CTM, releases Grind/quest/navigation owners,
+pauses combat movement, and continues the loop before normal owner updates.
+SharedAfk observes under `LivingWaterBlocked`; its swimming guard rejects input.
+
+**OBSERVED:** LootController was the last dispatched movement writer before
+the swimming observation. **INFERRED, not proven:** that particular approach
+caused the water entry. Chase was also moving toward the same area. The log
+does not measure the exact shoreline/contact instant, command-time liquid
+state, or exclude external movement. No change to ordinary chase/loot approach
+geometry is justified from this capture alone.
+
+**SOURCE VERIFIED root cause of persistent stuck ownership:** the block had
+no automatic exit movement; only three externally obtained non-swimming
+observations could release it. The AFK rejection was correct. A second
+source defect would affect later release: `PauseMovementForLivingWater` resets
+LootController to Idle but leaves CombatState::Looting; its update waits for
+active/finished loot, neither of which Idle supplies. The incident never exits
+water, so that later deadlock is a source finding, not a runtime observation.
+
+### Source-qualified implementation and limits
+
+`LivingWaterEmergencyPolicy` composes the existing LivingWaterBlockPolicy.
+Known swimming still blocks ordinary movement immediately, including when
+life is uncertain; emergency commands additionally require positively living
+evidence. Existing three-observation release is reused, with duplicate sample
+times rejected and partial proof invalidated on world gaps.
+
+The follower's existing projected `LastSafeNavState` has no recorded native
+non-swimming/life evidence and is per-route. Its surface/backtrack validation
+also uses water-excluding queries. Neither is promoted to a verified water
+egress route. Instead, the small emergency policy retains the latest finite
+position from a valid, positively living, known non-swimming world observation,
+bound to GUID, manager and local-player identity. Unknown readings never create
+an anchor. Gaps, identity changes and death invalidate it. It freezes on water
+entry and must be at most 4500 ms old and within the existing local recovery
+limits of 12 horizontal / 4 vertical game units. This is explicitly
+`recent_same_world_non_swimming_observation`, not positive dry-ground proof.
+
+Egress owns only the existing water block's stopped movement. It is enabled
+for normal Grind after complete threat enumeration excludes live aggressors,
+the combat lock is absent or observed dead, and no death/reconciliation,
+health recovery, First Aid, active vendor, quest/dialog or terminal Grind
+owner prevents handoff. Eligible combat states are Idle, AcquiringTarget,
+PostKillDelay and Looting. Live/unknown combat targets do not authorize it.
+Other workloads or unsafe owners remain manual recovery; no new water combat
+behavior is introduced. DeathRecovery preempts even if a transient life read
+disagrees with its already-authoritative owner.
+
+The existing hold runs before any egress dispatch; navigation owners release.
+For the eligible handoff, the stale combat target, loot FSM and deferred corpse
+queue are cleared and acquisition is deferred. Two local CTM backtracks at
+most may target only the frozen observation. There is no destination search,
+water-polygon opt-in, new route, jump, key hold or ascent controller. CTM uses
+the observation's existing XYZ, with 0.1 precision for a nearby last observation;
+dispatch is not proof of displacement. It does not promise safe terrain along
+that short segment, breathable surface, ground contact or drowning prevention.
+
+The budget of two comes from shared `LocalRecoveryLimits`; compile assertions
+preserve follower surface max=4 and backtrack max=2 without changing their
+existing values or navigation budgets. Each attempt has a 4500 ms window
+(existing 18×250 ms backtrack window), with an absolute 9000 ms episode
+deadline checked at monitor updates. Progress cannot refund time or attempts.
+There are no surface-recovery attempts in this emergency path. A new attempt
+after transient non-swimming consumes the same budget. Progress is logged at
+most once per attempt; reattempt records no_progress/progress_without_exit.
+
+Before each command, a new WorldState, known swimming, living state, identity,
+threat check, local distance and episode deadline must still authorize it.
+Missing/expired/out-of-bounds anchors, unsafe owners, observation/identity loss,
+failed dispatch, exhausted attempts or deadline produce a stopped terminal
+`decision=manual_recovery`; no automatic retry/reset loop follows. During a
+world gap no stale object is commanded; a pending stop uses the next valid
+player, or yields to DeathRecovery. Failure to neutralize CTM faults the session.
+
+First known non-swimming observation stops egress. Proof 1/3 and 2/3 keep the
+block; 3/3 releases it. A failed episode can also exit after manual recovery,
+explicitly labelled `manual_non_swimming_confirmed`. Eligible combat intent
+is re-cleared on exit, robustness timing rebaselined, and the confirmation tick
+ends before any workload update. Fresh world acquisition/navigation begins on
+the next tick; cancelled route and loot intents are not replayed. Ordinary
+freshly evaluated objectives still use existing ground-only navigation.
+
+AFK input remains blocked by swimming and by recovery ownership through exit
+confirmation. Due/Overdue/native thresholds stay 240000/270000/300000 ms;
+movement masks and DeathRecovery ghost-water filters are untouched. Egress
+CTM is never counted as AFK delivery. Reconnect work is completely separate.
+
+Regression coverage also rejects vertical-only destinations with less than
+0.1 horizontal displacement. Invalid coordinates cannot bypass a known
+swimming block or contribute to exit proof; neutralization failure remains a
+session fault. Focused tests cover false/unknown swimming, dead/ghost handoff,
+missing/expired/changed-identity anchors, world-gap proof loss, transient exit
+samples, command-time invalidation, sparse progress, bounded failure, stale
+loot cleanup, unchanged water filters/budgets and AFK thresholds/input guards.
+
+### Manual runtime acceptance — PENDING
+
+Use the rebuilt DLL with the normal configured GUI/Grind session, with
+connection/water observer and AFK qualification modes unset. Keep automatic
+behavior/settings and native thresholds unchanged. Do not deliberately enter
+water, provoke death or disable guards. Prefer a natural recurrence during
+ordinary Grind under supervision; if none occurs, this phase stays PENDING.
+
+1. Preserve the **complete** normal and lifecycle logs before the next launch.
+   Record revision, player identity, visible living state and any manual input.
+2. On a natural encounter require `swimmingKnown=yes swimming=yes`, WATER BLOCK
+   entry and WATER EMERGENCY entry. Inspect previousOwner/previousWriter,
+   lastSafeKnown, and navigation/stale-intent invalidation. A live threat,
+   missing/old anchor or unknown observation must end in manual recovery with
+   no speculative backtrack.
+3. For an eligible encounter inspect `state=attempt`, attempt=1 (at most 2),
+   maxAttempts=2 and destinationSource. The destination must be the frozen
+   observed position, not a corpse/ordinary travel objective. Observe physical
+   movement independently of dispatch. Require progress or a bounded terminal
+   failure; no continued backtracks after the second attempt/deadline. Stop Bot
+   if the situation becomes unsafe; do not wait for drowning or death.
+4. An automatic success needs non_swimming_candidate proof=1/3, 2/3, 3/3,
+   state=recovered with `three_non_swimming_observations`, and stopped egress.
+   One/two samples are insufficient. Record subsequent normal work from a new
+   world observation and fresh target/route, with no replay of the old corpse
+   approach. Manual movement makes automatic success attribution inconclusive;
+   `manual_non_swimming_confirmed` is not automatic egress PASS.
+5. While swimming, require AFK reason=swimming and no speculative AFK input.
+   Do not wait five minutes solely to test the thresholds: bounded egress or
+   manual intervention takes priority. Movement dispatch alone cannot satisfy
+   native AFK input-clock verification. Ordinary living navigation must retain
+   water rejection and Ghost DeathRecovery must retain its separate policy.
+6. Stop Bot normally; verify detach/unload while WoW remains running. Preserve
+   complete logs and correlate sparse events, for example:
+
+   ```sh
+   rg -n 'WATER (BLOCK|EMERGENCY)|MOVEMENT COMMAND WRITER|LOOT:|AFK (SAFETY QUALIFICATION|PRODUCTION|ACTION)|BOT SESSION|RUNTIME DETACHED' build/wow-internal.log
+   ```
+
+Natural evidence still needed: usable anchor retention, actual CTM egress,
+three-read automatic exit and fresh-work resume; no-progress exhaustion;
+safe rejection on missing/unknown evidence, gaps or owner conflicts. Static
+tests cover these branches but do not qualify shoreline physics or automatic
+water safety. Broader surface/submersion/breath/ground readers remain UNKNOWN.
+Validation: `python3 tools/validate.py --jobs 4` **PASS**, 106 C++ tests,
+`failures=[]`; 42 audit Python tests, 13 QuestDB Python tests, SQL and all
+10 Lua fixtures PASS. Final report:
+`/tmp/wow-validation-1lkuh3ea/results.json` (full output
+`/tmp/water-egress-final-validation.log`). Explicit `cmake --build build`
+**PASS**; MinGW DLL rebuilt. `git diff --check` **PASS**. Final status contains
+only this audit, CombatController, LivingWaterBlockPolicy, WorldMonitor,
+GenericNavMeshPathFollower, and the new LivingWaterEmergencyPolicy,
+LocalRecoveryLimits and living_water_emergency_policy_test files. No commit
+made. These results qualify source/tests/build only, not live egress.
+
+SOURCE GAP — RECONNECT NOT IMPLEMENTED.
+
 ## P0.4-TEMP production living-water avoidance (2026-10-07)
 
 Autonomous swimming remains PAUSED; P0.4.2 NOT STARTED. This is a temporary

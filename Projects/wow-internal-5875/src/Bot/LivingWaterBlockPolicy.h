@@ -21,6 +21,8 @@ namespace Bot
         static constexpr unsigned ExitSamples = 3;
 
         bool Blocked() const { return blocked_; }
+        unsigned NonSwimmingSamples() const { return nonSwimmingSamples_; }
+        void InvalidateProof() { nonSwimmingSamples_ = 0; }
 
         LivingWaterBlockEvent Observe(bool deathOwns, bool swimmingKnown,
                                       bool swimming)
