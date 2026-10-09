@@ -48,6 +48,7 @@ namespace Bot
         bool havePrevious_=false, safeBaseline_=false;
         std::uint64_t qualificationStart_=0;
         std::string lastDecision_{}, lastDispatchBlock_{};
+        std::string lastNativeSafetyQualification_{};
         bool mixedObserved_=false, mixedResultLogged_=false;
         std::uint64_t mixedObservedAt_=0, nextMixedClockProbe_=0;
         AfkAgreementState previousAgreement_=AfkAgreementState::Unknown;
@@ -200,6 +201,7 @@ namespace Bot
             productionBand_=AfkProductionBand::Recent; productionDeferred_=false; productionBlock_.clear();
             baselineScene_={};
             nextDispatchProbe_=0; lastDecision_.clear(); lastDispatchBlock_.clear();
+            lastNativeSafetyQualification_.clear();
             mixedObserved_=mixedResultLogged_=false; mixedObservedAt_=nextMixedClockProbe_=0;
             previousAgreement_=AfkAgreementState::Unknown;
         }
@@ -299,6 +301,20 @@ namespace Bot
             const bool benign=!qualifying && AfkProductionPolicy::ImplementationQualified && (benignWorkEvidence || deadPermit);
             AfkMovementEvidence movementEvidence;
             const auto nativeBlock=AfkClient5875::StationarySafetyReason(player,benign,deadPermit,&movementEvidence);
+            const std::string nativeSafety = std::string("state=")+owner+
+                " life="+AfkDeadGhostPolicy::LifeName(life)+
+                " combat="+(checkedSafety.combat ? "yes" : "no")+
+                " navigation="+(checkedSafety.navigation ? "yes" : "no")+
+                " vendor="+(checkedSafety.vendor ? "yes" : "no")+
+                " "+movementEvidence.Fields()+
+                " transportGuid=unknown"+
+                " decision="+(nativeBlock ? "block" : "continue_ui_qualification")+
+                " reason="+(nativeBlock ? nativeBlock : "native_guards_passed");
+            if (nativeSafety != lastNativeSafetyQualification_)
+            {
+                Debug::Logger::Info("AFK SAFETY QUALIFICATION "+nativeSafety);
+                lastNativeSafetyQualification_=nativeSafety;
+            }
             if (deadContext && nativeBlock && std::strcmp(nativeBlock,"movement_or_transport_flags")==0)
                 LogDeadMovementBlock(life,deathState,movementEvidence);
             else

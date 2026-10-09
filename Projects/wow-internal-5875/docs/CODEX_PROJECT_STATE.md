@@ -1,5 +1,29 @@
 # Project
 
+## R0.1 unattended maintenance / connection reliability (2026-10-09)
+
+Active reliability work supersedes gameplay expansion. Starting HEAD:
+`069fe3dc0e859ec0c42539c608c4107ba9fb0458`. R0.1 overall remains
+**INCOMPLETE / SOURCE GAP**, not statically closed: no qualified Glue
+connection adapter, automatic reconnect, or comprehensive world-resume
+reconciliation exists. No WoW/GUI launch was performed.
+
+The source-proven subset adds bounded automatic full-bag wait retries,
+explicit MaintenanceBlocked telemetry after exhaustion, two fresh bag-space
+observations to release that automatic hold, defensive preemption, and
+stationary maintenance AFK eligibility with unchanged native/UI guards.
+Raw AFK movement-mask diagnostics and a read-only incident audit are added.
+Exact incident merchant/flags require the missing full runtime log.
+See [RUNTIME_CONNECTION_RELIABILITY_AUDIT.md](RUNTIME_CONNECTION_RELIABILITY_AUDIT.md).
+The maintenance/AFK subset is TEST PASS / BUILD PASS / DIFF CHECK PASS:
+full worktree 103 C++ tests, 30 audit Python tests, 13 QuestDB Python tests,
+SQL and 10 Lua fixtures; isolated intended tree 54 C++ tests, 30 audit Python
+tests, no tracked QuestDB Python suite, SQL and 5 Lua fixtures. Both retain
+vendor metadata Lua 9/9. Reconnect/world-resume requirements remain unqualified;
+these counts do not constitute R0.1 closure. Runtime PENDING.
+Preserve all earlier qualified navigation,
+combat, water-avoidance and sale rules. No P0.6/P0.7/new gameplay work begins.
+
 Updated: 2026-10-08. Read this file AND `AGENTS.md` before continuing.
 
 - Repository scope: `/home/ludvig/Programming/Projects/wow-internal-5875`.

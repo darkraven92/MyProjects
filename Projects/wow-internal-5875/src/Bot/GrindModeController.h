@@ -8,6 +8,7 @@
 #include "GrindLevelPolicy.h"
 #include "GrindTargetPolicy.h"
 #include "ManualVendorModePolicy.h"
+#include "UnattendedMaintenanceWaitPolicy.h"
 #include "MovementController.h"
 #include "PlayerPostureController.h"
 #include "VendorController.h"
@@ -108,6 +109,8 @@ namespace Bot
         LocalScan lastLocalScan_{};
         VendorController vendor_{};
         MaintenanceNeed manualVendorRequestedNeed_{};
+        UnattendedMaintenanceWaitPolicy unattendedMaintenanceWait_{};
+        bool maintenanceBlockedLogged_ = false;
         FirstAidController firstAid_{};
         std::uint64_t firstAidIdleSinceTick_ = 0;
         AdaptiveDangerMemory dangerMemory_{};
@@ -1418,6 +1421,8 @@ namespace Bot
             nextMaintenanceProbeTick_ = tick;
             manualVendorRequestedNeed_ = MaintenanceNeed{};
             maintenanceSuppressedUntil_ = 0;
+            unattendedMaintenanceWait_.Reset();
+            maintenanceBlockedLogged_ = false;
             startupVendorGraceUntil_ = tick + StartupVendorGraceTicks;
             startupVendorGraceSuppressionLogged_ = false;
             startupVendorGraceSuppressions_ = 0;
@@ -1500,13 +1505,79 @@ namespace Bot
 
             if (state_ == GrindModeState::WaitingForManualVendor)
             {
+                if (!world.valid || !world.player.valid || world.player.health <= 1)
+                {
+                    unattendedMaintenanceWait_.InvalidateSpaceProof();
+                    return; // WorldMonitor/DeathRecovery remain authoritative.
+                }
+                if (const auto* aggressor = FindDirectAggressor(world))
+                {
+                    unattendedMaintenanceWait_.InvalidateSpaceProof();
+                    if (combat.LockedGuid() == 0)
+                        combat.AdoptExactTargetForDefense(world, aggressor->guid, tick);
+                    combat.Update(world, tick);
+                    return;
+                }
+                if (combat.LockedGuid() != 0)
+                {
+                    unattendedMaintenanceWait_.InvalidateSpaceProof();
+                    combat.Update(world, tick);
+                    return;
+                }
+                const bool freshBagRead = tick >= nextBagProbeTick_;
                 ProbeBags(tick);
                 ProbeMaintenance(tick);
-                if (!ManualVendorModePolicy::RequirementsSatisfied(
-                        bags_.valid, bags_.freeSlots,
-                        VendorTriggerFreeSlots, maintenance_,
-                        manualVendorRequestedNeed_))
-                    return;
+                if (unattendedMaintenanceWait_.Active())
+                {
+                    const auto decision = unattendedMaintenanceWait_.Observe(
+                        tick, freshBagRead, bags_.valid, bags_.freeSlots,
+                        VendorTriggerFreeSlots,
+                        CombatSafeForVendor(combat) || combat.State() == CombatState::Idle,
+                        true);
+                    if (decision == MaintenanceWaitDecision::RetryVendor)
+                    {
+                        Debug::Logger::Info("MAINTENANCE WAIT state=retry attempt=" +
+                            std::to_string(unattendedMaintenanceWait_.Retries()) +
+                            " reason=automatic_full_bag_retry");
+                        vendor_.ObserveWorld(world);
+                        const Navigation::NavPoint resume{
+                            world.player.x, world.player.y, world.player.z};
+                        if (vendor_.Start(world, resume, tick,
+                                AutonomousMaintenancePolicy::Evaluate(maintenance_), true))
+                            SetState(GrindModeState::Vendoring);
+                        else
+                        {
+                            vendor_.Reset();
+                            unattendedMaintenanceWait_.FailedTrip(
+                                tick + BagPressureVendorRetryBackoffTicks);
+                        }
+                        return;
+                    }
+                    if (decision == MaintenanceWaitDecision::MaintenanceBlocked &&
+                        !maintenanceBlockedLogged_)
+                    {
+                        maintenanceBlockedLogged_ = true;
+                        Debug::Logger::Info("MAINTENANCE WAIT state=MaintenanceBlocked"
+                            " reason=retry_exhausted_or_automation_disabled"
+                            " decision=await_fresh_bag_space");
+                    }
+                    if (decision != MaintenanceWaitDecision::Resume)
+                        return;
+                    Debug::Logger::Info("MAINTENANCE WAIT state=recovered"
+                        " reason=two_fresh_bag_space_observations");
+                    unattendedMaintenanceWait_.Reset();
+                    maintenanceBlockedLogged_ = false;
+                    // Any remaining maintenance request follows the ordinary
+                    // bounded scheduler; it no longer owns the full-bag lock.
+                }
+                else
+                {
+                    if (!ManualVendorModePolicy::RequirementsSatisfied(
+                            bags_.valid, bags_.freeSlots,
+                            VendorTriggerFreeSlots, maintenance_,
+                            manualVendorRequestedNeed_))
+                        return;
+                }
 
                 grindHome_ = Navigation::NavPoint{
                     world.player.x, world.player.y, world.player.z};
@@ -1611,6 +1682,18 @@ namespace Bot
 
             if (state_ == GrindModeState::Vendoring)
             {
+                if (const auto* aggressor = FindDirectAggressor(world))
+                {
+                    vendor_.Reset();
+                    MovementController::HoldPosition(world.player);
+                    unattendedMaintenanceWait_.FailedTrip(
+                        tick + BagPressureVendorRetryBackoffTicks);
+                    maintenanceBlockedLogged_ = false;
+                    SetState(GrindModeState::WaitingForManualVendor);
+                    combat.AdoptExactTargetForDefense(world, aggressor->guid, tick);
+                    Debug::Logger::Info("MAINTENANCE WAIT state=preempted reason=direct_aggressor");
+                    return;
+                }
                 vendor_.Update(world, tick);
 
                 if (vendor_.Failed())
@@ -1646,6 +1729,8 @@ namespace Bot
                     nextRoamScanTick_ = tick + 1;
                     if (holdForFullBags)
                     {
+                        unattendedMaintenanceWait_.FailedTrip(maintenanceSuppressedUntil_);
+                        maintenanceBlockedLogged_ = false;
                         ResetApproach();
                         ResetRoam();
                         firstAid_.Abort("full bags after failed vendor trip");
@@ -1688,6 +1773,8 @@ namespace Bot
                         ResetApproach();
                         ResetRoam();
                         firstAid_.Abort("vendor trip ended without verified bag space");
+                        unattendedMaintenanceWait_.FailedTrip(tick + BagPressureVendorRetryBackoffTicks);
+                        maintenanceBlockedLogged_ = false;
                         firstAidIdleSinceTick_ = 0;
                         manualVendorRequestedNeed_ =
                             AutonomousMaintenancePolicy::Evaluate(maintenance_);
@@ -1709,6 +1796,8 @@ namespace Bot
                     }
                     const bool maintenanceUnmet = vendor_.MaintenanceUnmet();
                     ++vendorTrips_;
+                    unattendedMaintenanceWait_.Reset();
+                    maintenanceBlockedLogged_ = false;
                     vendor_.Reset();
                     maintenanceSuppressedUntil_ = maintenanceUnmet
                         ? tick + MaintenanceRetryBackoffTicks
@@ -1839,7 +1928,17 @@ namespace Bot
                             ? UrgentMaintenanceRetryBackoffTicks
                             : MaintenanceRetryBackoffTicks);
                     Debug::Logger::Info(
-                        "MAINTENANCE 14G.5.1: VendorController could not start; continuing grind with bounded retry backoff.");
+                        "MAINTENANCE 14G.5.1: VendorController could not start; applying bounded maintenance backoff.");
+                    if (bagPressure)
+                    {
+                        vendor_.Reset();
+                        MovementController::HoldPosition(world.player);
+                        unattendedMaintenanceWait_.FailedTrip(maintenanceSuppressedUntil_);
+                        maintenanceBlockedLogged_ = false;
+                        SetState(GrindModeState::WaitingForManualVendor);
+                        Debug::Logger::Info("MAINTENANCE WAIT state=entered reason=vendor_start_failed");
+                        return;
+                    }
                     SetState(GrindModeState::Grinding);
                     return;
                 }
@@ -2365,6 +2464,16 @@ namespace Bot
         }
 
         GrindModeState State() const { return state_; }
+        // Read-evidence invalidation only: no Lua, input or stale object use.
+        void InvalidateMaintenanceEvidenceOnWorldGap()
+        {
+            unattendedMaintenanceWait_.InvalidateSpaceProof();
+            bags_.valid = false;
+            maintenance_.valid = false;
+            nextBagProbeTick_ = 0;
+            nextMaintenanceProbeTick_ = 0;
+        }
+
         const char* StateName() const { return StateNameInternal(state_); }
         bool Failed() const { return state_ == GrindModeState::Failed; }
         const GrindBagMonitor::Snapshot& Bags() const { return bags_; }

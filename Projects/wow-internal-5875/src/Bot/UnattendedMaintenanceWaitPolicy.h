@@ -1,0 +1,54 @@
+#pragma once
+
+#include <cstdint>
+
+namespace Bot
+{
+    enum class MaintenanceWaitDecision { Wait, RetryVendor, MaintenanceBlocked, Resume };
+
+    // This episode owns only the failed automatic full-bag trip. It must not
+    // turn unrelated food/repair wishes into an indefinite bag-space lock.
+    class UnattendedMaintenanceWaitPolicy
+    {
+        bool active_ = false;
+        unsigned retries_ = 0, spaceObservations_ = 0;
+        std::uint64_t retryAt_ = 0;
+    public:
+        static constexpr unsigned MaximumRetries = 2;
+        void FailedTrip(std::uint64_t retryAt)
+        {
+            active_ = true;
+            retryAt_ = retryAt;
+            spaceObservations_ = 0;
+        }
+        bool Active() const { return active_; }
+        unsigned Retries() const { return retries_; }
+        void InvalidateSpaceProof() { spaceObservations_ = 0; }
+        void Reset() { *this = {}; }
+        MaintenanceWaitDecision Observe(std::uint64_t tick, bool freshRead,
+            bool bagsKnown, int freeSlots, int safeThreshold,
+            bool ownerSafe, bool automaticEnabled)
+        {
+            if (!active_) return MaintenanceWaitDecision::Wait;
+            if (!ownerSafe)
+            {
+                spaceObservations_ = 0;
+                return MaintenanceWaitDecision::Wait;
+            }
+            if (freshRead)
+            {
+                spaceObservations_ = bagsKnown && freeSlots > safeThreshold
+                    ? spaceObservations_ + 1 : 0;
+                if (spaceObservations_ >= 2) return MaintenanceWaitDecision::Resume;
+            }
+            // A fresh free-space observation must be confirmed, not interrupted
+            // by a new trip. Unknown/full snapshots never authorize Grind.
+            if (spaceObservations_) return MaintenanceWaitDecision::Wait;
+            if (!automaticEnabled || retries_ >= MaximumRetries)
+                return MaintenanceWaitDecision::MaintenanceBlocked;
+            if (!freshRead || tick < retryAt_) return MaintenanceWaitDecision::Wait;
+            ++retries_;
+            return MaintenanceWaitDecision::RetryVendor;
+        }
+    };
+}

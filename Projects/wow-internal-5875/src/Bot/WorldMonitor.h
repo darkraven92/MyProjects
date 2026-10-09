@@ -603,6 +603,7 @@ namespace Bot
 
                 if (!snapshotValid)
                 {
+                    grindMode.InvalidateMaintenanceEvidenceOnWorldGap();
                     if (consecutiveWorldFailures == 0)
                         Navigation::DetourNavigationProvider::InvalidateSessionCache(
                             "world_unload_or_snapshot_gap");
@@ -2394,14 +2395,18 @@ namespace Bot
                 if (TemporaryGrindModeEnabled)
                 {
                     afkSafety.recovery=afkSafety.recovery || grindMode.FirstAidActive();
-                    afkSafety.vendor=grindMode.State()==GrindModeState::Vendoring ||
-                        grindMode.State()==GrindModeState::WaitingForManualVendor;
+                    // A transaction owns input; a stopped maintenance wait does
+                    // not. Native stationary/UI guards still qualify every pulse.
+                    afkSafety.vendor=grindMode.State()==GrindModeState::Vendoring;
                 }
                 afkSafety.loot=combat.HasDeferredCorpseLootPending();
-                afkSafety.navigation=navMeshReturn.OwnsMovement();
+                afkSafety.navigation=navMeshReturn.OwnsMovement() ||
+                    (TemporaryGrindModeEnabled && grindMode.NavigationOwnsMovement());
                 afkSafety.dialog=vileFamiliarsTurnIn.IsActive();
                 afkSafety.healthyIdle=TemporaryGrindModeEnabled
-                    ? grindMode.State()==GrindModeState::Grinding && !grindMode.FirstAidActive()
+                    ? (grindMode.State()==GrindModeState::Grinding ||
+                       grindMode.State()==GrindModeState::WaitingForManualVendor) &&
+                        !grindMode.FirstAidActive()
                     : questPlannerRuntime.SafeIdleForAfk();
                 // HP=1 is normal for a ghost, not a living health-recovery
                 // request. All independent recovery/input owners still block.
