@@ -1123,6 +1123,99 @@ corrections. Full diff reviewed; `git diff --check` PASS. Worktree changes are
 exactly the audit and handoff documents, with no unrelated files.
 No new runtime qualification follows from these results.
 
+### P0.7.4 — notification completion and startup context
+
+Continued on 2026-10-10 from `7ede98b579414841c6112092e2d0ad05904dae7d`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced notification completion, startup context and packet
+ownership. The coordinator checked key instruction paths and loading callbacks.
+Only this audit and the handoff change; no production code or observer contract
+changes. The same exact-client SHA256 and evidence limits apply.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+Notification return/removal is now connected to a packet pass, and startup is
+connected to world setup. Neither establishes complete callback coverage,
+world lifetime, coherent samples, generation or current-player cache freshness.
+
+#### SOURCE VERIFIED — packet completion and removal scopes
+
+| Path | New evidence and qualification limit |
+|---|---|
+| Registered update handlers | `0x465140` registers handlers on the current manager's connection at +0xD0: packet 0xA9 to `0x4651A0` (`0x46514D–157`), 0x1F6 to `0x4672F0` (`0x46516A–174`), and 0xAA to `0x4674A0` (`0x465187–191`). The 0x1F6 path calls `0x660740` at `0x467361`, then directly forwards its buffer to `0x4651A0` at `0x4673B6`; this is not another switch/restore-wrapper entry. |
+| Mutation before notification | `0x4651A0` calls mutation passes through `0x466010` at `0x46520E/222`; its type-0 route reaches `0x467160 → 0x466590` at `0x46720F`. It resets the buffer cursor at `0x465231`, then runs the notification pass: type 0 calls `0x465330` at `0x465277`; types 2/3 enter `0x465C50`, which can call `0x465330` at `0x465D8E`. Completion is not an immediate consequence of each DWORD store. |
+| Saved subscribed bytes | Before per-DWORD mutation, subscription paths in `0x466590` call `0x4667A0`; it copies subscribed ranges from object+8 storage into object+0xC saved storage at `0x466801–81D`. This supplies the comparison baseline, not an immutable external snapshot or lifetime guarantee. |
+| Listener dispatch | `0x465330` parses the field mask and calls `0x465570` at `0x4654A4`. The latter sets listener+0x2C to 1 at `0x46559E`, compares the subscribed bytes from the object's current/saved descriptor storage at `0x4655BB`, and invokes listener+0x10 at `0x4655DC` only on inequality. This reaches the previously traced farsight subscription; it does not certify coherent publication to a concurrent reader. |
+| Deferred listener removal | After callback return or equal-byte suppression, `0x4655F9` reads listener+0x2D. If pending, it unlinks and frees the listener through `0x465600–66A`; otherwise it clears +0x2C at `0x465671`. This closes the bounded deferred-removal path from `0x467FB0/0x468057`. Callback-triggered destruction, nested traversal and every cleanup path still require coverage. |
+| Packet-owner scope | On the inspected normal queue path, `0x537C50` switches ownership before `0x537AA0` dispatch. A9 mutation, notification and its final root-list drain execute before restore at `0x537CC9`. The drain reloads current root at `0x465290`, walks manager+0xB8 and calls virtual +0xC at `0x4652FF`. Inspected player/unit vtables `0x80AF78/0x80C4F8` bind this slot to `0x5DEC90/0x5FBE00`, further update hooks rather than an established destructor. Notification return, drain completion and owner restoration are separate milestones, not a world generation. Prior saved-owner state and indirect callbacks remain relevant. |
+| Object-removal ingress | A9's initial type-4 branch calls `0x465EC0` at `0x4651E9`, before mutation passes. It can call GUID removal `0x464920` at `0x465F4F/5FA6`; packet AA also calls it at `0x4674CF`. This removal path is distinct from listener-node removal. |
+| Client-internal object deferral | `0x464920 → 0x614F00` checks object+0xE8. Nonzero calls `0x614F50(true)`, setting object+0xE4 mask 0x10, then returns at `0x46495A`. GUID helper `0x4683E0` increments the counter through `0x614F10`; `0x468410` decrements, checks zero and pending, then retries removal at `0x46844A`. Counter stores are ordinary DWORD operations. These helpers mutate client state and are not an observe-only acquisition mechanism. |
+| Teardown limit | Manager teardown `0x467800` calls subscription cleanup `0x464C40` at `0x4678B9`, virtual destruction at `0x4678FE/908`, then a selected free at `0x46791B`. These inspected calls do not establish that teardown honors the separate object counter or waits for all callbacks. No runtime lifetime failure is claimed. |
+
+#### SOURCE VERIFIED — startup context and loading callbacks
+
+| Path | New evidence and qualification limit |
+|---|---|
+| Concrete scheduler startup | `0x4027F1/F3/F8` calls `0x41F550 → 0x4219D0` with EDX=0, ECX=1. Count decrement `0x421AA0` and zero branch `0x421AA6 → 0x421C1E` bypass the additional-worker loop on this startup path. The previously found worker creation is general capability, not evidence that this path creates more scheduler workers. Other client threads are outside this claim. |
+| Context construction | `0x402812–825` supplies ECX=1, setup `0x402840`, cleanup `0x403640` through `0x41F5E0 → 0x422090`. Constructor writes context+0x44 mask 0x2 at `0x422204`, stores allocated TLS data at +0x208 (`0x42221C/227`), registers setup as event 7 (`0x42225E/265`), cleanup as event 4 (`0x422279/280`), and submits context at `0x422287`. The flag enables the inspected message-processing branch; it is not world readiness. |
+| Selection and setup | `0x4222A0` assigns the context identifier and inserts it into a scheduler-slot heap (`0x422313–3AC`, `0x422407–473`). Selection `0x421430` removes a heap entry under its slot lock, releases at `0x421551`, returns at `0x421557`. After selected-context TLS installation, `0x420E20` sets context+0x44 mask 1 and dispatches event 7 at `0x420E45`. Context identity is not a qualified world generation. |
+| World initialization inside event 5 | Setup calls `0x402AD0` at `0x4029EA`; that invokes `0x46A400` at `0x402B36`, registering `0x46B930` in event 5 (`0x46A52D/532/537`). Its conditional state-8 branch (`0x46C1B8`) calls world setup `0x401570` at `0x46C236`. Setup constructs the manager at `0x4015F3` and registers zone updater `0x401EC0` in event 5 at `0x401684`. Setup also registers packet pump event 6 at `0x402B84–8E`. These explicit paths use the current TLS context; complete intervening-helper effects remain unproved. Event 5 can itself initialize the world, so its label is not a post-initialization sampling boundary. |
+| Loading callback coverage | Transfer `0x401BC0` calls `0x443D30` at `0x401BD9` before manager destruction; after reconstruction, loading `0x66FBE0 → 0x6941F0` calls it at `0x69447A`. `0x443D30` calls registered entries at `0x443D5A` and loops through `0x443E70` at `0x443D84`. That helper releases its queue lock at `0x443EF1` before entry callback `0x443EF9`, and invokes further registered callbacks at `0x443F2B`. These are additional callback-coverage obligations, not proof of world reentry. |
+| Loading progress callbacks | Transfer installs `0x407F70/0x407FA0` through setters `0x443620/0x66FC70` at `0x401C38/44`. The loader can invoke the latter at `0x69444F/46A`; the former can run at `0x443DDF`. Their conditional path calls `0x406900`, which reaches global `0xC0ED38` virtual +0x68 through `0x58A960`. Indirect-target and window-message effects are not fully resolved. |
+
+#### Evidence limits, reproduction and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Preserve the prior raw-observer RUNTIME PASS within its saved
+capture limits. Location candidates remain UNQUALIFIED, profile location BLOCKED,
+unload acceptance open, vendor/water runtime pending, reconnect unimplemented,
+and R0.1 open. Source findings do not extend runtime qualification.
+
+**INFERRED:** the concrete startup chain narrows context ownership, and the later
+notification pass explains why returning from a descriptor store is insufficient.
+Neither the local callback order nor client-internal deferral proves a safe
+external read phase. No torn sample, bad restoration or gameplay fault was observed.
+
+**UNKNOWN / SOURCE GAP:** complete notification/destruction/reentrant traversal
+coverage; saved descriptor lifetime; object-counter scope across manager teardown;
+window-owner creation/assignment and all helper TLS effects; indirect loading
+and world writers; sample coherence, initialization/invalidation, same-address/
+character/map ABA, and player-bound zone/area freshness. No new hook, native call
+or sampler design is qualified.
+
+Reproduce with `objdump -d -Mintel --start-address=START --stop-address=STOP`
+against `/home/ludvig/Games/WoW Vanilla/WoW.exe` (stop exclusive):
+
+| Inspection | START / STOP |
+|---|---|
+| Handler registration, passes, notification | `0x465140 / 0x465310`; `0x465330 / 0x465690`; `0x465C50 / 0x465EA0`; `0x466010 / 0x46609C`; `0x467160 / 0x46722B`; `0x4672F0 / 0x46742A`; `0x466630 / 0x466704`; `0x4667A0 / 0x466830`; `0x467FB0 / 0x468062`; `0x5DEC90 / 0x5DECC0`; `0x5FBE00 / 0x5FBE74` |
+| Removal and counter scopes | `0x465EC0 / 0x465FC7`; `0x4674A0 / 0x4674D4`; `0x464920 / 0x464979`; `0x614F00 / 0x614F7A`; `0x4683E0 / 0x468456`; `0x467800 / 0x467954` |
+| Startup arguments and forwarding | `0x4027EC / 0x402835`; `0x41F550 / 0x41F580`; `0x4219D0 / 0x421C25`; `0x41F5E0 / 0x41F5F8` |
+| Context construct/select/initialize | `0x422090 / 0x4224E3`; `0x421430 / 0x42155F`; `0x420E20 / 0x420E51` |
+| Setup and event-5 world creation | `0x4029E5 / 0x4029F5`; `0x402AD0 / 0x402B93`; `0x46A400 / 0x46A53C`; `0x46C1B8 / 0x46C247`; `0x401570 / 0x401689` |
+| Loading and indirect callbacks | `0x401BC0 / 0x401D05`; `0x66FBE0 / 0x66FC7D`; `0x6941F0 / 0x694495`; `0x443620 / 0x44362D`; `0x443D30 / 0x443F44`; `0x407F70 / 0x407FC4`; `0x406900 / 0x40691C`; `0x58A960 / 0x58A96F` |
+
+Use `objdump -s` for jump table `0x465314 / 0x46532C` and vtable rows
+`0x80AF78 / 0x80AF88`, `0x80C4F8 / 0x80C508`. These additional
+manual paths are not added to the automated 43-anchor/12-string manifest.
+All four qualification flags and runtimeObserved remain false.
+
+Next task: trace callback-triggered object/manager destruction against listener
+cleanup and saved-descriptor lifetime, including the scope/callers of
+`0x4683E0/0x468410` and teardown `0x467800`. Resolve loading callback targets
+and window-owner assignment against the startup context, including event-5
+world initialization. Require complete lifetime/coherence/ABA coverage before
+sampler design; retain SOURCE GAP if closure is unavailable. Manual unload
+acceptance remains separate and requires module-absence/responsiveness evidence.
+
+Validation: exact-client offline audit PASS; `python3 tools/validate.py --jobs 4`
+PASS, all 247 records (111 C++ executables, 49 audit Python tests, 13 QuestDB
+Python tests, 10 Lua fixtures, SQL/TSV fixture, full MinGW build and diff check).
+Report: `/tmp/wow-validation-3aepci12/results.json`. Separate `cmake --build build`
+PASS (DLL, testhost, loader, GUI). Three read-only reviews completed; corrected
+equal-byte-suppression wording, with no remaining actionable findings. Full diff
+and worktree status inspected: exactly these two documents, no unrelated changes;
+`git diff --check` PASS. Runtime NOT RUN; no qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
