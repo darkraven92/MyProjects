@@ -41,7 +41,7 @@ int main()
     world = {false, "manager_missing"};
     assert(tracker.Observe(connected, world, fields));
     Has(fields, "worldSnapshot=unavailable worldStage=manager_missing");
-    Has(fields, "manager=unknown playerGuid=unknown localPlayer=unknown");
+    Has(fields, "manager=0x0 playerGuid=unknown localPlayer=unknown");
     Has(fields, "serverConnected=yes");
     Has(fields, "lastGlueScreen=charselect");
     Has(fields, "disconnectConfirmed=unknown");
@@ -115,4 +115,54 @@ int main()
         Has(fields, "dialogVisible=unknown dialogType=unknown");
         assert(!sparse.Observe({}, snapshot, fields));
     }
+
+    LocationCandidates5875 raw{true,123,1,14,363};
+    ConnectionObservationTracker lifecycle;
+    for (const auto snapshot : {priorWorld, ConnectionWorldObservation{false,"manager_missing"},
+         ConnectionWorldObservation{false,"active_guid_missing",124,0,0},
+         ConnectionWorldObservation{false,"local_player_missing",124,456,0},
+         ConnectionWorldObservation{false,"player_snapshot_unreadable",124,456,790}, priorWorld})
+    {
+        assert(lifecycle.Observe(connected, snapshot, fields, raw));
+        Has(fields, "mapCandidate=1 zoneCandidate=14 areaCandidate=363");
+        Has(fields, "locationQualification=unqualified locationReason=source_lifetime_gap");
+        Has(fields, "inputOwner=none commands=none");
+        Has(fields, "disconnectConfirmed=unknown");
+        Has(fields, "serverConnected=yes");
+        Has(fields, "glueScreenSemantics=historical");
+        for (const char* forbidden : {"currentMap=", "currentZone=", "currentArea=", "runtimeQualified=yes"})
+            assert(fields.find(forbidden) == std::string::npos);
+        for (int i = 0; i < 10000; ++i)
+            assert(!lifecycle.Observe(connected, snapshot, fields, raw));
+    }
+    Has(ConnectionObservationTracker::Fields(connected,{false,"active_guid_missing",124,0,0},raw),
+        "manager=0x7c playerGuid=0x0 localPlayer=unknown");
+    Has(ConnectionObservationTracker::Fields(connected,{false,"local_player_missing",124,456,0},raw),
+        "manager=0x7c playerGuid=0x1c8 localPlayer=unknown");
+    Has(ConnectionObservationTracker::Fields(connected,{false,"player_snapshot_unreadable",124,456,790},raw),
+        "manager=0x7c playerGuid=0x1c8 localPlayer=0x316");
+    for (const char* stage : {"manager_root_unreadable","unknown","future_stage"})
+        Has(ConnectionObservationTracker::Fields(connected,{false,stage,124,456,790},raw),
+            "manager=unknown playerGuid=unknown localPlayer=unknown");
+
+    for (int field = 0; field < 3; ++field)
+    {
+        auto changed = raw;
+        if (field == 0) changed.mapCandidate = 0xffffffffu;
+        if (field == 1) changed.zoneCandidate = 0;
+        if (field == 2) changed.areaCandidate = 0;
+        assert(lifecycle.Observe(connected, priorWorld, fields, changed));
+        Has(fields, "locationQualification=unqualified");
+        if (field == 0) Has(fields, "mapCandidate=4294967295");
+        if (field == 1) Has(fields, "zoneCandidate=0");
+        if (field == 2) Has(fields, "areaCandidate=0");
+        assert(!lifecycle.Observe(connected, priorWorld, fields, changed));
+        assert(lifecycle.Observe(connected, priorWorld, fields, raw));
+    }
+    auto badRaw = raw;
+    badRaw.signaturesKnown = false;
+    assert(lifecycle.Observe(connected, priorWorld, fields, badRaw));
+    Has(fields, "mapCandidate=unknown zoneCandidate=unknown areaCandidate=unknown");
+    Has(fields, "locationQualification=unqualified");
+    assert(!lifecycle.Observe(connected, priorWorld, fields, {}));
 }

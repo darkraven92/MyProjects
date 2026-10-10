@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ConnectionEvidence5875.h"
+#include "LocationCandidates5875.h"
 
 #include <sstream>
 #include <string>
@@ -25,6 +26,26 @@ namespace Bot
         std::uint32_t manager = 0;
         std::uint64_t playerGuid = 0;
         std::uint32_t localPlayer = 0;
+
+        // WorldStateReader preserves successful partial reads on failure.
+        // Explicit stage allowlists fail closed if a new stage is introduced.
+        bool GuidRead() const
+        {
+            const std::string_view s(stage);
+            return snapshotValid || s == "active_guid_missing" ||
+                s == "first_object_unreadable" || s == "first_object_missing" ||
+                s == "local_player_missing" || s == "player_snapshot_unreadable";
+        }
+        bool ManagerRead() const
+        {
+            const std::string_view s(stage);
+            return GuidRead() || s == "manager_missing" || s == "manager_unreadable" ||
+                s == "active_guid_unreadable";
+        }
+        bool LocalPlayerObserved() const
+        {
+            return snapshotValid || std::string_view(stage) == "player_snapshot_unreadable";
+        }
     };
 
     // No combined world/connection state machine or action eligibility exists.
@@ -43,14 +64,19 @@ namespace Bot
 
     public:
         static std::string Fields(const ConnectionEvidence5875& connection,
-                                  const ConnectionWorldObservation& world)
+                                  const ConnectionWorldObservation& world,
+                                  const LocationCandidates5875& location = {})
         {
             const bool known = connection.signaturesKnown && connection.serverConnectionKnown;
+            const auto candidate = [&](const std::optional<std::uint32_t>& value)
+            {
+                return location.signaturesKnown && value ? std::to_string(*value) : "unknown";
+            };
             return std::string("worldSnapshot=") + (world.snapshotValid ? "valid" : "unavailable") +
                 " worldStage=" + world.stage +
-                " manager=" + (world.snapshotValid ? Hex(world.manager) : "unknown") +
-                " playerGuid=" + (world.snapshotValid ? Hex(world.playerGuid) : "unknown") +
-                " localPlayer=" + (world.snapshotValid ? Hex(world.localPlayer) : "unknown") +
+                " manager=" + (world.ManagerRead() ? Hex(world.manager) : "unknown") +
+                " playerGuid=" + (world.GuidRead() ? Hex(world.playerGuid) : "unknown") +
+                " localPlayer=" + (world.LocalPlayerObserved() ? Hex(world.localPlayer) : "unknown") +
                 " sourceVerified=" + (connection.signaturesKnown ? "yes" : "no") +
                 " serverConnected=" + (known ? (connection.serverConnected ? "yes" : "no") : "unknown") +
                 " lastGlueScreen=" + (connection.signaturesKnown ? connection.lastGlueScreen : "unknown") +
@@ -60,15 +86,24 @@ namespace Bot
                 " glueGeneration=unknown disconnectConfirmed=unknown actionEligibility=unknown"
                 " liveGlueReason=source_gap_identity_and_lifetime"
                 " processAlive=yes decision=observe_only inputOwner=none commands=none"
-                " sourceReason=" + connection.reason;
+                " sourceReason=" + connection.reason +
+                " sourceVerifiedScope=connection_instructions"
+                " locationSignatures=" + (location.signaturesKnown ? "pass" : "unknown") +
+                " locationOwner=" + (location.signaturesKnown && location.owner ? Hex(*location.owner) : "unknown") +
+                " mapCandidate=" + candidate(location.mapCandidate) +
+                " zoneCandidate=" + candidate(location.zoneCandidate) +
+                " areaCandidate=" + candidate(location.areaCandidate) +
+                " locationQualification=unqualified locationReason=source_lifetime_gap"
+                " worldCorrelation=sequential";
         }
 
         // First sample and evidence changes only. No retained successful
         // evidence replaces a failed read. Returning to a prior sample emits.
         bool Observe(const ConnectionEvidence5875& connection,
-                     const ConnectionWorldObservation& world, std::string& fields)
+                     const ConnectionWorldObservation& world, std::string& fields,
+                     const LocationCandidates5875& location = {})
         {
-            fields = Fields(connection, world);
+            fields = Fields(connection, world, location);
             if (fields == previous_) return false;
             previous_ = fields;
             return true;

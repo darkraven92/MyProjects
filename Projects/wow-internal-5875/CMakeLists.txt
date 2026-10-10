@@ -29,6 +29,7 @@ target_link_libraries(
     wow_internal
     PRIVATE
     version
+    advapi32
 )
 
 target_link_options(

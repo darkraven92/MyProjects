@@ -44,16 +44,24 @@ class ConnectionObserverBoundaryTest(unittest.TestCase):
         self.assertIn("[[noreturn]] void UnloadSelf", source)
         self.assertLess(end, bootstrap.index("if (!WaitForWorld())"))
         self.assertLess(end, bootstrap.index("Objects::ObjectManagerProbe::Run()"))
+        self.assertLess(bootstrap.index("IsExpectedClient()"), guard)
 
     def test_observer_has_only_read_logging_and_ipc_dependencies(self):
         source = (ROOT / "src/Bot/ConnectionLifecycleObserver5875.h").read_text()
         self.assertEqual(re.findall(r'#include "([^"]+)"', source), [
-            "ConnectionObservationPolicy.h", "../Control/RuntimeControl.h",
+            "ConnectionObservationPolicy.h", "LocationClientFingerprint5875.h", "../Control/RuntimeControl.h",
             "../Debug/Logger.h", "../Objects/WorldState.h", "../Wow5875/Client.h"])
         self.assertIn("ConnectionEvidence5875::Observe(", source)
         self.assertIn("ReadProcessMemory(", source)
         self.assertIn("Objects::WorldStateReader::Read(", source)
         self.assertIn("control.MarkRuntimeDetached();", source)
+        self.assertIn("LocationClientFingerprint5875()", source)
+        self.assertIn("LocationCandidates5875::AcrossWorldRead(locationBefore,", source)
+        self.assertLess(source.index("const auto locationBefore"), source.index("Objects::WorldStateReader::Read("))
+        self.assertLess(source.index("Objects::WorldStateReader::Read("), source.index("LocationCandidates5875::AcrossWorldRead"))
+        self.assertIn("sizeof(value), &copied) && copied == sizeof(value)", source)
+        self.assertIn("inputOwner=none commands=none", source)
+        self.assertIn("Sleep(250)", source)
         for forbidden in ("Controller::", "GameThreadDispatcher", "ExecuteLua",
                           "WriteProcessMemory", "SendInput", "EnterWorld(",
                           "DefaultServerLogin(", "HoldPosition("):
@@ -74,9 +82,25 @@ class ConnectionObserverBoundaryTest(unittest.TestCase):
             for forbidden in ("GameThreadDispatcher", "ExecuteLua", "ExecuteScript",
                               "WriteProcessMemory", "SendInput", "keybd_event", "mouse_event",
                               "SetWindowsHookEx", "SetWindowLongPtr", "PostMessage", "SendMessage",
-                              "DefaultServerLogin", "GlueDialog_OnClick", "EnterWorld("):
+                              "DefaultServerLogin", "GlueDialog_OnClick", "EnterWorld(",
+                              "ProfileWorldEvidence", "ProfileWorldEvidenceAdapter"):
                 self.assertNotIn(forbidden, source, str(path.relative_to(ROOT)))
             for include in re.findall(r'#include "([^"]+)"', source):
                 pending.append(path.parent / include)
         self.assertFalse(any("Controller" in p.name for p in visited))
         self.assertTrue(any(p.name == "ConnectionEvidence5875.h" for p in visited))
+        self.assertTrue(any(p.name == "LocationCandidates5875.h" for p in visited))
+
+    def test_location_reader_has_only_diagnostic_callers(self):
+        callers = []
+        for path in (ROOT / "src").rglob("*.h"):
+            if "LocationCandidates5875::Observe(" in path.read_text():
+                callers.append(path.name)
+        self.assertEqual(callers, ["ConnectionLifecycleObserver5875.h"])
+        source = (ROOT / "src/Bot/ConnectionObservationPolicy.h").read_text()
+        for field in ("mapCandidate=", "zoneCandidate=", "areaCandidate=",
+                      "locationQualification=unqualified", "locationReason=source_lifetime_gap",
+                      "sourceVerifiedScope=connection_instructions", "glueScreenSemantics=historical"):
+            self.assertIn(field, source)
+        for field in ("currentMap=", "currentZone=", "currentArea="):
+            self.assertNotIn(field, source)

@@ -68,8 +68,10 @@ class ProfileWorldLocationClientAuditTest(unittest.TestCase):
             self.assertEqual(result["sourceScope"], "documented instruction provenance only")
             for key in ("currentMapQualified", "currentZoneQualified",
                         "currentAreaQualified", "worldLifetimeQualified",
-                        "readerImplemented", "runtimeObserved"):
+                        "runtimeObserved"):
                 self.assertIs(result[key], False, key)
+            self.assertIs(result["readerImplemented"], True)
+            self.assertEqual(result["readerScope"], "unqualified_raw_observe_only")
             self.assertEqual(audit(data), result)
             image.memory[0x491266] = b"changed cleanup"
             with self.assertRaises(ValueError):
@@ -94,6 +96,24 @@ class ProfileWorldLocationClientAuditTest(unittest.TestCase):
                 pending.append(path.parent / include)
         self.assertEqual({str(p.relative_to(ROOT)) for p in visited}, {
             "src/Bot/ProfileWorldEvidenceAdapter.h", "src/Bot/ProfileWorldEvidence.h"})
+
+    def test_runtime_raw_signatures_match_existing_audited_anchors(self):
+        source = (ROOT / "src/Bot/LocationCandidates5875.h").read_text()
+        signatures = re.findall(
+            r'Match\(read, (0x[0-9a-f]+), std::array<unsigned char,(\d+)>\{([^}]+)\}', source)
+        self.assertEqual(len(signatures), 4)
+        for address, size, body in signatures:
+            data = bytes(int(value.strip(), 0) for value in body.split(','))
+            self.assertEqual(len(data), int(size))
+            self.assertEqual(data, bytes.fromhex(SIGNATURES[int(address, 0)]))
+        source = (ROOT / "src/Bot/LocationClientFingerprint5875.h").read_text()
+        body = re.search(r'expected\{([^}]+)\}', source).group(1)
+        digest = bytes(int(value.strip(), 0) for value in body.split(','))
+        self.assertEqual(digest.hex(), CLIENT_SHA256)
+        for guard in ("GENERIC_READ, FILE_SHARE_READ", "OPEN_EXISTING", "CALG_SHA_256",
+                      "total == size.QuadPart", "digest == expected", "CloseHandle(file)",
+                      "CryptDestroyHash(hash)", "CryptReleaseContext(provider, 0)"):
+            self.assertIn(guard, source)
 
 
 if __name__ == "__main__":

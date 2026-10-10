@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ConnectionObservationPolicy.h"
+#include "LocationClientFingerprint5875.h"
 #include "../Control/RuntimeControl.h"
 #include "../Debug/Logger.h"
 #include "../Objects/WorldState.h"
@@ -30,6 +31,10 @@ namespace Bot
 
             Debug::Logger::Event("BOT SESSION START mode=connection_observe");
             Debug::Logger::Info("CONNECTION OBSERVE CONFIG mode=observe pollMs=250 inputOwner=none commands=none");
+            const bool exactLocationClient = LocationClientFingerprint5875();
+            Debug::Logger::Info(std::string("LOCATION OBSERVE CONFIG fileFingerprint=") +
+                (exactLocationClient ? "pass" : "unavailable_or_mismatch") +
+                " locationQualification=unqualified locationReason=source_lifetime_gap inputOwner=none commands=none");
             ConnectionObservationTracker tracker;
             std::uint64_t heartbeat = 0;
             while (control.RunRequested(false) && !control.UnloadRequested(false))
@@ -40,24 +45,30 @@ namespace Bot
                 control.MarkRuntimeState(Control::BotRunState::Running,
                     static_cast<LONG>((++heartbeat) & 0x7fffffffULL));
 
-                const auto connection = ConnectionEvidence5875::Observe(
-                    Wow5875::Client::Base(), [](std::uintptr_t address, auto& value)
+                const auto sampleStartMs = GetTickCount64();
+                const auto read = [](std::uintptr_t address, auto& value)
                     {
                         SIZE_T copied = 0;
                         return ReadProcessMemory(GetCurrentProcess(),
                             reinterpret_cast<const void*>(address), &value,
                             sizeof(value), &copied) && copied == sizeof(value);
-                    });
+                    };
+                const auto base = Wow5875::Client::Base();
+                const auto connection = ConnectionEvidence5875::Observe(base, read);
+                const auto locationBefore = LocationCandidates5875::Observe(base, exactLocationClient, read);
                 Objects::WorldState world{};
                 Objects::WorldReadStage stage = Objects::WorldReadStage::Complete;
                 const bool valid = Objects::WorldStateReader::Read(world, &stage);
+                const auto location = LocationCandidates5875::AcrossWorldRead(locationBefore,
+                    LocationCandidates5875::Observe(base, exactLocationClient, read));
                 std::string fields;
                 if (tracker.Observe(connection,
                     {valid, Objects::WorldReadStageName(stage), world.manager,
-                     world.activePlayerGuid, world.localPlayer}, fields))
+                     world.activePlayerGuid, world.localPlayer}, fields, location))
                 {
                     Debug::Logger::Event("CONNECTION OBSERVE sampleMs=" +
-                        std::to_string(GetTickCount64()) + " " + fields);
+                        std::to_string(GetTickCount64()) + " sampleStartMs=" +
+                        std::to_string(sampleStartMs) + " " + fields);
                 }
                 Sleep(250);
             }

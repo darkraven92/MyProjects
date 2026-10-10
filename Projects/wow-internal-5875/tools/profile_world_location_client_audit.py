@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline P0.7.3 location-source research for the exact build-5875 executable.
 
-No process attachment, client calls, Lua, memory writes, or runtime reader.
+No process attachment, client calls, Lua, memory writes, or runtime execution.
 PASS pins the documented instruction paths, NOT current-world qualification.
 See docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md for the unresolved lifetime gaps.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 from water_client_audit import CLIENT_SHA256, PeImage
 
 
-# Research anchors only: none of these addresses is production reader authority.
+# Research anchors: four also pin P0.7.4 raw diagnostic reads, never profile authority.
 SIGNATURES = {
     # Selected-map registrations/indices versus native current-context map use.
     0x845090: "ec528400207e4a00e0528400307e4a00c8528400d07e4a00b4528400007f4a00",
@@ -112,7 +112,9 @@ def audit(data):
         "currentZoneQualified": False,
         "currentAreaQualified": False,
         "worldLifetimeQualified": False,
-        "readerImplemented": False,
+        # Implementation metadata only; this offline audit cannot run/qualify it.
+        "readerImplemented": True,
+        "readerScope": "unqualified_raw_observe_only",
         "runtimeObserved": False,
     }
 

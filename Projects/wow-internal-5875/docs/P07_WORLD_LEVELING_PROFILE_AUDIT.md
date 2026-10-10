@@ -1,8 +1,9 @@
 # P0.7 — World / Zone Preparation + Leveling Profile Foundation
 
-This checkpoint implements isolated, advisory policies and synthetic regression
-tests. It does not integrate profile selection into the running bot, add a live
-map/zone reader, or qualify any new behavior in WoW.
+This checkpoint implements isolated, advisory policies, synthetic regression
+tests and the P0.7.4 unqualified raw location lifecycle observer. It does not
+integrate profile selection into the running bot or qualify current location
+or any new behavior in WoW. Earlier checkpoint sections below are historical.
 
 Baseline: 75cadc00b8343837b8fbb40c29a648d5dbc56298, branch
 codex/p07-world-zone-preparation. The World Evidence, Existing Profile / Quest
@@ -508,6 +509,232 @@ P0.7.3 validation, 2026-10-10:
 - `git status --short`: only this document and the adapter test modified;
   new location audit tool and its Python test untracked. No staging or commit.
 - Runtime: NOT RUN. Production location fields remain Unknown.
+
+## P0.7.4 — read-only world location lifecycle observer
+
+Continues clean checkpoint `71e2ed6` on 2026-10-10. Three parallel read-only
+subagents completed before any implementation; only the coordinator edited:
+
+- A audited architecture, bootstrap, logging and unload. The existing connection
+  observer is the smallest safe integration; partial world-read identities must
+  not be hidden behind full-snapshot validity.
+- B rechecked the exact executable and source anchors. Raw scalar reads are
+  feasible with exact-file provenance, live signatures and repeated bounded
+  reads. Globals must remain observable when the manager disappears.
+- C audited tests and action boundaries. Existing portable fixtures and include
+  closure guards can cover the new reader without a second observer framework.
+
+The reports agree that readable/stable storage is not current-world evidence.
+The implementation uses independent owner/map and zone/area failure groups,
+plus acquisitions bracketing the world read. It preserves the existing
+`WOW_INTERNAL_CONNECTION_MODE=observe` route, 250 ms cadence, GUI heartbeat,
+first/change-only logging and input-free teardown. `WorldMonitor.h`,
+`dllmain.cpp`, `WorldState.h`, all gameplay controllers and profile headers are
+unchanged. Normal Grind execution and its stop path are unchanged.
+
+### SOURCE VERIFIED
+
+This label applies to instruction provenance and code boundaries, **not** to
+current map/zone/area qualification. The runtime implementation consists of:
+
+- `LocationClientFingerprint5875.h`: observer-start SHA256 of the executable
+  path returned by Windows. Requires the exact P0.7.3 digest; path truncation,
+  unreadable/empty/over-64-MiB files, partial reads and crypto errors fail closed.
+  Reads in 16-KiB chunks, opens only for reading, closes all handles. This uses
+  Windows CryptoAPI (`advapi32`), no client function. This startup provenance
+  result is session-local; no candidate values are cached across samples.
+- `LocationCandidates5875.h`: each acquisition requires that file fingerprint,
+  base `0x400000`, and exact live signatures for full map getter `0x468580`,
+  setter `0x4685A0`, zone/area publication `0x494787`, and reset `0x491266`.
+  These four anchors already exist in the offline audit; no new signature or
+  address research was needed. Fingerprint/signature failure exposes no raw
+  values and performs no candidate dereferences.
+- `ConnectionLifecycleObserver5875.h`: uses the existing fault-safe
+  `ReadProcessMemory` callback with exact byte-count checks. Acquires location
+  before and after the existing world read; formatting rejects detected changes
+  across that bracket. No native client call, Lua or client-memory write occurs.
+- `ConnectionObservationPolicy.h`: includes raw candidates in the existing
+  change comparison and correlates partial world reads. No action policy,
+  profile adapter or controller is reachable in its local include closure.
+
+| Raw output | Exact storage / bounded read | Failure and numeric contract |
+|---|---|---|
+| `locationOwner` | DWORD at `0xB41414`, repeated around map reads | Missing/change -> unknown; stable null prints `0x0`. This is a raw pointer observation, not a world generation. |
+| `mapCandidate` | DWORD at that nonnull owner `+0xCC`, read twice | Require owner <= `UINT32_MAX-0xD0`, two readable equal values and unchanged owner. Otherwise unknown. |
+| `zoneCandidate` | First DWORD of 8-byte pair at `0xB4E314` | Two readable equal pairs required; either changed field/failure makes both globals unknown. Independent of manager availability. |
+| `areaCandidate` | Second DWORD of that pair, `0xB4E318` | Same paired contract; no parent/child substitution. |
+
+All three candidates print unsigned decimal DWORDs: 0 through 4294967295.
+Zero is a raw value, not an unknown sentinel. There is no ID-table membership
+filter, clamping or assertion of a valid map/AreaTable ID. Each invocation
+starts Unknown; a read failure cannot reuse a previous successful candidate.
+Across the world-read bracket, changed/missing owner or map suppresses map;
+changed/missing zone or area suppresses the global pair. These independent
+groups preserve useful teardown telemetry without manufacturing coherence.
+
+World snapshot stage/validity is still exactly the existing reader's result.
+Stage allowlists expose successful partial reads: manager includes a read-null
+`manager_missing`; `active_guid_missing` exposes manager and read-zero GUID;
+later first-object/local-player failures retain read GUID; a local-player
+pointer is exposed only for a complete snapshot or `player_snapshot_unreadable`.
+Incomplete enumeration is not proof of local-player absence. Root unreadable,
+unknown and future stages fail closed. These identities retain the existing
+reader's limitations, including no final GUID/type recheck; they are correlation
+observations, not newly qualified coherent identity evidence.
+
+Each emitted `CONNECTION OBSERVE` row contains all location candidates, raw
+location owner, world stage/snapshot, manager/GUID/local player, independently
+sampled server predicate, historical glue name and `processAlive=yes`.
+`sampleStartMs`/`sampleMs` bound the polling acquisition; timestamps never
+enter the change comparison. Fixed fields include:
+
+```text
+locationQualification=unqualified locationReason=source_lifetime_gap
+worldCorrelation=sequential inputOwner=none commands=none
+glueScreenSemantics=historical loading=unknown disconnectConfirmed=unknown
+```
+
+Existing `sourceVerified` is explicitly scoped by
+`sourceVerifiedScope=connection_instructions`. `locationSignatures=pass` means
+the raw reader's live anchors matched, not SOURCE VERIFIED current location.
+`lastGlueScreen` never becomes current UI visibility. OM loss never becomes
+a disconnect. No row uses `currentMap=`, `currentZone=` or `currentArea=`.
+
+The offline audit retains its existing signatures and runtime-independent
+behavior. Only implementation metadata changes to `readerImplemented=true`
+with `readerScope=unqualified_raw_observe_only`, because an actual runtime raw
+reader now exists. Every current-location/world-lifetime qualification and
+`runtimeObserved` remains false. An offline PASS cannot qualify runtime reads.
+
+### RUNTIME OBSERVED
+
+**None for P0.7.4.** No WoW launch, injection, logout, Enter World or stop/unload
+test was performed in this implementation task. Historical connection-observer
+runtime results do not qualify this new reader. CryptoAPI availability under
+the configured Wine prefix, actual raw values and P0.7.4 detach remain pending.
+
+### INFERRED
+
+Values persisting across positive world identity loss are evidence of stale
+storage, not current-world validity. Relative changes in emitted rows can
+characterize publication/teardown ordering at this sampling resolution.
+Unchanged dwell produces no extra row: retain GUI heartbeat and manually timed
+screen observations to distinguish suppression from an observer that stopped.
+
+### UNKNOWN
+
+Current-world lifetime, initialization completion, current-player ownership of
+the zone/area cache, cross-field atomicity, world generation, same-address reuse
+and changes between polls remain unknown. Two equal pairs can straddle a writer
+paused between DWORD stores; repeated equal owner/map reads cannot detect ABA.
+The map constructor publishes its owner before setting map, teardown starts
+before clearing it, and zone/area reset occurs later. Sampling every 250 ms plus
+read duration can miss short stages. Human-observed loading remains a manual
+annotation, never an automatic loading classifier.
+
+`ProfileWorldEvidence` and its adapter are untouched and unreachable from the
+observer. Map/zone remain absent, area remains unsupported, and position-map
+association remains absent. No single lifecycle run, matching value, changed
+value, stable dwell or successful world return promotes these fields.
+
+### Controlled manual lifecycle runbook
+
+Keep both `build/wow-internal.log` and `build/wow-internal.lifecycle.log` for one
+session, plus manually recorded visible-screen times. Use the existing Wine
+prefix. Normal user UI actions are the only transition source.
+
+1. Start a fresh GUI/client from this build with
+   `env WOW_INTERNAL_CONNECTION_MODE=observe wine ./build/wow_gui.exe`.
+   Use **Start WoW** so the client inherits the variable; setting it only on a
+   loader cannot change an already-running client's environment.
+2. Manually log in normally and enter the intended character in a safe ordinary
+   location. No credentials are requested or handled by the observer.
+3. Press **Start Bot**. Require `CONNECTION OBSERVE CONFIG mode=observe` and
+   `LOCATION OBSERVE CONFIG fileFingerprint=pass`, with `inputOwner=none
+   commands=none`. If these are absent, stop and diagnose configuration.
+4. Record the first in-world row: candidates, location owner, world stage,
+   manager, GUID, local-player pointer, server predicate and historical screen.
+   Require unqualified semantics. Wait briefly; unchanged rows should suppress
+   while GUI heartbeat continues. Unknown raw reads are a finding, not a PASS.
+5. Manually use normal **Logout**. Record the action and visible transition
+   times and every emitted candidate/identity change before and during teardown.
+6. At character select, dwell approximately 10–15 seconds. Note retained or
+   cleared candidates and actual server predicate. Do not infer disconnect,
+   current-screen visibility or candidate validity from OM absence.
+7. Manually choose the same character and press normal **Enter World**.
+8. Record visible loading start/end and all emitted rows, including unknowns,
+   partial manager/GUID publication and any raw candidate changes. A missed
+   short phase is unobserved, not evidence that it did not happen.
+9. After world return, record the fresh complete snapshot and compare GUID,
+   pointers and candidates with step 4. No gameplay may start. Record an optional
+   natural zone transition only if one happens without manufacturing it.
+10. Press **Stop Bot**. Require observer `BOT SESSION STOP`, `RUNTIME DETACHED`,
+    bootstrap unload request and DLL detach/unload markers, with no stop/hold,
+    attack, AFK or other input operation.
+11. Confirm WoW remains running and responsive with the runtime detached. Keep
+    the complete logs and screen annotations together. Static control-flow
+    checks alone cannot prove successful runtime unload.
+
+Do not force disconnect, provoke death, enter water deliberately, reconnect,
+automate character selection or request credentials. For subsequent ordinary
+gameplay, restart GUI/client with the variable unset rather than empty.
+
+### Acceptance evidence and falsification
+
+Useful evidence covers stable in-world -> normal logout -> character-select
+dwell -> Enter World/loading -> same-character world return -> Stop Bot/detach.
+Every emitted change must retain raw/unqualified labels and the full lifecycle
+correlation fields. All action-eligibility/loading/disconnect gaps remain
+unknown. Any action adapter/input or automatic promotion fails acceptance.
+
+Candidate freshness would be falsified by retained zone/area numbers after
+manager/local-player loss, readable map storage after active-player loss, a
+new map value before usable world/player publication, or observed delayed
+updates after return. These observations concern staleness/ordering; they do
+not justify globally classifying all raw values as valid or invalid. Changes
+during loading, same numbers across different owners, and independent natural
+zone/area changes are useful even without proving freshness.
+
+Before profile consumption, source research must establish an explicit lifetime
+and initialization predicate, current-player binding for the zone/area updater,
+coherence with GUID/local player/position, and a defensible generation/ABA
+strategy. Independently qualified runtime cases must cover loading, teardown,
+same-map reload, map transfer and zone/area-only changes. The adapter must then
+be deliberately extended with qualified provenance and regression tests in a
+separate task. This phase cannot satisfy that acceptance by itself.
+
+### P0.7.4 validation
+
+Focused fixtures cover fingerprint/base/signature rejection before data reads,
+every mutated signature byte, missing/truncated signatures, null/unreadable/
+overflowing owner, unreadable field/pair, failed repeat reads, owner/map/pair
+changes, cross-world-read changes, zero/full-width values and no reuse after
+failure. Tracker fixtures cover partial stages, 10,000 unchanged samples,
+independent candidate changes, stable candidates across teardown/dwell/return,
+unknown replacement and immutable unqualified semantics. Source checks pin
+bootstrap/client validation, gameplay exclusion, read/log/IPC dependency closure,
+profile exclusion, diagnostic-only callers and input-free detach/unload flow.
+
+Validation on 2026-10-10:
+
+- Exact local executable offline audit: PASS (SHA256, PE32/i386/base and the
+  unchanged 43 instruction anchors / 12 strings). Runtime raw anchor bytes and
+  fingerprint literal are checked against that audit by a Python regression.
+- Focused native raw-reader and observation-policy compile/run: PASS with
+  C++20 `-Wall -Wextra -Werror`. Standalone MinGW i686 compilation of the actual
+  observer, including Windows CryptoAPI and world reader: PASS with those flags.
+- `python3 tools/validate.py --jobs 4`: PASS; 111 C++ executables, 49 audit
+  Python tests, 13 QuestDB Python tests, SQL/TSV fixture, 10 Lua fixtures, full
+  MinGW build and diff check. All 247 validation records passed.
+  Report: `/tmp/wow-validation-vvyf3kod/results.json`.
+- Separate `cmake --build build`: PASS (DLL, testhost, loader and GUI).
+- `git diff --check` and new-file `--no-index --check`: PASS. Reviewed the
+  complete tracked diff and all three new files. Final status contains only
+  this task's 11 files; no staging or commit.
+- Source comparison with `71e2ed6`: no edits to WorldMonitor, bootstrap,
+  WorldState, profile evidence/adapter, Grind or any protected gameplay owner.
+- Runtime: NOT RUN / PENDING. In particular, the new fingerprint helper's Wine
+  runtime behavior and P0.7.4 Stop Bot/detach require the manual procedure above.
 
 ## Regression and validation
 
