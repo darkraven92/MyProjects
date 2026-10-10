@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `d67c9ba4a5e2a584cd0442056d3ac8df333dd9cc`
-— `docs: trace p07 descriptor teardown and window ownership`.
+Starting checkpoint: `b3101eb87d4e5532e3b1eabae3a484f794760684`
+— `docs: trace p07 script callbacks and deferred close`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,58 +12,59 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: script dispatch, loading
-completion and deferred close. Three parallel read-only agents traced farsight,
-loading and window routes. Coordinator reconciled the results, checked key
-paths and connected context cleanup to manager destruction and worker shutdown.
+P0.7.4 source research continuation, 2026-10-10: declared listener and resource
+callback effects. Three parallel read-only agents traced script bindings,
+loading continuations and secondary window targets. Coordinator reconciled
+results, checked key sites and narrowed object/graphics virtual bindings.
 No production code, tests, observer contract, hooks, controller ownership or
 navigation changed.
 
-Connected synchronous script execution inside farsight notification, loading
-completion outside event 6, callbacks after worker termination, and TLS-selected
-deferred close. These broaden callback coverage and narrow one teardown ingress
-without proving exclusion on all paths. **SOURCE GAP remains; profile location
-population stays BLOCKED.**
+Identified a concrete stock farsight listener declaration in local assets,
+resource continuations that outlive request-pointer clearing, and GUI callbacks
+behind HWND properties. These narrow source obligations without proving the
+live callback set, complete side effects or retained-reference safety.
+**SOURCE GAP remains; profile location population stays BLOCKED.**
 
-Detailed anchors, reproduction ranges and limits are in
+Detailed anchors, exact asset hashes, reproduction ranges and limits are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — script dispatch, loading completion and deferred close.” Earlier
-sections retain the exact executable hash and saved runtime capture evidence.
+“P0.7.4 — declared listener and resource callback effects.” Earlier sections
+retain exact executable provenance and saved runtime capture evidence.
 
 ## Evidence
 
 ### SOURCE VERIFIED
 
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
-  12 strings. All four location/lifetime flags remain false. Additional manual
-  paths are outside that manifest; indirect/alias coverage is not exhaustive.
-- Farsight callback dispatches PLAYER_FARSIGHT_FOCUS_CHANGED synchronously
-  after its state-gated wrappers, before the outer notification executor resumes
-  raw listener access. Registered scripts can reach dynamic native closures or
-  the interpreter. Installed handlers' cleanup/nested-traversal effects remain
-  UNKNOWN; flag tests and bounded direct-call absence do not prove exclusion.
-- Loading worker marks completion separately from the normal callback consumer.
-  The consumer sets entry+0x1C before invoking the callback, so that byte does
-  not prove callback return. Synchronous waiter 0x443BD0 pumps that consumer;
-  completion is not restricted to event 6.
-- Shutdown waits for the worker, then can invoke alternate callbacks before
-  deregistering event 6. One concrete alternate performs another read and then
-  normal continuation; another registered completion callback can submit work.
-  These paths do not establish world mutation or safe lifetime boundaries.
-- Context cleanup can destroy the manager before loading drain/shutdown. This
-  local sequence requires callback-effect coverage; no runtime fault is claimed.
-- Window input routes through a bounded ring. The installed close handler reads
-  element 0 of the current context TLS block, conditionally marks that context
-  for cleanup and returns zero, suppressing the generic fallback. The main loop
-  later dispatches cleanup events, reaches manager destruction through event 4
-  and clears TLS afterward.
-  This is a deferred ordinary-loop path, not proven recursive teardown inside
-  the window callback. A secondary immediate window callback has unresolved
-  activation and indirect targets.
-- Profile location/generation remain absent, area unsupported, and XYZ has no
-  qualified map association. Context IDs, event labels and completion flags are
-  not qualified lifetime, world-generation or freshness witnesses. Earlier
-  shared-TLS worker, inline descriptor storage and bulk-cleanup limits remain.
+  12 strings. All four qualification flags remain false. Additional manual paths
+  and archive extraction are outside that manifest; coverage is not exhaustive.
+- Local patch.MPQ FrameXML.toc/XML/Lua declare the stock PetActionBar listener
+  for PLAYER_FARSIGHT_FOCUS_CHANGED. Its event branch calls PetActionBar_Update;
+  the apparent ControlReleased call is commented out. Coordinator re-extracted
+  three members and matched pinned hashes. This is asset evidence, not live
+  installation or archive-precedence evidence.
+- Native event registration/removal, register-all and target cleanup are mapped.
+  Register-all prevents literal event searches from enumerating every listener.
+  Pet API registrations are bound, but UI methods, script overrides and native
+  helper effects remain open. UI event nodes and object-field listeners are
+  distinct protocols; one cannot supply the other's lifetime guarantee.
+- Selected unit/player getter slots resolve to movement helpers, which may
+  resolve another object and invoke more virtuals. GameObject position/angle
+  helpers can invoke object+0x210 virtual slots +0x44/+0x48. These mappings
+  narrow targets without proving all types, all effects or retained lifetime.
+- Loading callbacks parse textures/map/model resources, publish resource globals,
+  and can submit additional texture work. Request pointers in 0x6C3840,
+  0x6C3F50 and the earlier 0x71D5E0 path clear before downstream completion.
+  The 0x71D640 success bit is set before dependent callbacks. Neither pointer
+  null nor a local ready bit establishes completion of all descendants.
+- Graphics allocation slots are conditionally resolved for the two known
+  factory tables; backend/helper/error callback closure remains incomplete.
+  Resource/global writes are not established map/zone/area or manager writes.
+- Secondary window targets resolve through GetPropA/SetPropA OsGuiPointer and
+  two control vtables into dynamic local/parent callbacks. Literal-address and
+  earlier direct-reference absence do not prove the route cannot activate.
+- Earlier inline descriptor storage, shared listener nodes, bulk cleanup,
+  deferred close and shared-TLS worker limits remain. Profile location/generation
+  stay absent, area unsupported, XYZ without a qualified map association.
 
 ### RUNTIME OBSERVED
 
@@ -82,20 +83,20 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Event labels, request flags and worker termination cannot alone provide a safe
-sampling boundary because additional synchronous callback scopes exist. The
-deferred close route narrows one ingress without proving all other callback
-paths exclude cleanup/nested traversal. No destructive reentry, torn sample or
-gameplay failure was observed.
+Asset declarations and virtual mappings narrow possible paths but do not establish
+actual live callbacks or transitive absence of cleanup/nested traversal. Request
+and ready flags are insufficient full-continuation witnesses. No destructive
+reentry, torn sample, unsafe runtime overlap or gameplay failure was observed.
 
 ### UNKNOWN / SOURCE GAP
 
-- Installed script/native listener effects, unresolved virtual targets, loading
-  normal/alternate callback effects and all submitters, secondary window route
-  activation, nested pumping and helper TLS preservation.
-- Retention of objects/descriptors/listeners during callbacks, actual writer
-  thread ownership, complete counter/writer coverage, initialization/invalidation,
-  coherence, same-map/character/address ABA and player-bound zone/area freshness.
+- Actual FrameXML/archive selection, installed/addon-mutated event targets,
+  synchronous UI scripts/native helpers and complete callback closure.
+- Resource-owner retention, decoder/backend/error callbacks, all submitters,
+  remaining object virtuals, GUI activation/callbacks and helper TLS effects.
+- Objects/descriptors/listeners retained across callbacks; actual writer threads,
+  complete writer/counter and initialization/invalidation coverage, coherent
+  sampling, same-map/character/address ABA and player-bound zone/area freshness.
 - Completed unload, post-stop responsiveness, visible-screen/loading annotations
   and heartbeat continuity during unchanged dwell remain unestablished. Missing
   completion telemetry does not establish unload failure.
@@ -104,22 +105,22 @@ gameplay failure was observed.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — bounded script/loading/close
-  research, reproduction ranges, proof limits and next investigation.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — asset/native bindings, bounded
+  resource/GUI effects, reproduction/provenance and remaining proof obligations.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
 
-- SOURCE: exact-client offline audit PASS; bounded disassembly independently
-  investigated without automated-manifest expansion or qualification upgrade.
+- SOURCE: exact-client offline audit PASS; three extracted asset member hashes
+  independently matched. No automated-manifest expansion or qualification upgrade.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
-  111 C++ test executables, 49 audit Python tests, 13 QuestDB Python tests,
+  111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
   10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-p3ma2u5s/results.json`.
+  Report: `/tmp/wow-validation-j9fy1hek/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
-- REVIEW: three read-only reviews reconciled; corrected context TLS element
-  terminology. No remaining findings. Complete diff/status review and
-  `git diff --check` PASS; exactly the two intended documents changed.
+- REVIEW: three read-only reviews reconciled; no actionable corrections.
+  Full diff/status review and `git diff --check` PASS; exactly the two intended
+  documents changed, with no unrelated changes.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
 
 ## Runtime qualification and blockers
@@ -132,15 +133,14 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Identify installed `PLAYER_FARSIGHT_FOCUS_CHANGED` listeners and script/native
-bindings; resolve outstanding object virtual calls against bulk cleanup/nested
-notification. Trace loading normal/alternate callback bodies (including
-`0x71D640`, `0x4497F0`, `0x44A500`, `0x6C21F0`, `0x6C3840`, `0x6C3F50`) and
-remaining window dispatch routes to world writes or teardown. Establish
-reachability/exclusion while outer references remain live and close writer,
-lifetime/coherence/ABA coverage before any profile location sampler design.
-Retain SOURCE GAP if proof remains incomplete. Client mutation helpers are not
-an observe-only acquisition mechanism.
+Trace the declared stock pet-action update's UI methods and possible synchronous
+OnShow/OnHide scripts; establish FrameXML selection and the limits of addon/event
+listener enumeration. Prioritize routes to bulk object cleanup or nested field
+notification while outer references remain live. Resolve resource-owner
+retention/descendant completion and outstanding object/GUI callback targets as
+needed for that proof. Close writer, invalidation, coherence and ABA obligations
+before any profile location sampler design; retain SOURCE GAP while incomplete.
+Client mutation helpers are not an observe-only acquisition mechanism.
 
 Separately obtain manual module-absence/post-stop responsiveness evidence for
 unload acceptance. Future qualified location consumption also needs independent
@@ -152,7 +152,7 @@ Preserve Detour/NavMesh and controller ownership.
 
 Manual runtime evidence required: No new run for this source-only task; yes for
 unload acceptance, future qualified location and pending vendor/water evidence.
-Safe to commit: Yes, validation/build, review and worktree diff checks passed
+Safe to commit: Yes, validation/build, reviews and worktree diff checks passed
 for exactly the two documentation files. Staged checks are required before commit.
 Safe to merge: Documentation checkpoint only; no automatic merge authorized.
 Whole-branch integration remains UNKNOWN and profile location remains blocked.

@@ -1405,6 +1405,169 @@ reachability/exclusion and a complete lifetime/coherence/ABA contract before
 sampler design; retain SOURCE GAP if proof is incomplete. Manual unload
 acceptance remains separate and needs module-absence/responsiveness evidence.
 
+### P0.7.4 — declared listener and resource callback effects
+
+Continued on 2026-10-10 from `b3101eb87d4e5532e3b1eabae3a484f794760684`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents investigated script bindings, resource completion and secondary
+window callbacks. Coordinator reconciled results, checked key ordering/dispatch
+sites and resolved selected object/graphics vtable entries. Only this audit and
+the handoff change. Exact-client SHA256 and earlier evidence boundaries apply.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+Local asset declarations do not establish the live listener set. Request-pointer
+clearing can precede continuation work; resolved virtual slots can lead to further
+indirect calls. No complete lifetime/coherence/ABA contract or sampler is qualified.
+
+#### SOURCE VERIFIED — listener assets and object virtuals
+
+Local archive `/home/ludvig/Games/WoW Vanilla/Data/patch.MPQ` has SHA256
+`977b63af02fe5d9f64453e18f3cfb7ac077769068d29125e475be8357654aeb4`.
+Its `Interface\FrameXML\FrameXML.toc:73` declares `PetActionBarFrame.xml`;
+XML line 3 includes the Lua file and lines 196–201 bind OnLoad/OnEvent.
+`PetActionBarFrame.lua:17` registers `PLAYER_FARSIGHT_FOCUS_CHANGED`; lines
+43–44 call `PetActionBar_Update()`. Lines 89–147 query pet actions and update
+textures/buttons/check states/cooldowns, then may call `HidePetActionBar()`.
+`ControlReleased()` on line 144 is commented out. Hide's inspected lines
+181–190 adjust animation fields conditionally; dynamic UI methods and globals
+still require transitive effect coverage. This identifies a stock declaration,
+not the live installed listener set or archive precedence.
+
+| Member under `Interface\FrameXML\` | Bytes | SHA256 |
+|---|---:|---|
+| `PetActionBarFrame.lua` | 10626 | `71aca8048fc626ab4565b0086f31c8bed9cef7f47194bc7b5eb30cdff3de2033` |
+| `PetActionBarFrame.xml` | 6270 | `b87958dbf3794e8e4c2b475faa1264069d9293fb03ce56cb0a0149ac3f373b58` |
+| `FrameXML.toc` | 1730 | `e41fce21d2dbe598c31999a5b7cdf410222a9e29eeea4be2fe342ee7b643b2f4` |
+
+Extraction used reviewed scratch reader `/tmp/p07_mpq_read.py`, SHA256
+`881dcb0ec936a9d2bee2953a8f0af5eb38bc1922d03117b4c4740a01bca1433a`.
+It decrypts hash/block tables, decompresses encountered raw/zlib/bz2 sectors and
+checks member lengths; it is not the client loader. Coordinator independently
+re-read the three members and matched lengths/hashes and listener lines.
+Reproduce with that scratch reader, or another MPQ extractor producing exactly
+the pinned member bytes (scratch files are not permanent repository tools):
+
+```python
+import sys, hashlib
+sys.path.insert(0, "/tmp")
+from p07_mpq_read import MPQ
+archive = MPQ("/home/ludvig/Games/WoW Vanilla/Data/patch.MPQ")
+for leaf in ("FrameXML.toc", "PetActionBarFrame.xml", "PetActionBarFrame.lua"):
+    data = archive.get("Interface\\FrameXML\\" + leaf)
+    print(leaf, len(data), hashlib.sha256(data).hexdigest())
+    for line, value in enumerate(data.decode().splitlines(), 1):
+        print(line, value)
+```
+
+The read-only listfile/literal search covered local interface/patch/patch-2/base/
+backup archives and loose Interface Lua/XML. It does not cover unlisted members,
+computed names, generated code or runtime hooks. No account/WTF files were read.
+
+Native method name/function pairs at `0x878F48/50/58/60` bind RegisterEvent,
+UnregisterEvent, RegisterAllEvents and UnregisterAllEvents to
+`0x774A40/0x774B30/0x774C20/0x774CF0`. Their helper calls are
+`0x774AE5 → 0x702140`, `0x774BD5 → 0x702280`, `0x774CDA → 0x7023E0`,
+`0x774DAA → 0x7024F0`. Registration compares names, suppresses duplicate targets
+at `0x7021A8`, stores target in node+8 at `0x7021C7` and appends its event index
+at `0x702239–23C`. Removal unlinks/frees at `0x702309/318` and compacts the
+vector. Target cleanup `0x701B40` calls unregister-all at `0x701B6C`, then
+releases script slot/vector storage at `0x701B77/8D`. Register-all means a literal
+search for the event cannot enumerate all listeners. This UI-event node protocol
+is distinct from the earlier object-field notification listener protocol.
+
+Pet native pairs at `0x8475A0/A8/B0/B8` bind PetHasActionBar/GetPetActionInfo/
+GetPetActionCooldown/GetPetActionsUsable to
+`0x4BDC20/0x4BDC50/0x4BDFA0/0x4BE0B0`. Registration `0x4BEB90` iterates 28
+entries through `0x704120` (caller `0x490314`); removal `0x4BEBC0` uses
+`0x704160` (caller `0x490DA8`). PetHasActionBar reads `0xB714A0/A4` and pushes
+a result; usable/cooldown paths call `0x4BCF70/0x6E2EA0`. Native/UI closure and
+actual loaded script overrides remain open.
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Selected unit/player vtables | Construction stores `0x80AF78` at `0x5DD473` and `0x80C4F8` at `0x5FB12B`. Both tables' +0x14/+0x18/+0x24 slots bind `0x5F1F10/0x5F1F30/0x5F1F60`. The last reads object+0x9E0/+0x9E4 without calls. The first two use object+0x118 and forward to `0x7C4930/0x7C4AE0`. These are conditional mappings for inspected constructed objects, not an exhaustive type/vtable inventory. Farsight lookup uses mask 1 at `0x5EE2EA`; it is not restricted to these two tables. |
+| Position/orientation helper limits | `0x7C4930` copies three values directly when movement+0x38/+0x3C are zero; otherwise `0x7C49D7 → 0x630AC0` looks up mask-0x20 object and invokes its +0x14/+0x18 slots at `0x630B38/4D`. `0x7C4AE0` similarly reaches `0x630B70`, whose `0x630B90` invokes +0x18 after lookup. Known GameObject construction stores table `0x80C330` at `0x5F7031`; its +0x14/+0x18 map to `0x5F9F50/0x5F9FB0`. These copy descriptor values when object+0x210 is null, otherwise call/tailcall further +0x44/+0x48 at `0x5F9F6F/0x5F9FBE`. These targets remain open; getter naming is not a transitive side-effect or lifetime proof. |
+
+#### SOURCE VERIFIED — loading continuation effects
+
+| Callback | Verified effects and remaining boundary |
+|---|---|
+| `0x4497F0` | Calls `0x449840` at `0x4497F3`; that initializes BLP2 constant at `0x449877`, reaches decode helpers `0x5A83B0/0x5A8430` at `0x44989E/0x449994`, and writes owner texture fields. After that continuation, the callback closes input, recycles request at `0x449818` and clears owner+0x138 at `0x449825`. Decoder/helper effects are not fully closed. |
+| `0x44A500` | Calls `0x44A560`; graphics allocation path is `0x44A715 → 0x448450 → 0x58AC40` (call `0x448654`) `→ 0x58AB10` (call `0x58AC62`) `→ [0xC0ED38]` virtual+0xB4 at `0x58AC22`. Earlier factory tables `0x809AF8/0x809EF8` narrow this slot to `0x594A80/0x5A0810`; the latter forwards to the former at `0x5A083B`. Allocation/helper closure remains open. Error branches invoke owner+0x124 virtual+0xC at `0x44A5DF/0x44A691/0x44A73E`; strings `0x835674–0x835704` identify texture failures, not a guarantee those callbacks are harmless. |
+| `0x6C21F0` | Calls `0x6C2010` at `0x6C21F3`; this derives resource pointers from owner+0x678, loads dependencies through `0x6C208F → 0x6C20E0 → 0x6C4C20`, publishes owner at `0xC96318+index*4` (`0x6C20BF`) and clears `0xC89F54+index*8` (`0x6C20CD`). These concrete resource/global writes are not established object-manager or map/zone/area writes. |
+| `0x6C3840` | Recycles request, clears owner+0x1D0 at `0x6C3852`, closes input, then tailcalls `0x6C3990`. That invokes parser `0x6C3A60`, clears material fields through `0x6C3D70`, allocates through `0x6A03A0`, and sets owner+0x1D4 only at `0x6C39F7`. Submitter diagnostic `0x86C388` names `WorldClient\MapObjRead.cpp`; parser contains MOHD/MOTX/MOMT constants. Request-null precedes downstream work. |
+| `0x6C3F50` | Clears owner+0x160 at `0x6C3F62` before tailcalling `0x6C3F80`. Continuation adjusts resource links/fields, parses through `0x6C405F → 0x6C40C0`, loads material textures through `0x6C408F → 0x6C3DB0 → 0x6C4C20`, then sets owner+0x164 at `0x6C40A4`. Parser path `0x6C419A → 0x6C4530` retains unresolved helpers including `0x692F20/0x6BBD70/0x6BA9B0`. |
+| `0x71D640` | After the earlier caller clears owner+0xC, this continuation calls `0x71CDF0/0x71D6C0`. The latter requests textures at `0x71DA72 → 0x449D90`. On success, `0x71D675` sets owner+8 mask 1, then unlinks dependents and calls `0x70EBD0` at `0x71D6A0`. Thus even that bit precedes dependent work. Model-resource helper diagnostic `0x873240` names `Model2\M2Model.cpp`; downstream virtuals `0x70FA6B/95/A5/D5/E5` remain unresolved. |
+| Additional submitted work | `0x6C4C20 → 0x449D90` at `0x6C4C77`; `0x449D90` can select `0x44A310` at `0x449E2B`, whose earlier verified submission installs `0x44A500`. Completion can initiate further resource work. Neither a null request nor a local ready bit establishes completion of all descendants or world lifetime. No runtime overlap or destructive reentry is inferred from ordering alone. |
+
+#### SOURCE VERIFIED — secondary window callback bindings
+
+| Path | Evidence and qualification limit |
+|---|---|
+| HWND property association | `0x436210` gets objects through `0x42E510`, which resolves `GetPropA(HWND, "OsGuiPointer")`: name pointer `0x801638 → 0x834540`, resolver `0x748815–0x74883F`, function slot `0x8824D4`, import string `0x800F70`. Setter `0x42F3B0` uses SetPropA (`0x8824E4`, name `0x800FE0`). Control creation associates HWND/object at `0x430B82–87`; constructor `0x430900` stores table `0x801818` at `0x430914` and parent at +8. Derived construction stores `0x801D40` at `0x4346EF` and associates another HWND at `0x43470C`. |
+| Conditional targets and user callbacks | Inspected tables resolve +4 to return `0x436610`, +0x34/+0x38 to `0x431270/0x4312A0`, +0x30 to `0x431200` or derived `0x434BE0`. The base notification methods map values through `0x431230` and can call `0x430CE0`. Its +8 at `0x430CF9` binds to `0x430CA0`, invoking control+0x18 at `0x430CC8` when present. Otherwise parent forwarding `0x430D1A → 0x430760` can invoke parent+0xC at `0x430788`. Setters `0x430C80/0x430360` accept caller-supplied callback/context pairs. Actual targets and effects remain UNKNOWN. |
+| Activation boundary | Whole-file little-endian literal searches found no absolute address `0x42E340`, `0x42E370` or `0x41FE50`, supplementing earlier linear direct-reference absence. `0x436210` occurs as the known immediate at `0x42E347`. This does not exclude computed addresses, aliases, interior entries or external invocation. The route's gameplay activation and nested-pump reachability remain UNKNOWN; conditional vtable resolution is not runtime installation evidence. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Preserve prior raw-observer RUNTIME PASS within saved capture
+limits. Location candidates remain UNQUALIFIED, profile location BLOCKED,
+unload acceptance open, vendor/water runtime pending, reconnect unimplemented,
+and R0.1 open. No source, observer contract, controller or navigation changes.
+
+**INFERRED:** resource requests and local ready bits cannot alone prove all
+continuation effects have completed. Concrete asset declarations and vtable
+mappings narrow possible paths, but do not prove the live listener set, all
+writers, retained references or absence of destructive callback reentry.
+
+**UNKNOWN / SOURCE GAP:** live asset/archive selection and addon listeners,
+script/native callback closure, resource-owner retention, decoder/backend/error
+callbacks, remaining object virtual targets, secondary GUI activation/callbacks,
+helper TLS effects, complete writer/counter and invalidation coverage, coherent
+sampling, same-address/character/map ABA and player-bound zone/area freshness.
+No runtime failure or safe sampling phase is established.
+
+Reproduce binary inspection with `objdump -d -Mintel --start-address=START
+--stop-address=STOP` against `/home/ludvig/Games/WoW Vanilla/WoW.exe` (stop
+exclusive). Use `objdump -s` for table/string rows.
+
+| Inspection | START / STOP |
+|---|---|
+| Event/native bindings | `0x702140 / 0x702590`; `0x701B40 / 0x701BA1`; `0x774A40 / 0x774DB5`; `0x4BEB90 / 0x4BEBDB`; `0x704120 / 0x704195` |
+| Unit/player bindings and getter helpers | `0x5DD2E0 / 0x5DD4FF`; `0x5FAD50 / 0x5FB1C5`; `0x5F1F10 / 0x5F1F6D`; `0x7C4930 / 0x7C49F6`; `0x7C4AE0 / 0x7C4B2E`; `0x630AC0 / 0x630B97`; `0x5F6F30 / 0x5F7054`; `0x5F9F50 / 0x5F9FCB`; `0x468460 / 0x468486` |
+| Texture continuations/backend | `0x4497F0 / 0x4499C2`; `0x44A500 / 0x44A787`; `0x448450 / 0x44866E`; `0x58AB10 / 0x58AC68`; `0x449D90 / 0x449EA9`; `0x5A0810 / 0x5A0844` |
+| Map/model resource continuations | `0x6C2010 / 0x6C2225`; `0x6C3840 / 0x6C3DA3`; `0x6C3DB0 / 0x6C3E19`; `0x6C3F50 / 0x6C41C6`; `0x6C4530 / 0x6C472D`; `0x6C4C20 / 0x6C4C9A`; `0x71D640 / 0x71DAAC` |
+| Window property/control association | `0x42E510 / 0x42E51E`; `0x42F3B0 / 0x42F3BF`; `0x748815 / 0x74886B`; `0x430900 / 0x430939`; `0x4309B0 / 0x430B93`; `0x4346C0 / 0x434739` |
+| Notification forwarding | `0x431200 / 0x4312CD`; `0x434BE0 / 0x434D00`; `0x430C80 / 0x430D2F`; `0x430760 / 0x430795`; `0x430360 / 0x430373` |
+| Event/pet name-function tables | `0x878F48 / 0x878F68`; `0x87939C / 0x8793E4`; `0x8475A0 / 0x8475C0`; `0x847800 / 0x847850` |
+| Tables / diagnostics / properties | `0x80AF78 / 0x80AFA0`; `0x80C4F8 / 0x80C520`; `0x80C330 / 0x80C358`; `0x809BAC / 0x809BB0`; `0x809FAC / 0x809FB0`; `0x801818 / 0x801870`; `0x801D40 / 0x801D98`; `0x801638 / 0x80163C`; `0x834540 / 0x83454D`; `0x835674 / 0x835704`; `0x86C388 / 0x86C3BC`; `0x873240 / 0x873274` |
+
+Literal-search absence is reproducible with `data.find(struct.pack('<I', va))`
+on the complete executable; `-1` applies only to that representation. Additional
+manual paths do not expand the automated 43-anchor/12-string manifest. Its four
+qualification flags and runtimeObserved remain false.
+
+Next task: trace the declared stock pet-action update's UI methods and possible
+synchronous OnShow/OnHide scripts, and establish FrameXML selection plus the
+limits of addon/event-target enumeration. Prioritize callback routes to bulk
+object cleanup or nested field notification while outer references remain live.
+Resolve resource-owner retention/descendant completion and the remaining
+object/GUI callback targets as needed for that proof; avoid treating additional
+resource names or local ready bits as lifetime evidence. Retain SOURCE GAP until
+writer, invalidation, coherence and ABA obligations are closed. Manual unload
+acceptance remains separate and needs module-absence/responsiveness evidence.
+
+Validation: exact-client offline audit PASS; extracted asset lengths/hashes
+independently matched. `python3 tools/validate.py --jobs 4` PASS, all 247 records
+(111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua
+fixtures, SQL/TSV fixture, full build and diff check). Report:
+`/tmp/wow-validation-j9fy1hek/results.json`. Separate `cmake --build build` PASS
+for DLL, testhost, loader and GUI. Three read-only reviews found no actionable
+corrections. Full diff/status review and `git diff --check` PASS; exactly the two
+intended documents changed, with no unrelated changes. Runtime NOT RUN; no
+qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
