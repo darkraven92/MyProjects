@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `e0808215461462588a407f1e6573a1e6f6abdefa`
-— `docs: trace p07 surviving callbacks and deferred UI delivery`.
+Starting checkpoint: `0ad53433a7e3fb49456c268fcf86372b34cca108`
+— `docs: trace p07 render cleanup and callback ownership limits`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,54 +12,55 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: render cleanup ordering and
-callback ownership limits. Three parallel read-only agents traced reset callers,
-representation/parent membership and UI scheduling. Coordinator checked key
-chains, current raw-reader/adapter boundaries and a conditional scene worker
-handshake. No production code, tests, observer contract, hooks, controller
-ownership or navigation changed. Work stays in this P0.7 worktree and branch.
+P0.7.4 acquisition closure research, 2026-10-10. Single coordinator; no subagents.
+One coherent pass covered render reset/removal, callback-list mutation, deferred
+UI teardown, scene/widget/model lifetime, queued context invalidation, concrete
+world cleanup/notification routes, writer scope, publication, freshness and ABA.
 
-Ordinary rebuilds reset records before registration/delivery; destruction also
-reaches reset. Lua representation counts, parent membership and worker waits do
-not establish complete native retention or exclusion during callbacks.
-**SOURCE GAP remains; profile location population stays BLOCKED.**
-No sampler design, live overlap or runtime defect is established.
+**Decision B: SOURCE GAP remains; ProfileWorldEvidence location stays BLOCKED.**
+The remaining source requirements consolidate into three explicit blockers:
+protected acquisition, lifecycle/identity binding, and player-bound cache freshness.
+No serialized read boundary is qualified. No sampler, production source, tests,
+observer contract, controller ownership or navigation changed. This closes this
+research block, not P0.7.4 location qualification. Stop peripheral UI tracing until
+new evidence directly addresses the blockers; advance the independent offline
+catalogue/provenance roadmap task below.
 
-Detailed anchors, reproduction ranges and limits are in
+Detailed anchors, reproduction ranges, candidate-boundary decisions and the final
+acquisition matrix are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — render cleanup ordering and callback ownership limits.” Earlier sections
-retain the acquisition matrix, provenance and saved runtime evidence.
+“P0.7.4 — acquisition closure review and bounded research decision.” Earlier
+sections preserve provenance and historical runtime evidence.
 
 ## Evidence
 
 ### SOURCE VERIFIED
 
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
-  12 strings. All four qualification flags remain false. Additional manual paths
-  are outside that manifest; coverage is not exhaustive.
-- Both frame-local and UI-context rebuilds reset dirty layers before registering
-  and delivering records. Frame and UI-context destruction reach the same reset,
-  which frees callback nodes. The direct delivery loop reads its node after
-  callback return without a local retain/active-removal protocol; caller protection
-  remains unproved. Ordinary ordering does not establish callback/reset overlap.
-- UI scheduling registers a concrete update callback; it processes deferred
-  deletion before update/render work. Context teardown separately deletes frames
-  and layers before releasing its scheduler handle. Queue insertion exists, but
-  bounded direct-reference/literal searches found no uses. Full enqueue reachability,
-  registration removal semantics and reentry exclusion remain open.
-- Additional model-destructor wrappers add no callback detachment. Script
-  dispatch only creates a Lua representation when widget+4 is zero, without a
-  paired per-call native retention bracket. Representation cleanup, parent-link
-  membership and native deletion operate separately; complete ownership is unproved.
-- A scene-helper prefix conditionally distributes alternating model-list work
-  through a worker callback and event handshake. Thread creation and signal/wait
-  paths are connected; actual activation is unknown and the caller does not check
-  the completion wait result. This does not establish script/world-writer execution
-  on that worker or a scene/widget lifetime guarantee.
-- Writer/invalidation/lifetime/coherence/ABA/player-bound freshness obligations
-  remain separate and open. Raw reads remain sequential; map/positionMap/zone/world
-  generation unqualified, area unsupported. Archive/script mutability,
-  resource-descendant and TLS limits remain unchanged.
+  12 strings; all four qualification flags and runtimeObserved remain false.
+  Additional manual paths are outside that manifest; coverage is not exhaustive.
+- Render registration final release unlinks/frees the record without a local
+  active-callback check. Its dispatch loop saves the next pointer without a local
+  retention bracket. Layer records have their separate previously traced reset.
+- Generic event traversal instead uses a linked stack cursor skipped by the
+  removal helper. This narrows local registration-removal behavior; it does not
+  retain render/model records, callback contexts or world objects.
+- Ordinary event-5/render phase ordering and direct render bypass are connected.
+  Deferred ReloadUI consumption reaches the concrete UI-context deleting virtual,
+  frame/layer reset and late registration release; it also removes its event-5
+  registration. UI destruction does not establish bulk world destruction.
+- Model queues copy callback/context values and retain the model. Replacing model
+  callback fields does not itself rewrite copied records. Delivery rereads a record
+  after callback return; growth can move the buffer. Installed animation callback
+  has no direct current-model/epoch comparison. Actual invalid delivery is unproved.
+- Ordinary listener pending removal differs from bulk cleanup. Known bulk cleanup,
+  packet nesting and teardown callers are concrete; no new installed-script route
+  to nested field notification/bulk cleanup or complete exclusion is established.
+- Manager publication precedes setup; root invalidation follows bulk object cleanup.
+  Preferred player/cache update skips and separate publication remain incompatible with
+  assuming current-player freshness from matching values. Window/TLS/event/packet
+  scopes do not establish all-writer ownership. Map/positionMap/zone/worldGeneration
+  remain empty in the adapter; area unsupported, XYZ has no map association.
 
 ### RUNTIME OBSERVED
 
@@ -78,82 +79,87 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Ordinary ordering, Lua representation, parent membership and worker completion
-concern different scopes. They do not alone establish complete native context,
-scene or raw-world lifetime. Concrete cleanup paths require scheduling proof;
-they do not prove destructive reentry or a qualified sampling phase.
+A→B→A roots, same-address reuse, a writer paused between stores, and delivery of a
+copied old callback context are proof obligations, not observed races or bugs.
+Separate local counts, cursors and completion mechanisms cannot be combined into
+an unproved end-to-end lifetime/coherence contract. More stock UI leaf closure
+cannot by itself discharge independent acquisition and cache-publication gaps.
 
 ### UNKNOWN / SOURCE GAP
 
-- Actual surviving old models, installed callbacks/classes and list membership;
-  complete caller-side clearing, queued cancellation and native retention.
-- Mutation-safe traversal, registration removal/reentry rules, concrete queue
-  insertion/destruction callers and scene/widget/context lifetime across delivery.
-- Actual worker activation, full model-helper effects and completion/exclusion
-  guarantees; outer object/descriptor/listener lifetime and resource/TLS effects.
-- Actual archive opens/selectors/views/mutations, installed scripts/overrides,
-  earlier file paths, signature acceptance and open-callback effects.
-- Actual writer threads, complete writer/counter and initialization/invalidation
-  coverage, coherent sampling, same-map/character/address ABA, player-bound
-  zone/area freshness.
-- Completed unload, post-stop responsiveness, visible-screen/loading annotations
-  and heartbeat continuity during unchanged dwell remain unestablished. Missing
-  completion telemetry does not establish unload failure.
-- Live Glue/UI eligibility remains unqualified; reconnect is unimplemented.
-  No merge-target comparison or whole-branch integration verification occurred.
+1. B1 — protected acquisition: complete relevant writer/thread ownership and
+   exclusion of destructive/reentrant callbacks, or an equivalent retained snapshot.
+   Includes outer object/descriptor/listener and dependent UI/model/buffer lifetime.
+2. B2 — lifecycle/identity: readiness and pre-destruction invalidation bound to the
+   exact player/manager/map/position sample, covering same-map/character/address ABA.
+   A proven serialized interval could replace a generation protocol; none is qualified.
+3. B3 — cache freshness: completed zone/area publication bound to the active player
+   and sample. Keeping these Unknown does not resolve B1/B2 for a map-only sampler.
+
+These are limits of currently qualified evidence, not a claim no boundary exists.
+Actual installed scripts/overrides, callback overlap, surviving old contexts,
+worker effects, archive selection/overrides and resource/TLS closure remain
+unproved within B1/B2. Reopen research only for evidence targeting these blockers directly; matching values cannot do so.
+Manual module absence, post-stop responsiveness, visible-screen/loading annotations
+and unchanged-dwell heartbeat continuity remain unestablished; missing completion
+telemetry does not prove unload failure. Live Glue/UI eligibility remains
+unqualified. No merge-target comparison or whole-branch verification occurred.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — reset/destruction ordering,
-  UI scheduling, representation/parent boundaries and conditional scene worker.
-- `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — coherent acquisition closure review,
+  source anchors, final obligation matrix, three blockers and next roadmap step.
+- `docs/AI_HANDOFF.md` — final task/evidence/validation/Git handoff.
 
 ## Validation
 
-- SOURCE: exact-client offline audit PASS; key manual chains independently checked.
+- SOURCE: exact-client offline audit PASS; manual instruction/table paths checked.
   No automated-manifest expansion or qualification upgrade.
-- TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
-  111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
-  10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-ahchu5j2/results.json`.
+- TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records, including
+  111 C++ executables, audit/QuestDB Python tests, Lua/SQL/TSV fixtures and build.
+  Report: `/tmp/wow-validation-2w33p715/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
-- REVIEW: three read-only reviews reconciled; cleanup-before-free wording clarified
-  and reproduction ranges completed. Full diff/status review and `git diff --check`
-  PASS; exactly the two intended documents changed, with no unrelated changes.
-  Prior runtime-observation block is unchanged; persistent statuses preserved.
+- REVIEW: single-coordinator full diff/source-anchor review and `git diff --check`
+  PASS; exactly the two intended documents changed, no staged/untracked unrelated
+  files. No source, build artifact or capture changes included. Prior runtime
+  block is byte-for-byte unchanged; persistent statuses preserved.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
 
 ## Runtime qualification and blockers
 
 Raw observer: **RUNTIME PASS** within prior limits. Location candidates:
-**UNQUALIFIED**. ProfileWorldEvidence location: **BLOCKED** by source gaps.
+**UNQUALIFIED**. ProfileWorldEvidence location: **BLOCKED** by B1–B3.
 Manual unload acceptance remains open. Vendor/water qualifications remain
 pending, reconnect remains unimplemented, and R0.1 is not closed.
-The bounded research is complete; no sampler design is qualified.
+This bounded research block is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Trace UI scheduler registration removal and dispatch reentry rules, and concrete
-callers of context destruction/queue insertion. Determine whether those rules
-protect post-callback widget/scene/record reads. Follow the scene worker handshake
-only where completion/model effects bear on lifetime or writer exclusion.
-Do not import parent/Lua/model counts as a complete ownership contract.
-Use the audit's acquisition matrix: require writer, invalidation, lifetime,
-coherence and ABA evidence before sampler design. Retain SOURCE GAP while
-incomplete; client mutation helpers are not observe-only acquisition.
+Implement an isolated offline leveling-profile catalogue/quest-reference provenance
+validator. `LevelingProfileValidation` currently checks structure, IDs and links,
+not reference resolution/provenance against the quest catalogue. Inspect
+`VanillaQuestDatabase`, `tools/quest_catalogue_audit.cpp` and
+`tools/questdb/areas/orc_starting_route.json`; define a bounded authored input and
+version/source identity contract, reject missing/ambiguous references/provenance,
+and add deterministic malformed/reference/version-change fixtures. Document reload
+invalidation before runtime consumption. Keep quest existence separate from runtime
+executability/completion and authored map metadata separate from live location.
+No owner integration, location sampler, automatic travel or quest execution.
+Preserve Unknown fields and all controller/Detour/NavMesh ownership boundaries.
 
-Separately obtain manual module-absence/post-stop responsiveness evidence for
-unload acceptance. Future qualified location consumption also needs independent
-loading, teardown, same-map reload, map-transfer and zone/area-only runtime cases.
-Matching values or ordinary logout/login cannot qualify location by themselves.
-Preserve Detour/NavMesh and controller ownership.
+This is an independent remaining P0.7 roadmap step, not completion of location
+qualification. Do not resume open-ended peripheral UI research. Reopen B1–B3 only
+with targeted new acquisition/lifecycle/publication evidence. Separately obtain
+manual module-absence/post-stop responsiveness evidence for unload acceptance.
+Future location qualification still requires independent loading, teardown,
+same-map reload, transfer and zone/area-only cases after source qualification.
 
 ## Integration and Git checkpoint status
 
-Manual runtime evidence required: No new run for this source-only task; yes for
-unload acceptance, future qualified location and pending vendor/water evidence.
-Safe to commit: Yes, validation/build, reviews and worktree diff checks passed
-for exactly the two documentation files. Staged checks are required before commit.
+Manual runtime evidence required: No new run for this documentation research;
+yes for unload acceptance, future location and pending vendor/water evidence.
+Safe to commit: Yes, required validation/build and reviewed worktree checks passed
+for exactly the two documents. Staged checks are required before commit.
 Safe to merge: Documentation checkpoint only; no automatic merge authorized.
 Whole-branch integration remains UNKNOWN and profile location remains blocked.
 

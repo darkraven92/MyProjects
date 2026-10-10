@@ -5,6 +5,9 @@ tests and the P0.7.4 unqualified raw location lifecycle observer. It does not
 integrate profile selection into the running bot or qualify current location
 or any new gameplay behavior in WoW. The P0.7.4 runtime reconciliation below
 records the raw observer PASS only. Earlier checkpoint sections are historical.
+Latest acquisition closure review reaches Decision B: three explicit source
+blockers remain; location stays BLOCKED. The next productive task is offline
+profile catalogue/reference provenance validation, not further peripheral UI tracing.
 
 Baseline: 75cadc00b8343837b8fbb40c29a648d5dbc56298, branch
 codex/p07-world-zone-preparation. The World Evidence, Existing Profile / Quest
@@ -2262,6 +2265,187 @@ cleanup-before-free wording clarified and reproduction ranges completed.
 Full diff/status review and `git diff --check` PASS; exactly the two intended
 documents changed, with no unrelated changes. Prior runtime-observation block
 and persistent statuses preserved. Runtime NOT RUN; no qualification upgrade.
+
+### P0.7.4 — acquisition closure review and bounded research decision
+
+2026-10-10, starting checkpoint `0ad53433a7e3fb49456c268fcf86372b34cca108`.
+Single coordinator; no subagents. This larger pass follows the acquisition matrix
+through render registration/removal, generic event traversal, deferred UI teardown,
+model replacement/queued delivery and world lifecycle/cache publication together.
+It supersedes the earlier recommendations to follow another peripheral UI path.
+
+**Decision B: SOURCE GAP; ProfileWorldEvidence location remains BLOCKED.**
+Three independent blockers below summarize the remaining acquisition requirements.
+No qualified serialized sampling boundary is established. No sampler, runtime hook,
+policy change or location promotion is implemented. This is a limit of the currently
+qualified evidence, not a proof that a suitable client boundary cannot exist.
+
+#### SOURCE VERIFIED — callback removal, retention and teardown
+
+The previously traced layer-record reset and the render scheduler registration
+are different objects. Ordinary frame/context rebuild resets dirty layer records
+before delivery; frame/context destruction also reaches reset. The direct layer
+loop still reads its node after a callback. The following findings narrow the
+outer registration and event-dispatch obligations without importing guarantees
+between these different lists.
+
+| Path | Newly connected or rechecked evidence | Boundary |
+|---|---|---|
+| Render registration release | Creation `0x442800` allocates 0x40 bytes, initializes count+4 at `0x442828`, sets table `0x802574`, acquires through `0x41AF10` at `0x442930`, and publishes the handle at `0x44293A`. UI-context destruction releases context+0x74 through `0x41AED0` at `0x7644CF`. Release decrements count at `0x41AED5`; zero invokes deleting slot 0 at `0x41AEE0`, bound to `0x442950`. That body unlinks +0x38/+0x3C at `0x44297D/0x442984`, clears links and conditionally frees at `0x4429AA`. | Removal is concrete, not an unknown handle operation. This destructor has no active-callback check. Other owners/count acquisitions are not exhaustively covered. |
+| Render traversal | `0x442350` saves the next record at `0x4424AD`, invokes record+0x34 at `0x44264B`, then adopts the saved pointer at `0x44264E`. No local count acquire/release brackets that invocation in the inspected loop. | Saving the next pointer alone does not retain that next record or the callback context. Actual destructive overlap is not demonstrated. |
+| Generic event traversal | `0x4245B0` links a stack-local cursor marked +0x14=1 (`0x424605`). It unlinks/repositions that cursor around the selected list node at `0x424673–0x42469D` before invoking node+8 at `0x4246AD`, then resumes from the cursor. Removal `0x425000` skips marked nodes at `0x425069/0x42506E`; it finds the next node before unlink `0x425088 → 0x425250` and free `0x425097`. | This is a concrete local mechanism for callback-registration removal during traversal; it avoids merely rereading the selected callback node after return. It does not retain the event context, raw world objects, render records or widget/model queues, nor prove concurrent teardown safety. |
+| Ordinary render phase | `0x4427B0` registers `0x442330` for event 5 and `0x442350` for event 0x11. Ordinary loop `0x420C00` reaches `0x421030` after event 5. That helper releases the context lock at `0x42104C`, tests/clears context+0x44 mask 4, then dispatches event 0x11 at `0x42106A`. `0x442310` removes these registrations through `0x41FD80`; it is not registration. | A normal phase order is established, not a world read lock. Direct `0x442190 → 0x4427D0 → 0x442350` bypasses generic event traversal. Calls at `0x48EEDD/0x48F129` are followed by completion drains at `0x48EEE2/0x48F12E`. No synchronous field-callback route into these callers is claimed. |
+| ReloadUI reaches context destruction | Previously verified request `0x491380` sets byte `0xB4B3F4`; event-5 consumer tests it at `0x49565B` and calls `0x490BD0` at `0x495664`. Successful creation `0x48FE4B → 0x764180` stores the context in `0xB4E240` at `0x48FE54`; constructor installs table `0x81C380` at `0x76424C`. Cleanup reads that global at `0x490C8D` and calls deleting slot +4 at `0x490C9B`, bound to `0x764360 → 0x764390`, before clearing the global at `0x490C9E`. | This connects deferred ReloadUI consumption to the prior frame/layer reset and late registration release. `0x490BD0` also drains completions at `0x490BE9` and dispatches script event 0x10F at `0x490C2A`. It unregisters its event-5 callback at `0x490CC9`. UI cleanup is not itself proof of bulk world cleanup or overlap with active render delivery. |
+| Replacement and queued context | Replacement `0x76CD30` retains incoming model, releases old at `0x76CD4F`, stores new at `0x76CD56`, then installs callbacks. Queue helper `0x70A280` copies callback to record+4 (`0x70A3CB`), model to +8 (`0x70A3DF`), event to +0x14 and user context to +0x28 (`0x70A3BF/0x70A3D3`); only the model is explicitly acquired at `0x70A3E7`. | Updating model callback fields does not itself rewrite already copied queue records in those setter bodies. Complete queued cancellation/context invalidation is still unproved; other caller-side protocols are not excluded. |
+| Deferred delivery and scene storage | Queue count is capped at 0x10000 (`0x70A287`); growth can reallocate at `0x70A319`, or allocate/copy/free the old buffer at `0x70A369/0x70A37E`. Drain `0x7074B0` snapshots count at `0x7074E4`, obtains a record from scene+0x84, calls record+4 at `0x707590/0x7075AF`, rereads record+8 at `0x7075B2`, releases its model at `0x7075BB`, then clears count at `0x7075CB`. Scene destruction `0x7071A0` releases models and frees the record buffer at `0x707257`. | A bounded queue/model reference is not a scene, buffer or widget retention bracket. Reentrant growth or destruction must be excluded or separately protected; neither overlap is demonstrated here. |
+| Delivered widget identity | Installed animation callback `0x76CDC0` accepts event 0, loads widget context from its argument at `0x76CDCA`, reads widget+0x3D4 and invokes `0x702690`. Its direct body does not compare delivered model against widget+0x318 or an installation epoch. | A surviving old model/queued context needs a separate cancellation or lifetime contract. This is not a demonstrated stale-context execution. The previously traced synchronous retain/callback/release in `0x7122A0` protects its model only; event 1 returns without this widget script. Load/replay and post-callback linked-model reads retain their earlier limits. |
+
+Lua representation creation is conditional, not an unconditional native-retain
+bracket. Parent membership, model counts, scene counts and conditional worker
+completion each cover different objects/intervals. None can substitute for the
+missing combined lifetime contract. Statusbar callback-before-world-read and the
+remaining tooltip/layout paths keep their earlier ordering and binding limits:
+stock Lua/XML closure does not establish actual installed/overridden effects.
+The new ReloadUI path is useful concrete teardown evidence; pursuing more stock
+UI leaves cannot by itself establish the independent acquisition obligations.
+
+#### World notification, writer ownership and publication
+
+**SOURCE VERIFIED:** notification `0x465330` moves original listener nodes into
+its stack-local list through `0x465970`; it does not clone listeners. Delivery
+`0x465570` marks active at `0x46559E`, invokes at `0x4655DC`, then reads node links
+and pending state. Ordinary removal `0x467FB0` honors active/pending state; bulk
+cleanup `0x464C40 → 0x464EC0` has the previously traced separate freeing path.
+Direct calls connect bulk cleanup to ordinary GUID removal (`0x464974`) and both
+manager-teardown passes (`0x4678B9/0x4679A4`); manager destruction `0x467700` is
+called from transfer `0x401BF7` and teardown `0x402011`. These are concrete routes,
+not proof they run inside an active field callback. Nested packet handler dispatch
+`0x603DA6 → 0x537AA0` likewise proves neither an embedded transfer packet nor nested
+field notification. No newly qualified installed script → bulk world cleanup or
+nested notification route, and no complete exclusion of either, emerged.
+
+The known packet queue holds connection/queue locks through its handlers; timed
+callbacks, generic event callbacks and completion delivery have other lock scopes.
+Scheduler startup's single-slot path does not imply a single client thread: the
+previously connected completion worker can install the same TLS block. Its actual
+world-writing effects remain UNKNOWN. Window-owner dispatch and its own pending
+request mutex are not a client writer/lifetime lock. The new cursor protocol does
+not alter these facts. Alias/bulk writers and all writer thread/context ownership
+are not exhaustively covered by direct-reference or displacement searches.
+
+Initialization and invalidation remain ordered against naive pointer sampling:
+manager constructor zeros active GUID and map before publishing root at `0x46510E`
+and connection+0x1AD8 at `0x465114`; backpointer/registration/map setup follow at
+`0x465120/0x465125/0x46512C`. Destruction calls bulk cleanup at `0x467711` before
+root clear `0x46771E` and connection clear `0x467734`. Single saved-root slot
+`0x464FC2/0x464FDA` is a pointer switch/restore protocol, not a generation counter.
+World-initialized byte `0x882734` clears later at `0x40204D`; transfer does not
+provide a universal ready/invalidation edge through it. Zero is a valid map ID,
+so rejecting zero would neither fix the ordering nor preserve map semantics.
+Terrain-map and pending-map candidates do not supply current-player authority.
+
+Zone update `0x5DB900` can resolve preferred GUID `0xC4DA98/0xC4DA9C` with type mask
+8 at `0x5DB937`, falling back to active GUID/type mask 0x10 at `0x5DB956`. It then
+reads selected object+0xE0 at `0x5DB960`, map at `0x5DB966` and enters `0x67E510`.
+The preferred pair's PLAYER_FARSIGHT origin, separate writes and equal-pair early
+return remain verified. Throttling/spatial deduplication can skip publication;
+markers `0x868604/0x8685FC/0x868600` precede the UI publisher. Zone/area globals
+are separately written at `0x49479A/0x4947A0`, without a completed-publication
+player/epoch token. Current preferred-GUID equality cannot identify the player
+that produced an earlier cached value. Map qualification would not qualify zone
+or area freshness; area remains unsupported by the profile evidence contract.
+
+#### Acquisition-obligation matrix — final reconciliation
+
+| Existing obligation | What this pass closes or narrows | Remaining acceptance requirement |
+|---|---|---|
+| Writer/execution coverage | Normal event-5/render order, event removal cursor, direct render bypass and deferred ReloadUI consumer are connected. Known packet locks and shared-TLS worker scopes remain bounded. | **B1:** an acquisition interval excluding all relevant concurrent writers and destructive/reentrant callbacks, or an equivalent proven snapshot/retention protocol. Actual thread identity and complete writer/callback coverage cannot be replaced by context equality. |
+| Initialization/invalidation | Constructor publication and late destruction clears are rechecked; UI and world teardown are distinguished. | **B2:** ready-before-read and invalid-before-destroy ordering tied to the exact active player/manager/map/position sample. No inspected availability flag supplies this. |
+| Lifetime | Registration final release/unlink, generic cursor protection, UI deletion binding and queued model/context copies are concrete. | **B1/B2:** outer manager/object/descriptor/listener retention and any callback scene/widget/buffer lifetime that the proposed interval depends on. Model-only references and successful reads do not establish it. |
+| Coherence | Queued-record publication and separate world/cache stores explain why local completion/order matters. Current raw reader/WorldStateReader remain sequential. | **B1/B2/B3:** one accepted identity/location sample, with failure discarding prior success. Equal brackets do not exclude a writer paused between stores; memory readability is not a transaction. |
+| Generation / ABA | Root save/restore and replacement/queued callback identity remain distinct protocols. | **B2:** exclude same-map reload, same-character lifecycle and address reuse within acquisition. A proven serialized interval could discharge this without inventing a mandatory generation field; no such interval is qualified. Observation/session counters are not world epochs. |
+| Player-bound cache freshness | Preferred-player fallback, skipped updates and marker-before-publication are rechecked. | **B3:** completed cache publication tied to the active player, map and accepted sample, independent from current value plausibility. Otherwise zone remains Unknown and area unsupported. |
+
+The blockers are therefore a small set of proof obligations, not another list of
+UI functions to disassemble:
+
+1. **B1 — protected acquisition:** qualify writer ownership plus lifetime/reentry
+   exclusion for a concrete reader entry/exit interval. Need complete relevant
+   ownership/dispatch evidence or a separately justified instrumentation contract.
+2. **B2 — lifecycle and identity:** qualify publication, invalidation and binding
+   across manager/player/map/position transitions, including same-value reuse.
+   Need a covered epoch protocol or equally strong lifecycle exclusion at B1.
+3. **B3 — cache freshness:** qualify completed, player-bound zone/area publication,
+   or keep those fields Unknown. B1/B2 still block even a map-only sampler.
+
+These are irreducible from the currently qualified evidence set. More static UI
+leaf closure cannot identify actual installed overrides or establish the absent
+end-to-end read contract. This does not assert exhaustive impossibility or require
+runtime coincidences to stand in for source proof. Reopen location implementation
+only when new evidence targets one of B1–B3 directly.
+
+| Proposed sampling boundary | Why it is not currently qualified |
+|---|---|
+| Raw observer before/after WorldStateReader | Its separate thread, sequential reads, repeated equality and fault-safe raw reads do not retain WorldStateReader's objects or establish a shared transaction. Core::Memory check-then-memcpy retains its independent lifetime limitation. |
+| Window-owner dispatch | Establishes where a request is executed, not writer ownership, world phase, lifecycle exclusion or cache freshness. |
+| End of packet notification/owner restore | Listener removal and packet-lock scopes are bounded; callbacks, final drains and saved-root restoration are separate milestones. No all-writer read boundary follows. |
+| Event 5 / render / completion callback | Ordinary phase order and the event cursor are useful local facts. Direct render entry, unlocked callback execution, deferred records and incomplete context retention prevent treating them as a universal serialization contract. |
+| Matching root/GUID/map/cache before and after | Does not exclude an intervening A→B→A, same-address reallocation, half-published state or stale cache for a previously selected player. |
+
+**INFERRED:** those counterexample schedules describe what the proof must exclude;
+none is a new observed race, crash or actual stale callback. A surviving model or
+queued record could keep an old context value after replacement, but actual
+survival/delivery/teardown ordering is UNKNOWN. Existing synthetic adapter tests
+assert Unknown across identity/gap scenarios; they do not prove intra-read ABA
+exclusion or client memory lifetime. No implementation means no new sampler tests.
+
+#### Reproduction, evidence status and next productive step
+
+Pinned client SHA256:
+`b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`.
+Use `objdump -d -Mintel --start-address=START --stop-address=STOP` with exclusive
+STOP; use `objdump -s` for tables. These additional manual paths do not expand the
+43-anchor/12-string automated manifest. Direct-call/literal search coverage does
+not exclude computed, aliased or interior entries.
+
+| Inspection | START / STOP |
+|---|---|
+| Registration lifetime / table | `0x41AED0 / 0x41AEE3`; `0x41AF10 / 0x41AF33`; `0x442800 / 0x442942`; `0x442950 / 0x4429B7`; table `0x802574 / 0x802580` |
+| Render dispatch / event phase | `0x442350 / 0x4426E9`; `0x4427B0 / 0x4427D9`; `0x442310 / 0x442330`; `0x421030 / 0x421073`; `0x442190 / 0x442195`; call-site windows `0x48EED8 / 0x48EEEE`, `0x48F11D / 0x48F133` |
+| Generic event removal / cursor | `0x4245B0 / 0x424709`; `0x425000 / 0x4250CC`; `0x425250 / 0x42528C`; `0x41FD80 / 0x41FE3B` |
+| UI creation / deferred cleanup | `0x48FE30 / 0x48FE59`; `0x764180 / 0x764270` (constructor prefix); table `0x81C380 / 0x81C388`; `0x490BD0 / 0x490CDE`; `0x764360 / 0x76438B`; `0x764390 / 0x76459E` |
+| Queued model/context / replacement | `0x70A280 / 0x70A3F8`; `0x7074B0 / 0x7075DC`; `0x76CD30 / 0x76CDC0`; `0x76CDC0 / 0x76CDE7`; `0x7071A0 / 0x70725C` |
+| World lifecycle / cache | `0x464FA0 / 0x465140`; `0x467700 / 0x467748` (cleanup/invalidation prefix); `0x5DB900 / 0x5DB97B`; prior world-notification, transfer and zone-publisher ranges remain in earlier sections |
+
+**RUNTIME OBSERVED:** no new runtime evidence, capture inspection or client
+interaction. Prior raw-observer RUNTIME PASS remains limited to its saved capture;
+location candidates UNQUALIFIED; ProfileWorldEvidence location BLOCKED. Manual
+unload acceptance and R0.1 stay open. Vendor/water remain RUNTIME PENDING;
+reconnect unimplemented. Whole-branch integration remains UNKNOWN.
+
+**Recommended next task:** an isolated offline leveling-profile catalogue and
+quest-reference provenance validator. `LevelingProfileValidation` currently checks
+structure, duplicate/nonzero quest IDs and links, not resolution/provenance against
+the quest catalogue. Inspect `VanillaQuestDatabase`, `tools/quest_catalogue_audit.cpp`
+and `tools/questdb/areas/orc_starting_route.json` to define a bounded authored input
+and version/source identity contract; validate references and fail closed on
+missing/ambiguous provenance. Add deterministic malformed/reference/version-change
+fixtures and document reload invalidation before any runtime consumption. Keep
+quest existence separate from runtime executability/completion and authored map
+metadata separate from live location. Do not integrate an owner, travel, profile
+location reader or automatic quest execution. This advances an existing remaining
+roadmap gap independently of B1–B3; it does not declare P0.7.4 location complete.
+Manual module-absence/post-stop responsiveness evidence remains a separate task.
+
+Validation: exact-client offline audit PASS with unchanged qualification flags.
+`python3 tools/validate.py --jobs 4` PASS, all 247 records, including 111 C++
+executables, audit/QuestDB Python tests, Lua/SQL/TSV fixtures and full build.
+Report: `/tmp/wow-validation-2w33p715/results.json`. Separate `cmake --build build`
+PASS for DLL, testhost, loader and GUI. Single-coordinator full diff/source-anchor
+review and `git diff --check` PASS; exactly the two intended documents changed.
+Prior handoff runtime-observation block is byte-for-byte unchanged; persistent
+statuses preserved. No source, artifact, capture or unrelated change included.
+RUNTIME NOT RUN; source/build results do not extend runtime qualification.
 
 ## Regression and validation
 
