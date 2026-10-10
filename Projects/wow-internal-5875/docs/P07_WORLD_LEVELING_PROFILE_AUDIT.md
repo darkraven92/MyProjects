@@ -2042,6 +2042,106 @@ field wording corrected. Full diff/status review and `git diff --check` PASS;
 exactly the two intended documents changed, with no unrelated changes.
 Runtime NOT RUN; no qualification upgrade.
 
+### P0.7.4 — surviving model callbacks and deferred UI delivery
+
+Continued on 2026-10-10 from `f63434828cbf6e191bb515cd8095c720fdb96741`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced surviving-model release, scene retention and deferred
+UI dirty-state consumption. Coordinator checked key binary chains and current
+raw-reader/adapter boundaries, and narrowed the model load callback body.
+Only this audit and the handoff change; no production code or runtime actions.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+A nonzero model release leaves callback fields unchanged in that operation;
+explicit clearing in other owners cannot be attributed to the widget. Deferred
+UI delivery can reach scripts before further widget/model/list-node reads.
+Neither fact establishes live overlap, stale access or a qualified sampling phase.
+
+#### SOURCE VERIFIED — surviving models and removal scope
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Nonzero release | `0x7103A0` decrements model count at `0x7103A3–A6`; nonzero branches at `0x7103A8` directly to `0x7103C0–C1` (pop/return). This branch has no calls and no writes besides the count. It therefore leaves callback/context fields unchanged when the model survives. Zero takes destruction/free. Actual survival during widget replacement and complete caller-side cleanup remain unproved. |
+| Setter versus cancellation | `0x711BB0` only stores model+0x70/+0x78/+0x7C; `0x7134B0` only stores +0x3BC/+0x3C0. Neither direct body acquires/releases callback context or cancels queued records. Load setter `0x7105A0` stores +0x24/+0x28 and calls `0x710560`. Conditional delivery `0x71057C` precedes clearing only +0x24 at `0x71057E`; +0x28 remains unchanged by that body. Readiness/descendant traversal means null registration is not an entirely inert operation. |
+| Explicit clearing in separate owners | Destructor `0x613B40` clears owner+0xD8 model's load pair via `0x613B62 → 0x7105A0(0,0)`, animation fields via `0x613B70 → 0x711BB0(0,0,0)`, then releases at `0x613B89`. Owner+0xDC repeats at `0x613BA0/0x613BAE/0x613BC7`. Replacement `0x6716F0` clears owner+0x88 model's +0x3BC/+0x3C0 via `0x671704 → 0x7134B0(0,0)` before release `0x67170F`, stores new at `0x671716`, installs callback `0x672A20` at `0x671726` and acquires via `0x671733`. Neither owner is established as widget+0x318; these mechanisms do not prove widget cleanup. |
+| Widget caller boundary | Direct caller `0x504350` invokes `0x76CD30` at `0x50435C` before subsequent +0x3F8 cleanup; its prefix contains no callback detachment. The earlier virtual caller `0x76CCE0` remains class-dependent. Together with the inspected replacement/destructor bodies, this narrows specific routes only; direct-call searches are not complete caller coverage. |
+
+#### SOURCE VERIFIED — local retention and callback continuation
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Scene acquire search | `0x707310–315` increments scene DWORD+0. No direct call/jump reference appears in the existing complete linear disassembly, and no little-endian DWORD literal 0x707310 occurs in the executable. Inline/aliased writes, computed calls and caller-owned retention are not excluded. This is a bounded search result, not proof the scene is never retained. |
+| Update/drain continuation | `0x76D85C → 0x76CFC0` obtains scene, `0x76D863 → 0x7074B0` updates/drains it. These inspected direct bodies have no scene acquire/release bracket. Drain snapshots scene+0x80 at `0x7074E4`, invokes callbacks at `0x707590/0x7075AF`, rereads record+8 at `0x7075B2`, releases model at `0x7075BB`, then writes scene+0x80=0 at `0x7075CB`. Scene and record-storage retention remain separate from the queued model count. No teardown overlap is established. |
+| Load and resource wrappers | `0x710560` invokes model+0x24, clears it after return, then reads linked model+0x1CC at `0x710585`, without a direct model/scene retain bracket. Immediate resource path `0x71D5D0` and completion path `0x71D6A0` enter initializer `0x70EBD0` without a direct scene acquire/release in those wrappers. Replay later rereads model+0x2C and restores scene time at `0x7102B4/B9`, then calls load delivery at `0x7102BC`. Caller/transitive retention and callback effects remain open. |
+| Concrete load callback effects | Installed `0x76CDF0` calls widget virtual+0x9C at `0x76CDF5`, mapped to `0x76CE00` for the known model table. Its `0x76CE12 → 0x710B90(1)` links a model into scene+0x20 when absent; `0x7105C0` returns model+0x2C, then `0x76CE39 → 0x707680` enters further scene work. That helper's prefix increments scene+0x10 at `0x707696`, distinct from reference count +0 and not a proved lifetime guard; its full effects remain open. Conditional `0x76CE4C → 0x76CEC0` selects/updates widget resource state. `0x76CE57 → 0x713640` copies six resource DWORDs, which are copied to widget+0x3B4 at `0x76CE69`; `0x76CE70 → 0x7680E0` invalidates UI layout. This is not an empty callback or a closed effect/retention proof. |
+| Render-registration count scope | `0x76D18C → 0x773110` allocates a 16-byte record, stores callback+8 at `0x77318E`, widget context+0xC at `0x773191`, and increments registration-container+4 at `0x773194`. No widget-scene acquisition appears in the direct body. This container count is not scene retention. |
+
+#### SOURCE VERIFIED — dirty-state consumption and deferred scripts
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Dirty consumers | `0x76B3F0` consumes owner+0x1F8 across five layers, invokes virtual+0x44 at `0x76B464`, then clears +0x1F8 at `0x76B4B5`. `0x765920` consumes entry+0x10C, iterates frame lists and invokes virtual+0x44 at `0x7659ED`, then clears +0x10C at `0x765A7A`. The earlier leaf dirty marks therefore do not describe all later work. |
+| Tooltip and texture dispatch | Tooltip table `0x808F60` +0x44 maps to `0x76B3A0`, which walks layer regions and invokes virtual+0x28 at `0x76B3E1`. Known texture table `0x81C718` +0x28 maps to `0x7706E0 → 0x772FD0`, populating render records with pointers into texture+0xD4/+0x104 and color array+0xB8. These pointer records create distinct storage-lifetime obligations, not world retention. |
+| Callback list delivery | Consumer paths reach `0x76FB00`; its +0x24 list calls record+8 using context+0xC at `0x76FC2E`, then reads the same node+4 at `0x76FC31`. Registered model-widget callback `0x76D240` is installed by layer-2/non-null-model path `0x76D160 → 0x773110`. This provides conditional deferred callback delivery, not proof it ran inside a farsight notification. |
+| Layer reset and delivery limit | `0x7731D0` clears render count, releases storage and unlinks/frees callback nodes through `0x7731FE/0x77322A`, then clears layer count. It does not directly invoke callback/context. Exclusion of reset during delivery remains unproved. The conditional model callback route does not establish that tooltip color changes select a model callback; actual class and list membership remain UNKNOWN. |
+| Script before post-callback reads | Known model table `0x81C608` +0x44=`0x76D160`, +0x98=`0x76D1A0`. Callback `0x76D240` invokes +0x98 at `0x76D5EA`; eligible script+0x3CC reaches `0x702690` at `0x76D1BC`. After return, widget+0x3A0/+0x39C/+0x318 are read at `0x76D1D1/D7/EA` before helper `0x710650` at `0x76D235`. Outer continuation reads widget+0x320 at `0x76D5F0`, the model pointer from widget+0x318 at `0x76D5F9`, then further scene/helper work. Mutation-safe traversal, record/widget/scene retention and full script effects remain unproved; no stale read or bulk world cleanup is demonstrated. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native
+invocation or memory write. Prior raw-observer RUNTIME PASS stays limited to its
+saved capture; candidates UNQUALIFIED, profile location BLOCKED, unload acceptance
+open, vendor/water runtime pending, reconnect unimplemented and R0.1 open.
+No navigation, controller ownership or observer-contract change.
+
+**INFERRED:** callback-field stores, nonzero release, queued model counts and
+registration counts have different scopes. None alone establishes complete
+callback-context or scene lifetime. Deferred scripts followed by native reads
+increase the retention obligation without proving destructive runtime reentry.
+
+**UNKNOWN / SOURCE GAP:** actual surviving old models and installed callbacks;
+complete caller-side clearing, queued-record cancellation and mutation-safe
+traversal; scene/widget/context retention across load/replay/render/event delivery;
+all relevant teardown exclusion and deferred effect paths. The previous matrix's
+writer/invalidation/coherence/ABA/player-bound freshness requirements remain open.
+No sampler design is qualified; client mutation helpers remain outside observe-only
+acquisition. Script selection/override and resource-descendant/TLS limits persist.
+
+Reproduce with the pinned WoW.exe using `objdump -d -Mintel
+--start-address=START --stop-address=STOP` (stop exclusive); use `objdump -s`
+for tables. Scene-acquire absence is limited to direct call/jmp text and
+`data.find(struct.pack('<I', 0x707310))` over the binary. These manual findings do
+not expand the automated 43-anchor/12-string manifest; four qualification flags
+and runtimeObserved remain false.
+
+| Inspection | START / STOP |
+|---|---|
+| Release / setters / separate owners | `0x710390 / 0x7103C2`; `0x711BB0 / 0x711BC9`; `0x7134B0 / 0x7134C9`; `0x710560 / 0x7105B8`; `0x613B40 / 0x613BD2`; `0x6716F0 / 0x67173B`; `0x504350 / 0x504380`; `0x76CCE0 / 0x76CDC0` |
+| Scene acquisition / drain / replay | `0x707310 / 0x707342`; `0x76D7F0 / 0x76D86D`; `0x7074B0 / 0x7075DC`; `0x71D5A0 / 0x71D5DE`; `0x71D640 / 0x71D6B4`; `0x71019B / 0x7102CD` |
+| Load callback / helper limits | `0x76CDF0 / 0x76CF24`; `0x710B90 / 0x710BEC`; `0x7105C0 / 0x7105C4`; `0x707680 / 0x7076BE` (prefix only); `0x713640 / 0x713676` |
+| Dirty consumers / texture records | `0x76B3A0 / 0x76B522`; `0x7657D0 / 0x765A90`; `0x7706E0 / 0x7706FA`; `0x772FD0 / 0x773074`; `0x7731D0 / 0x77327C` |
+| Render registration / script continuation | `0x76D160 / 0x76D240`; `0x773110 / 0x77319E`; `0x76D240 / 0x76D676`; `0x76FB00 / 0x76FC3D` |
+
+Next task: follow render-record removal/cancellation and list mutation during
+callbacks, and determine which caller-owned scene/widget references cover the
+post-callback reads. For surviving old models, trace context invalidation beyond
+the bounded release/setter bodies; do not import other owners' cleanup guarantees.
+Prioritize concrete routes to bulk cleanup/nested notification and scheduling
+exclusion. Retain the acquisition matrix and SOURCE GAP until lifetime, writer,
+invalidation, coherence and ABA obligations close. Manual unload acceptance
+remains separate and needs module-absence/responsiveness evidence.
+
+Validation: exact-client offline audit PASS; key manual chains independently
+checked. `python3 tools/validate.py --jobs 4` PASS, all 247 records (111 C++
+executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
+SQL/TSV fixture, full build and diff check). Report:
+`/tmp/wow-validation-b5kqnkpi/results.json`. Separate `cmake --build build` PASS
+for DLL, testhost, loader and GUI. Three read-only reviews reconciled; callback
+scope and widget model-pointer wording corrected, OnUpdateModel binding rechecked.
+Full diff/status review and `git diff --check` PASS; exactly the two intended
+documents changed, with no unrelated changes. Runtime NOT RUN; no qualification
+upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
