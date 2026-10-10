@@ -863,6 +863,165 @@ Reconciliation validation on 2026-10-10:
   changed; no production source/tests changed and nothing staged or committed.
 - Runtime: existing capture inspected; no new run and no qualification upgrade.
 
+### P0.7.4 — scheduling, lifetime and alternate GUID continuation
+
+Continued on 2026-10-10 from `5cd22ed596a9adceb5483d1b746d31730b36804b`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents examined client lifetime/scheduling, alternate GUID ownership
+and the repository sampling boundary. The coordinator independently reviewed
+the bounded paths below. Only this audit and AI_HANDOFF.md changed during
+research. The subsequent user-authorized checkpoint also updates AGENTS.md
+with the permanent Git workflow; final checkpoint scope/status is in the handoff.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+The new evidence establishes an event-update path and identifies an alternate
+GUID source through the exact client's PLAYER_FARSIGHT field. Neither yields
+a qualified serialized acquisition or current-player zone/area cache. No
+sampler, hook, native invocation, memory write or gameplay change is introduced.
+
+#### SOURCE VERIFIED — publication and scheduling
+
+All VAs refer to the same SHA256-pinned executable documented in P0.7.3.
+These are bounded instruction facts, not a complete writer/indirect-call audit.
+
+| Path | Observed ordering and remaining limit |
+|---|---|
+| Constructor `0x464FF0` | Root publication `0x46510E` and connection+0x1AD8 publication `0x465114` precede connection backpointer setup `0x465120`, handler registration `0x465125` and map setter `0x46512C`. Matching both manager pointers cannot certify initialization. |
+| Destructor `0x467700` | Object cleanup `0x467711` precedes root clear `0x46771E`, connection+0x1AD8 clear `0x467734`, and conditional saved-owner clear `0x46773A–742`. The saved pointer is cleared only when equal to this manager; it supplies no generation. |
+| Temporary owner switching | `0x464FB0` skips when the saved slot is nonzero or the supplied owner already equals the root; otherwise it saves the root at `0x464FC2` then assigns the supplied owner. `0x464FD0` restores a nonzero saved root before clearing the slot at `0x464FDF`. This is a single saved pointer, not a nesting/generation counter. |
+| Packet wrapper `0x537C50` | Switch `0x537C59` via connection+0x1AD8 → state check → dispatch `0x537CA0` → restore `0x537CC9`. `0x537AA0` invokes a packet handler indirectly at `0x537AE5`. Packet callbacks can execute within temporary ownership; their complete thread/reentrancy closure is unproved. |
+| Zone updater scheduling | Setup `0x40167A–684` registers callback `0x401EC0` in event slot 5 through `0x41FC90`. The callback calls `0x6C5D50`, then `0x5DB900` at `0x401ECE`. Teardown removes the same callback/slot at `0x401EFA–0x401F04` before marker reset and manager teardown. This removal path is not a registration. |
+| Event context | Registration `0x41FCCC → 0x41DB90 → 0x436D80` obtains the calling thread's context through imported TlsGetValue (`0x7FF338`). This does not establish that every object/cache writer executes on that thread. |
+| Event execution | `0x420F70` acquires context+0x10 at `0x420F80`, checks state+0x2C, and releases at `0x420F92`. When state differs from 1 it computes elapsed time and dispatches event 5 at `0x420FD5`. `0x4245B0` indexes context+0x5C+12*event and calls the registered callback at `0x4246AD`. That inspected lock is released before callbacks; it is not a proven world-lifetime read lock. |
+| Transfer paths | `0x401B00` submits `0x401BC0` through `0x4200A0` at `0x401BAE`; another packet path calls `0x401BC0` directly at `0x401EA4`. Both deferred and direct execution need coverage before any sampling phase can be accepted. |
+
+#### SOURCE VERIFIED — preferred GUID ownership
+
+A linear disassembly search found five direct calls to `0x6006E0`. Each was
+inspected; this inventory does not exclude indirect callers or other writers.
+
+| Setter call | Input provenance and conditions |
+|---|---|
+| `0x4958D1` | Active GUID returned by `0x468550` at `0x4958C3`. |
+| `0x5EE35B` | In `0x5EE290`, active-object GUID matches, its alternate GUID is nonzero, but alternate lookup fails. Input is the original object's descriptor GUID if `0x5FA5F0` succeeds, otherwise zero. |
+| `0x5EE477` | Resolved alternate object becomes ESI at `0x5EE44A`; its descriptor type mask 0x8 and `0x5FA5F0` must pass. Its own descriptor GUID is passed to the setter. |
+| `0x5EE573` | Fallback/reset branch in `0x5EE290` passes the original object's descriptor GUID if `0x5FA5F0` succeeds, otherwise zero. |
+| `0x5FA696` | `0x5FA600` changes object+0xC58 bit 0x400. If its GUID matches the owner from `0x4818F0` at +0x88/+0x8C, enabling passes that object's GUID; disabling clears the preferred pair only if it still matches that object. |
+
+`0x5FA5F0` reads object+0xC58 bit 0x400; no gameplay meaning for that bit is
+assumed. At `0x5EE2B8–2C4`, the input object's descriptor GUID is compared
+with the active GUID. On equality, `0x5EE2CC–2D8` reads the alternate pair
+from `[object+0xE68]+0x830/+0x834`, then `0x5EE2EF` resolves it with mask 1.
+The later setter branch checks the resolved object's type mask 0x8 and bit 0x400.
+Equality with the separate owner GUID at `0x5EE383–396` can skip that branch.
+Thus even this path's active-GUID check does not make the setter input the
+active player's GUID.
+
+The separate owner returned by `0x4818F0` is `[[0xB4B2BC]+0x65B8]`.
+After preferred-pair publication, `0x5EE483 → 0x4841A0 → 0x50D0F0`
+copies the selected descriptor GUID into that owner's +0x88/+0x8C at
+`0x50D223/22C`. These are separate publications with intervening calls,
+not an atomic owner switch. Another path compares an object's descriptor
+GUID to the preferred pair at `0x5FBC26–37`, then calls the clear helper
+`0x6006B0` at `0x5FBC3B`. Earlier helper calls precede that clear; no
+pre-destruction invalidation contract is established.
+
+Exact-client field provenance, including the relative descriptor base:
+
+- `0x5DD2A0 → 0x5FAD10 → 0x613980` passes the same descriptor argument;
+  `0x613989` stores it at object+8. `0x5DD2B5/2BB` stores descriptor+0x2F0
+  at object+0xE68. The alternate pair is therefore descriptor+0xB20/+0xB24,
+  not descriptor+0x830/+0x834.
+- The 20-byte row at `0x83B484` contains name pointer `0x83C44C`
+  (`PLAYER_FARSIGHT`), relative index `0x20C`, count 2, and remaining words
+  4/2. `0x20C*4 = 0x830`. `0x47F8DF–8E9` supplies table `0x83AA48` and
+  destination `0xB44A18` to `0x47F960`, whose loop expands each row's count
+  into 20-byte records. The destination is `0xBC` records beyond `0xB43B68`,
+  the base destination at `0x47F8CE`, consistent with descriptor byte base
+  `0x2F0`. Counts preceding the PLAYER_FARSIGHT row sum to `0x20C`.
+
+This identifies a named alternate-object field in the current binary. It does
+not establish gameplay triggers, all field writers, observation-time ownership,
+or a cache invalidation/freshness contract. Preferred-GUID equality suppression,
+separate stores and delayed/conditional cache updates still apply.
+
+#### Repository boundary and qualification
+
+**SOURCE VERIFIED:** DllMain creates BootstrapThread (`dllmain.cpp:389–397`),
+which calls WorldMonitor. Observe mode routes to
+`ConnectionLifecycleObserver5875::Run`, acquiring connection/raw location,
+WorldState, then raw location again, followed by Sleep(250). Those sequential
+reads do not synchronize with the client event callback. Connection/location
+reads use ReadProcessMemory; intervening WorldStateReader still uses
+Core::Memory's readability-check-then-memcpy path. The whole observer must not
+be described as having a fault-safe lifetime contract.
+
+GameThreadDispatcher explicitly identifies its target as the window-owner
+thread. Its WH_CALLWNDPROC/SendMessageA path and bookkeeping mutex do not prove
+writer thread affinity, an eligible world phase, or exclusion of reentrant
+transitions. Merely moving these reads into Invoke would not close the gap.
+This is a qualification limit, not a demonstrated runtime dispatcher defect.
+The pure profile adapter still has no qualified location/generation input or
+XYZ-map association; no production reader or controller ownership changes.
+
+**RUNTIME OBSERVED:** no new run. Preserve the earlier raw-observer RUNTIME
+PASS, limited to the reconciled capture above. No manual module-absence or
+post-stop responsiveness evidence was acquired; unload acceptance stays open.
+
+**INFERRED:** the alternate field and owner comparisons are consistent with a
+viewpoint-related source choice. That interpretation is not needed to reject
+the cache as unconditional current-player evidence, and is not a gameplay claim.
+
+**UNKNOWN / SOURCE GAP:** full writer/indirect-callback coverage, writer thread
+affinity, reentrancy, initialization/invalidation across all transitions,
+same-address/character/map ABA, and player-bound zone/area freshness. Event
+registration, a released event-context lock, matching pointers/GUIDs, and window
+thread dispatch are each insufficient. All candidates remain UNQUALIFIED.
+
+Reproduction uses `objdump -d -Mintel --start-address=START
+--stop-address=STOP '/home/ludvig/Games/WoW Vanilla/WoW.exe'` (stop exclusive):
+
+| Inspection | START / STOP |
+|---|---|
+| Publication, switching; teardown | `0x464FA0 / 0x465198`; `0x467700 / 0x467954` |
+| Packet handler and owner wrappers | `0x537AA0 / 0x537AFC`; `0x537C50 / 0x537D60`; `0x538020 / 0x538035` |
+| Register, callback, remove | `0x401670 / 0x401689`; `0x401EC0 / 0x401F09` |
+| TLS context and event dispatch | `0x41FC90 / 0x41FD70`; `0x41DB90 / 0x41DBAB`; `0x436D80 / 0x436DA3`; `0x420F70 / 0x420FE1`; `0x4245B0 / 0x424710` |
+| Transfer submission/direct path | `0x401B00 / 0x401BC0`; `0x401DE0 / 0x401EB4` |
+| Preferred setter callers | `0x4958C3 / 0x4958DA`; `0x5EE290 / 0x5EE590`; `0x5FA5F0 / 0x5FA6B0` |
+| Separate owner publication and preferred clear | `0x4818F0 / 0x4818FC`; `0x4841A0 / 0x4841B6`; `0x50D0F0 / 0x50D2C4`; `0x5FBB60 / 0x5FBC60` |
+| Descriptor base and field-table loader | `0x5DD2A0 / 0x5DD2C1`; `0x5FAD10 / 0x5FAD2E`; `0x613980 / 0x613993`; `0x47F8C4 / 0x47F8EE`; `0x47F960 / 0x47F9B9` |
+
+Use `objdump -s` for row `0x83B484 / 0x83B498` and string
+`0x83C44C / 0x83C45C`; `objdump -p` identifies the TLS/critical-section imports.
+These additional manual paths are **not** added to the existing automated
+43-instruction-anchor/12-string manifest. Its PASS still qualifies only its
+bounded source scope, with all four location/lifetime flags false.
+
+Next source task: close event-context execution/thread and reentrancy coverage
+around `0x420F70/0x4245B0`, queued transfer `0x4200A0`, direct packet dispatch
+and temporary-owner restoration. Trace writers/reset ordering for
+PLAYER_FARSIGHT, object+0xC58 bit 0x400 and preferred GUID against zone/area
+publication. Require a defensible lifetime/coherence/ABA contract before sampler
+design; retain SOURCE GAP if unavailable. Manual unload acceptance remains a
+separate evidence task. Future qualified consumption still needs loading,
+teardown, same-map reload, map-transfer and zone/area-only runtime cases.
+
+Continuation validation on 2026-10-10:
+
+- Exact-client offline audit: PASS; additional bounded disassembly/data paths
+  independently reviewed without expanding the automated manifest.
+- `python3 tools/validate.py --jobs 4`: PASS, all 247 records; 111 C++
+  executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
+  SQL/TSV fixture, full MinGW build and diff check.
+  Report: `/tmp/wow-validation-wey3vd5_/results.json`.
+- Separate `cmake --build build`: PASS (DLL, testhost, loader, GUI).
+- Three read-only reviews: no factual corrections; expanded one reproduction
+  range to include field-table base setup. Complete diff inspected and scoped
+  `git diff --check -- .` PASS. Only the two documented files changed; nothing
+  staged or committed.
+- Runtime: NOT RUN in this task; prior raw-observer qualification preserved.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
