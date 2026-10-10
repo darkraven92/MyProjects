@@ -1,5 +1,50 @@
 # R0.1 unattended maintenance / connection audit
 
+## Bound DeathRecovery session (2026-10-10): INSUFFICIENT EVIDENCE
+
+The repeat-death circuit breaker remains **IMPLEMENTED / RUNTIME PENDING**.
+Every supplied manifest hash in `runtime-captures/death-repeat-bound-2026-10-10/`
+verified, and all 21 extract records match the complete 6,463-line raw log.
+Deployment records bind branch `codex/vendor-afk-long-navigation`, HEAD
+`f022de67b3e30ef0202afd2c8ab19819de329b08`, and DLL SHA256
+`bc2a148d9f251121831f0400f10961af4fafbc894300b47e0db1cb2121268745`.
+The matching path/device/inode mapping in Linux PID 124315 is explicitly
+user-attested, not an automatically saved `/proc` artifact. Pre/post records
+and the current DLL agree; the confirmation attests no replacement.
+
+The raw session is `492.134361144754615960.83558443.700` (Wine PID 492),
+BOT START/STOP 83558961–83837304, 4m38.343s. Lifecycle 189–199 identifies
+the final run after a successful raw-log clear, not all sessions covered by
+the deployment notes. It shows five Grind navigation intents, one failed
+approach, a living combat kill/loot and GUI stop. All 44 DeathRecovery samples
+are Idle with zero releases/retrieves/routes/recoveries; all 44 mode samples
+allow normal updates with death ownership false. No death, reclaim, two alive
+probes, armed record, repeat latch, fresh Ghost or terminal block occurs.
+The earlier unbound repeat-death sequence is not reused to manufacture PASS.
+
+AFK here is living: due at raw 2714, action blocked by `frame_limit` at 2721,
+then native-combat defer/overdue at 2804/5771. No verified delivery or Ghost
+blocking is established. Stop at 6432–6463 records evidence reset, autoattack
+stop/hold, BOT STOP, nav teardown and unload request. The pre-unload
+`RUNTIME DETACHED` message does not independently prove completed DLL unload.
+
+See the [bound DeathRecovery audit](DEATH_RECOVERY_AUDIT.md#bound-runtime-qualification-2026-10-10-repeat-path-not-exercised)
+for every hash, chronology, acceptance result and the exact missing bound
+reclaim→redeath→terminal sequence. It recommends one integrated next engineering
+task: bounded living recovery/egress with targetless evidence, defense/water
+arbitration, finite deadlines and safety release. No behavior changes here.
+First unsafe resurrection remains unresolved; staging/living egress remain
+unimplemented. Vendor INSUFFICIENT EVIDENCE, water emergency egress RUNTIME
+PENDING, reconnect SOURCE GAP / NOT IMPLEMENTED and historical P0.5.8 PASS
+retain their existing scope.
+
+Static/build validation PASS via
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`: 109 C++ tests,
+registered Python/SQL/Lua suites, full build (up to date) and diff check.
+Report: `/tmp/wow-validation-4ityd74_/results.json`; console:
+`/tmp/death-repeat-bound-validation.log`. This does not upgrade the runtime
+verdict. Only the three task documents are included in the checkpoint.
+
 ## New DeathRecovery safety investigation (2026-10-10)
 
 Continuation from `602bf2b`: a bounded **repeat-death circuit breaker is now

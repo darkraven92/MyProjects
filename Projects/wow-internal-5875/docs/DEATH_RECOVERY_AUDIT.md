@@ -1,5 +1,207 @@
 # P0.1 DeathRecovery reliability audit
 
+## Bound runtime qualification (2026-10-10): repeat path NOT EXERCISED
+
+**INSUFFICIENT EVIDENCE; the repeat-death circuit breaker remains IMPLEMENTED /
+RUNTIME PENDING.** All supplied hashes verify, and the deployment binding is
+accepted with the explicit user attestation described below. However, the
+complete supplied raw session contains no player death, automatic reclaim,
+armed record, repeat latch or terminal DeathRecovery ownership. Binding does
+not supply missing execution evidence. No runtime PASS is awarded or revoked.
+The earlier unbound `death-repeat-pass-2026-10-10/` sequence is not substituted
+for this run, and this attestation is not applied retroactively to it.
+
+Single coordinator review of clean source checkpoint
+`f022de67b3e30ef0202afd2c8ab19819de329b08` on
+`codex/vendor-afk-long-navigation`; AGENTS.md, AI_HANDOFF.md, relevant history
+and current source were inspected. No production source/test changes or new
+WoW session were needed. P0.7 was not accessed.
+
+### Capture integrity and deployment binding
+
+Directory: `runtime-captures/death-repeat-bound-2026-10-10/` (local only; not
+committed). Before relying on its contents, `sha256sum -c` verified all five
+entries in `capture-sha256.txt`. The manifest's own digest was computed for
+this audit; it has no separately supplied expected digest. All **21** numbered
+extract records match the raw lines. The entire raw log has **6,463 lines /
+511,282 bytes**; the append-only lifecycle log has **199 lines / 48,987 bytes**.
+
+| File | SHA256 of original bytes |
+| --- | --- |
+| deployment.txt | `136686b6b18fbb74f16cc991d2be04e45876397ec71492329ec6a140dbc6311f` |
+| binding-confirmation.txt | `088524a0058dd3f1876c256e4999b6df1cca82ddfff7a16bdb1f31b421f3d975` |
+| capture-sha256.txt | `37b28b829baa8c437b4724352a50dd490700b70dec3927830b556c2bb2671f9b` |
+| wow-internal.log | `af3475df0c1c0a5e6558c421c3d7bed9c5aec6ebe0e915b2f8a2f8beab77ec9f` |
+| wow-internal.lifecycle.log | `c86b09ec124803ec0439d137d5ded78f9762c930ad7585a0043c083155b70d78` |
+| death-repeat-extract.txt | `504983e64be49434c199d157234c3a1cc932295e7958b07f7534702c6cfb9ac3` |
+
+Deployment records identify the above branch/HEAD and
+`/home/ludvig/Programming/Projects/wow-internal-5875/build/wow_internal.dll`,
+SHA256 `bc2a148d9f251121831f0400f10961af4fafbc894300b47e0db1cb2121268745`.
+Pre/post records retain that HEAD/hash and clean Git state. Local verification
+agrees: device 66309, inode 4980769, size 23,180,065 bytes, mtime
+2026-10-10 13:21:28 +02:00. The user explicitly attests that Linux WoW PID
+124315 mapped this exact path on device `103:05`, inode 4980769, and that no
+build, branch switch, pull or DLL replacement occurred during the recorded
+interval. This is **user-attested runtime mapping**, not an automatically
+preserved `/proc/124315/maps` artifact: `loaded_dll_mappings:` is empty in
+deployment.txt. The supplied confirmation fills that attestation gap; this
+audit does not claim to have independently sampled the running process.
+
+The raw log identifies Wine/Win32 PID **492**, DLL base `0x74590000`, player
+GUID `0x1B867` (112743), client 1.12.1.5875 and session
+`492.134361144754615960.83558443.700`. Linux PID 124315 is the attested host
+process identity, not a literal PID field in the raw log. Deployment notes
+contain multiple start/stop timestamps (14:39/14:40 starts and 16:04/16:09
+stops, +02:00). They must not be treated as one uninterrupted captured bot
+session. Lifecycle lines **189–199** delimit the supplied final session;
+line 192 records a successful raw-log clear before its attach. Earlier journal
+sessions, including PID 300, do not supply their missing gameplay chronology.
+`Logger.h` derives the long session-ID component from process creation time;
+it is not the bot-start timestamp. Raw/lifecycle BOT START/STOP agree at
+monotonic **83558961–83837304**, a **278,343 ms (4m38.343s)** bot session.
+The first raw diagnostic is 14:04:18Z (16:04:18 local), consistent with the
+final short run rather than the entire deployment-note interval.
+
+### Complete session chronology
+
+All references are one-based raw lines unless marked lifecycle.
+
+| Lines | Observation |
+| --- | --- |
+| 1–149, 207–210 | Fresh attach and Grind start; level 22, HP 664/664, position (2210.2495,-2534.4614,82.7275). DeathRecovery Idle with all attempt/recovery counters zero. |
+| 171 | Danger memory loads six historical deaths. This is persisted history, not six deaths during this session. |
+| 379–1286 | Grind gray-migration intent 1 runs ticks 48–251 and is owner-released. No DeathRecovery route. |
+| 1291–1886 | Grind approach to entry 3819, intent 2, ticks 253–592, fails `path_validation_failed` with zero movement commands. The interruption is `target_unreachable`, with death ownership false. |
+| 1962–2525 | Grind roam intents 3 and 4 arrive, ticks 609–619 and 639–723. |
+| 2629–2808 | Grind roam intent 5 starts at 751 and is owner-released at 758. AFK becomes due at inputAge 240193, then its action is blocked by `frame_limit` at 2721. Combat selection begins; native combat blocks AFK at 2804; entry 12856 GUID `0xF130003238007E6A` is tracked as an aggressor at 2808. |
+| 2883–6297 | Charge/opening/chase/fight transitions. Fifteen player-health changes decrease 664 to 185, never zero. AFK overdue at 5771 uses `native_combat_flag`, not a Ghost gate. |
+| 6333–6426 | Verified target kill, loot window/slot observations, `LOOT: PASS`, then PostKillDelay. Final WorldState at 6374 is alive, HP 185/664; DeathRecovery at 6377 is still Idle. |
+| 6432–6463; lifecycle 197–199 | AFK pending evidence reset at stop, GUI stop request, game-thread autoattack stop and hold-position dispatch, BOT STOP, nav-cache teardown and unload request. Lifecycle GUI stop precedes BOT STOP by 189 ms. No observed terminal death state is involved. |
+
+There are **44** WorldState samples (HP 185–664), **44** identical DeathRecovery
+Idle summaries with zero recoveries/releases/retrieves/routes, and **44** mode
+summaries with `normalModeUpdate=yes deathOwner=no`. The three session counters
+at 1246/1706/2509 all have `deaths=0 successfulDeathRecoveries=0`; final status
+corroborates continued Idle. Five navigation intents all belong to Grind.
+All 29 AFK life diagnostics say alive. Five disconnect diagnostics say healthy;
+no world-unavailable transition is logged. None of this qualifies reconnect,
+vendor, living-water egress or AFK delivery. `AFK ACTION BLOCKED` is not a
+verified input action.
+
+### Acceptance result and exact missing evidence
+
+| Required repeat-death evidence | Bound-session result |
+| --- | --- |
+| Automatic RetrieveCorpse and two fresh alive probes | Absent; zero `DEATH RECLAIM` or `DEATH RECOVERY` event lines. |
+| `repeatDeath=armed` at actual confirmed-alive position | Absent; zero `DEATH SAFETY` lines. |
+| Nearby redeath and `repeatDeath=latched` | Absent; no player death or repeat-policy observation. |
+| Normal release and fresh Ghost confirmation | Absent; no release attempts or dead/Ghost life diagnostics. |
+| `recent_reclaim_redeath`, `strategiesExhausted=yes`, `normalModeBlocked=yes` | Absent; no terminal entry. |
+| Terminal `retrieveAttempts=0`, no later reclaim/corpse-route restart | Only Idle counters are zero. With no latch or terminal episode, absence of commands does not test the veto. |
+| Retained terminal Ghost ownership and correct Ghost AFK blocking | Not exercised; normal mode runs throughout and no `dead_ghost_afk_recovery_not_qualified` occurs. |
+| Understood session stop | Observed GUI-driven stop and teardown requests; completed DLL unload is not independently proved. |
+
+`RUNTIME DETACHED` is logged before the bootstrap's unload request, not after
+verified unmapping. Raw attach/unload monotonic values differ from their
+journal copies by 1 ms because `Logger::Event` writes them separately. No
+post-unload module map or independently verified completed detach is supplied.
+The stop is understood at the logged request/cleanup boundary only.
+
+Current source still arms only after Ghost + issued reclaim + two fresh alive
+probes (`DeathRecoveryController.h:972,1450,1750`), preserves history through
+`RearmAfterConfirmedAlive` (`:1948`), and evaluates the 120-second/eight-yard
+same-player/map guard using body/current-server evidence (`:1265,1412`). Fresh
+Ghost gates terminal `recent_reclaim_redeath` before route/reclaim dispatch
+(`:1499`); terminal failure holds normal ownership. `AfkDeadGhostPolicy.h:31`
+retains its independent command-in-flight and unqualified recovery guards.
+These source checks explain the expected path; they do not turn Idle samples
+into runtime execution of it.
+
+Still needed is **one bound natural session** containing the whole sequence:
+automatic reclaim → two fresh alive probes → armed actual position → same
+player/map redeath within 120,000 ms and <=8 yards 3D → body/current-server
+latch → ordinary release → fresh Ghost → terminal `recent_reclaim_redeath`,
+zero retrieve attempts and normal-mode block → continued stopped Ghost
+ownership with no reclaim or route restart, correct AFK gating, then understood
+stop. Preserve raw logs across any later GUI starts. If manual resurrection
+occurs, verify two fresh same-player alive probes before release. Do not provoke
+death. The earlier unbound run's 8567-ms/zero-separation result is not evidence
+that this bound session traversed that path.
+
+First unsafe resurrection remains unresolved. Safe resurrection staging and
+DeathRecovery-owned living egress remain NOT IMPLEMENTED. Historical P0.5.8
+PASS retains its original scope; vendor stays INSUFFICIENT EVIDENCE, water
+emergency egress RUNTIME PENDING, and reconnect SOURCE GAP / NOT IMPLEMENTED.
+
+### Next substantial engineering block
+
+Recommend **bounded living recovery and NavMesh egress after resurrection**
+as one integrated task, including its evidence adapter, ownership transitions,
+defense/water arbitration, tests and telemetry. This is an engineering proposal,
+not an implementation or an instruction to alter behavior in this checkpoint.
+It addresses the current immediate Done→normal-mode handoff without pretending
+that Ghost sensing can certify the first reclaim safe. The pending repeat-path
+runtime qualification can be collected during natural supervised use; another
+documentation callback is not a substitute for that run.
+
+Current source supports this priority: `WorldMonitor.h:1453` resumes normal
+owners immediately at Done. Grind's `RecordDeath` already arms escape;
+`TryStartDangerEscape` (`GrindModeController.h:1004`) requires no direct
+aggressor and >=90% HP. Existing protection is present, yet cannot provide
+early living egress. Deliver the following together:
+
+- A fresh, same-character, targetless living observation of combat/aggressors,
+  identity, life state and read completeness. Reuse verified 5875 semantics
+  from `CombatClientEvidence5875`, whose current `Execution` requires a target;
+  never select/attack merely to obtain evidence. Unknown/stale/partial reads
+  cannot authorize safety release. Qualify the observation's source semantics
+  and practical coverage before using absence of threats as a release claim.
+- A distinct living recovery owner after the existing two-probe automatic
+  confirmation, suppressing voluntary Grind/Quest acquisition but providing
+  defense-only CombatController handoff. Separate living life state from the
+  historical Ghost-confirmed latch. Death again must immediately return to
+  ordinary death handling and preserve the repeat breaker.
+- Bounded generated NavMesh egress with living terrain/water constraints,
+  current-origin path validation, preserved hazard/directed-link knowledge and
+  one monotonic deadline across candidate changes and preemptions. Existing
+  `deathWaterOwner` must not exempt the living owner from water handling;
+  AFK/native guards remain authoritative. Non-swimming alone is not dry-ground
+  proof. Unknown terrain or unavailable routes must produce an explicit block.
+- Explicit fresh recovery/release criteria and a stopped living-blocked outcome
+  on timeout, with defense available. Do not reuse Failed's current two-alive-
+  probe release as a safety predicate. World gaps invalidate partial proof and
+  navigation before reacquisition. Log evidence, transitions, preemptions,
+  deadline, blocked outcomes and release reasons in the production path.
+
+Acceptance for that single delivery must cover successful bounded egress and
+one-time release; no voluntary pulls while retained; defense during handoff;
+living-water preemption; stale/foreign/incomplete evidence; world loss; blocked
+or unsafe routes; timeout without budget renewal; and redeath through the
+existing circuit breaker. Use meaningful policy and production integration
+tests plus full build, then a bound runtime demonstrating the new owner. Do not
+delay self-defense during alive confirmation by adding an unprotected wait.
+
+Safe **pre-reclaim staging** remains a separate sensing blocker: current
+Ghost WorldState is type-3-only and does not establish living-threat visibility
+coverage, per-field knownness or a positive safe-point predicate. An empty scan,
+attackability proxy, density score or projected ground point cannot close it.
+The proposed living task must not broaden the eight-yard reclaim gate, claim
+the first unsafe resurrection fixed, or add guessed offsets/APIs. The earlier
+full safety design and seven acceptance cases below remain future work.
+
+### Static/build validation for this audit
+
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4` passed all
+**109 C++ tests**, registered Python/SQL/Lua suites, full `cmake --build build`
+(up to date) and diff check. Report: `/tmp/wow-validation-4ityd74_/results.json`;
+console: `/tmp/death-repeat-bound-validation.log`. Capture hashes, documented
+digests, device/inode, whole-session counts and duration were independently
+cross-checked again. No new tests were added for this documentation-only audit;
+static/build PASS does not change its runtime verdict. Only this audit, the
+runtime audit and AI_HANDOFF.md belong to this checkpoint; capture files,
+build outputs and state remain uncommitted.
+
 ## Repeat-death circuit breaker (2026-10-10 continuation)
 
 **Bounded mitigation IMPLEMENTED; runtime qualification PENDING. Safe-point

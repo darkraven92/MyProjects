@@ -1,5 +1,65 @@
 # AI handoff
 
+## 2026-10-10 bound DeathRecovery runtime qualification
+
+**INSUFFICIENT EVIDENCE / repeat-death circuit breaker RUNTIME PENDING.** The
+complete `runtime-captures/death-repeat-bound-2026-10-10/` raw session did not
+exercise any death/reclaim path. All five capture-manifest entries verified;
+all 21 extract records match raw lines. Single coordinator, no subagents,
+clean starting HEAD `f022de67b3e30ef0202afd2c8ab19819de329b08` on
+`codex/vendor-afk-long-navigation`. No source/test changes or new WoW run.
+
+Deployment binding is accepted as explicitly **user-attested**: Linux PID
+124315 mapped the exact project `build/wow_internal.dll`, device `103:05`,
+inode 4980769. Local stat agrees (device 66309); pre/post HEAD and DLL SHA256
+are unchanged, with clean Git state and an explicit no-replacement attestation.
+DLL SHA256: `bc2a148d9f251121831f0400f10961af4fafbc894300b47e0db1cb2121268745`.
+The interactive `/proc` observation was not automatically saved;
+`loaded_dll_mappings:` is blank. Do not describe it as an independently captured
+process-map artifact or apply this binding retroactively to the earlier run.
+
+Raw SHA256: `af3475df0c1c0a5e6558c421c3d7bed9c5aec6ebe0e915b2f8a2f8beab77ec9f`.
+Raw session `492.134361144754615960.83558443.700` uses Wine PID 492, GUID
+112743. Its 6,463 lines cover BOT START/STOP 83558961–83837304 (4m38.343s),
+not the whole interval of the deployment notes' multiple start/stop entries.
+Lifecycle 189–199 identifies this run and its preceding log clear; earlier
+journal sessions do not supply missing gameplay. All 44 DeathRecovery samples
+are Idle with zero attempts/recoveries/routes; all 44 normal-mode samples have
+`normalModeUpdate=yes deathOwner=no`. Player HP stays positive (664→185),
+one target dies and is looted, then GUI stop performs cleanup/unload request.
+Completed DLL unload is not independently proved. Living AFK action is blocked
+by `frame_limit`, then native combat; terminal Ghost AFK is not exercised.
+
+Missing for PASS: one bound natural reclaim→two fresh alive probes→armed→
+nearby redeath→body/server latch→release→fresh Ghost→`recent_reclaim_redeath`
+terminal with zero retrieves, retained normal-mode block, no reclaim/route
+restart, correct Ghost AFK gating and understood stop. Do not borrow the
+earlier unbound 8567-ms sequence or provoke death. Full hashes, raw chronology,
+acceptance matrix and source checks are in the
+[bound runtime audit](docs/DEATH_RECOVERY_AUDIT.md#bound-runtime-qualification-2026-10-10-repeat-path-not-exercised).
+
+Recommended next substantial engineering task: **bounded living recovery and
+NavMesh egress after resurrection**, delivering the fresh targetless evidence
+adapter, distinct living owner, defense-only handoff, living-water/AFK
+arbitration, finite deadline/blocked outcome, release criteria, telemetry and
+integration tests together. The audit defines acceptance. Existing Grind
+post-death escape is present but waits for >=90% HP and no aggressor. Safe
+Ghost staging still lacks qualified threat coverage; this proposal must not
+claim the first unsafe reclaim safe or reuse Ghost water exemptions/alive-only
+terminal release for a living safety owner. No implementation is added here.
+
+Historical P0.5.8 PASS is unchanged. First unsafe resurrection unresolved;
+safe staging/living egress NOT IMPLEMENTED; vendor INSUFFICIENT EVIDENCE;
+water emergency egress RUNTIME PENDING; reconnect SOURCE GAP / NOT IMPLEMENTED.
+Full validation PASS: **109 C++ tests**, registered Python/SQL/Lua suites,
+full build (up to date) and diff check, using
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`.
+Report: `/tmp/wow-validation-4ityd74_/results.json`; console:
+`/tmp/death-repeat-bound-validation.log`. Capture hashes and whole-session
+counts were cross-checked again. These checks do not qualify the absent
+runtime path. Authorized checkpoint scope is this handoff and the two audit
+documents only; captures remain local. P0.7 untouched. No automatic merge.
+
 ## 2026-10-10 DeathRecovery continuation: bounded repeat-death block
 
 **IMPLEMENTED / RUNTIME PENDING.** Continued clean checkpoint `602bf2b` on
