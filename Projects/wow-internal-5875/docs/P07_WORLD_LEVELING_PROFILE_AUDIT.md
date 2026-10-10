@@ -2142,6 +2142,127 @@ Full diff/status review and `git diff --check` PASS; exactly the two intended
 documents changed, with no unrelated changes. Runtime NOT RUN; no qualification
 upgrade.
 
+### P0.7.4 — render cleanup ordering and callback ownership limits
+
+Continued on 2026-10-10 from `e0808215461462588a407f1e6573a1e6f6abdefa`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced reset/destruction callers, script representation and
+parent membership, and deferred UI scheduling. Coordinator checked key chains,
+current raw-reader/adapter boundaries and a conditional scene worker handshake.
+Only this audit and the handoff change; no production code or runtime actions.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+Ordinary rebuilds reset records before registration/delivery, and destruction
+also reaches record reset. That ordering does not prove destructive reentry or
+exclude it. Lua representation counts, parent links and worker completion waits
+do not supply a complete native lifetime contract or qualify a sampling phase.
+
+#### SOURCE VERIFIED — reset callers and UI scheduling
+
+The preceding exact executable hash applies. These are offline instruction
+traces, not observations of installed callbacks or live scheduling.
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Frame-local rebuild | `0x76B459 → 0x7731D0` resets a dirty layer before virtual+0x44 registration at `0x76B464`. After all five layers, `0x76B4B5` clears frame+0x1F8, then `0x76B4D2 → 0x76FB00` delivers layers. This proves ordering for the ordinary sequential invocation only, not exclusion of nested rebuilding/destruction. |
+| UI-context rebuild | `0x765896 → 0x765920` resets dirty layers at `0x7659B6`, before frame virtual+0x44 at `0x7659ED`. Later `0x7658E2 → 0x76FB00` delivers; after return `0x7658E7–EF` rereads entry+0x110 and the delivered layer's next link. Caller-owned storage retention remains unproved. |
+| Destruction reaches the same reset | Base frame destructor `0x7693B0` continues into five embedded-layer destructions at `0x7696A6–BC`, each `0x7696B6 → 0x772EF0 → 0x7731D0` (`0x772EFB`). UI-context destructor `0x764390 → 0x7645A0` at `0x76446C` also destroys five layers through `0x764605 → 0x772EF0`. These are concrete cleanup routes, not proof a script invokes them during delivery. |
+| Callback-node scope | Delivery calls node+8 using context+0xC at `0x76FC2E`, then reads the same node+4 at `0x76FC31`. That direct loop has no retain or active/pending-removal protocol. Reset unlinks/frees nodes through `0x7731FE/0x77322A`, with no callback-active check in its direct body. Protection in callers or other scheduling layers remains UNKNOWN; this does not demonstrate an unsafe overlap. |
+| Scheduler ingress | UI construction passes `0x764330` to `0x442800` at `0x764264`, with EDX=4, float 1.0, context zero and output slot UI-context+0x74. Registration stores callback at record+0x34 (`0x442868`) and publishes the handle at `0x442935–93A`. The numeric 4 is not established as an event ID. Common dispatch saves a next-record pointer at `0x4424AD`, invokes callback+0x34 at `0x44264B`, then advances at `0x44264E`. Saving a pointer alone does not prove its retention. |
+| Deferred deletion ordering | `0x764330` reads global `0xCF0BD8`, calls `0x765650` before `0x7657D0`. The former unlinks a queued frame before deleting virtual `0x7656B6`; later frame-update virtual+0x38 occurs at `0x765710`. Queue metadata at context+0xCC8 records link offset 0x304 (`0x7641DF`). Producer helper `0x764CE0` links frame+0x304, but direct-reference and absolute-literal searches found no uses. Actual enqueue reachability remains open. This ordinary call order is not a universal deferred-destruction guarantee. |
+| Context teardown ordering | `0x764390` separately drains deferred frames at `0x7643EA` and active frames at `0x764436`, then destroys bucket/layer storage. Registered handle context+0x74 is released only at `0x7644CF`; global `0xCF0BD8` is cleared at `0x7644D4`. Full registration-removal semantics, caller-side exclusion and callback-triggered entry remain unproved. No nested field notification or bulk world-object cleanup is established by these UI cleanup routes. |
+
+#### SOURCE VERIFIED — representation, parent links and surviving models
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Additional destructor wrappers | `0x470040` replaces vtables then calls `0x76CA50` at `0x470053`; `0x505870` replaces vtables then jumps there at `0x50587D`. Neither bounded wrapper adds model callback/context detachment. Upstream/transitive cleanup and actual surviving old models remain open. |
+| Script representation versus invocation retention | `0x704D50` tests widget+4 at `0x704E0B–10`; only zero invokes `0x701BD0(0)` at `0x704E16`. Nonzero skips it. Script execution is at `0x704E79`; this direct body has no paired per-invocation widget count increment/decrement. Earlier global nesting/context bookkeeping is not a widget or scene count. |
+| Representation lifecycle | `0x701BD0` creates/registers a Lua representation when count is zero, passes the native pointer through `0x701BFC → 0x6F3A20`, stores registry reference at widget+8 (`0x701C3D`) and increments widget+4 (`0x701C46–49`). `0x6F3A33` stores the pointer in a tagged Lua stack value, without scene/model acquisition. `0x701CD0` decrements positive widget+4 at `0x701CE5–E8`; on zero it clears the table entry, releases the registry reference at `0x701D32` and sets widget+8=-2 at `0x701D37`. Its direct body does not invoke a native deleting destructor. These operations are not evidence of a complete native ownership contract. |
+| Native deletion boundary | Known model table `0x81C608` slot zero is `0x76CA20`. It calls subclass cleanup at `0x76CA26`, then conditionally frees at `0x76CA3F` according to its delete flag, with no widget+4 count gate in this body. During subclass-to-base cleanup, representation release occurs at `0x7693F5` before returning to the wrapper's conditional free. This ordering does not prove deletion occurs during a script or that all callers lack protection. |
+| Parent membership | `0x76AA20` allocates a 12-byte node and stores the child pointer at node+8 (`0x76AAA4`), with no child/model/scene acquisition in its direct body. `0x76AAB0` matches that pointer at `0x76AAD9`, unlinks through `0x76C360` and frees the node at `0x76AAFC`. These membership operations do not directly detach model callback contexts. Parent membership alone does not establish post-callback widget/scene retention. |
+
+#### SOURCE VERIFIED — conditional scene work and completion boundary
+
+The earlier load callback reaches scene helper `0x707680`. Extending only its
+prefix through `0x707830` finds a conditional worker protocol, not a complete
+effect inventory of that large helper or its model callees:
+
+- `0x70775A` tests mask 4 in the context reached through scene+4. If set,
+  `0x707766 → 0x706CD0` installs callback `0x707600` and scene context in
+  context+0x1024/+0x1028, then signals the event at context+0x1018.
+  The caller processes alternating scene+0x20 list entries through `0x714260`
+  at `0x7077B6`; callback `0x707600` starts at the second entry and processes
+  alternating entries through `0x707662 → 0x714260`. Both skip entries whose
+  +0x1CC is nonzero. The mask-clear path processes the list locally.
+- The mask-set caller then invokes `0x7077CC → 0x706D00`, which waits on
+  context+0x101C with 0xFFFFFFFF. Worker `0x706D10` waits on +0x1018, calls
+  stored callback/context at `0x706D56`, signals +0x101C at `0x706D5E`, then
+  waits again. Imports `0x7FF1C0/0x7FF1C4` resolve to WaitForSingleObject/SetEvent.
+  The caller does not check the wait result: this is an attempted completion
+  handshake, not proof of a successful join, reference retention or teardown exclusion.
+- Initialization's mask-4 branch passes `0x706D10` to `0x659AC0` at `0x7065A1`;
+  `0x659ACE → 0x64BD20 → 0x64BD40` reaches CreateThread at `0x64BE9A`, with
+  wrapper `0x64BC20` invoking the stored target at `0x64BC5A`. Actual flags,
+  successful startup and live worker activity remain UNKNOWN. This conditional
+  native model work does not establish that scripts or location writers run on
+  that worker, or qualify window-owner dispatch as a writer/lifetime lock.
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Prior raw-observer RUNTIME PASS remains limited to its saved
+capture; candidates UNQUALIFIED, profile location BLOCKED, unload acceptance
+open, vendor/water runtime pending, reconnect unimplemented and R0.1 open.
+
+**INFERRED:** ordinary ordering, Lua representation, parent membership and event
+completion concern different scopes. None alone closes native callback-context,
+scene or raw-world lifetime. Concrete cleanup routes increase the need for
+scheduling proof without demonstrating destructive runtime reentry or a bug.
+
+**UNKNOWN / SOURCE GAP:** complete callback cancellation and caller-owned
+retention, actual surviving old models, installed scripts/classes, queue producer
+reachability and registration removal/reentry semantics; actual worker activation
+and full scene/model effects. The existing acquisition matrix remains unchanged:
+writer coverage, initialization/invalidation, outer object/descriptor/listener
+lifetime, coherence, ABA and player-bound cache freshness all remain open.
+Sequential equal reads and raw readability checks do not discharge them. Actual
+archive/script selection, resource-descendant and TLS limits also persist.
+No sampler design or location population is qualified.
+
+Reproduce with pinned WoW.exe and `objdump -d -Mintel --start-address=START
+--stop-address=STOP` (exclusive stop); use `objdump -s` for table `0x81C608` and
+`objdump -p` for imports. Search absence is limited to linear direct call/jmp
+references and little-endian DWORD literals, not computed/aliased/interior entry.
+These manual paths do not expand the automated 43-anchor/12-string manifest;
+all four qualification flags and runtimeObserved remain false.
+
+| Inspection | START / STOP |
+|---|---|
+| Reset/rebuild/delivery | `0x76B3F0 / 0x76B522`; `0x7657D0 / 0x765A90`; `0x76FB00 / 0x76FC3D`; `0x7731D0 / 0x77327C`; `0x772EF0 / 0x772F00` |
+| UI scheduling/destruction | `0x764220 / 0x764269`; `0x764330 / 0x764351`; `0x764390 / 0x76459E`; `0x7645A0 / 0x76460D`; `0x765650 / 0x7657C9`; `0x7693B0 / 0x7696BE`; `0x764CE0 / 0x764D50`; `0x764190 / 0x7641F0`; `0x442800 / 0x442942`; `0x44247F / 0x442655` |
+| Destructor/script/parent boundaries | `0x470040 / 0x470074`; `0x505870 / 0x505882`; `0x76CA20 / 0x76CAC0`; `0x704D50 / 0x704EE2`; `0x701BD0 / 0x701CC4`; `0x701CD0 / 0x701D73`; `0x6F3A20 / 0x6F3A3C`; `0x76AA20 / 0x76AAAE`; `0x76AAB0 / 0x76AB10` |
+| Scene work/worker handshake | `0x707680 / 0x707830` (prefix only); `0x707600 / 0x707674`; `0x706CD0 / 0x706D89`; `0x706510 / 0x7065A6` (prefix only); `0x6599C0 / 0x6599D4`; `0x659AA0 / 0x659AAA`; `0x659AC0 / 0x659AE7`; `0x64BD20 / 0x64BEA0` (prefix only); `0x64BC20 / 0x64BC5F` (prefix only) |
+
+Next task: trace UI scheduler registration removal and dispatch reentry rules,
+and concrete callers of context destruction/queue insertion; determine whether
+those rules protect post-callback widget/scene/record reads. Follow the scene
+worker handshake only where its completion and model effects bear on lifetime
+or writer exclusion. Do not import parent/Lua/model counts as a complete ownership
+contract. Preserve the acquisition matrix and SOURCE GAP until its obligations
+close. Manual unload acceptance remains separate.
+
+Validation: exact-client offline audit PASS; key manual chains independently
+checked. `python3 tools/validate.py --jobs 4` PASS, all 247 records (111 C++
+executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
+SQL/TSV fixture, full build and diff check). Report:
+`/tmp/wow-validation-ahchu5j2/results.json`. Separate `cmake --build build` PASS
+for DLL, testhost, loader and GUI. Three read-only reviews reconciled;
+cleanup-before-free wording clarified and reproduction ranges completed.
+Full diff/status review and `git diff --check` PASS; exactly the two intended
+documents changed, with no unrelated changes. Prior runtime-observation block
+and persistent statuses preserved. Runtime NOT RUN; no qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level

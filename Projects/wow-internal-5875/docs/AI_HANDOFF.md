@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `f63434828cbf6e191bb515cd8095c720fdb96741`
-— `docs: trace p07 script mutation and scene ownership`.
+Starting checkpoint: `e0808215461462588a407f1e6573a1e6f6abdefa`
+— `docs: trace p07 surviving callbacks and deferred UI delivery`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,23 +12,23 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: surviving model callbacks and
-deferred UI delivery. Three parallel read-only agents traced model release,
-scene retention and UI dirty consumers. Coordinator checked key binary chains
-and current raw-reader/adapter boundaries, and narrowed the load callback body.
-No production code, tests, observer contract, hooks, controller ownership or
-navigation changed. Work remains in this P0.7 worktree and branch.
+P0.7.4 source research continuation, 2026-10-10: render cleanup ordering and
+callback ownership limits. Three parallel read-only agents traced reset callers,
+representation/parent membership and UI scheduling. Coordinator checked key
+chains, current raw-reader/adapter boundaries and a conditional scene worker
+handshake. No production code, tests, observer contract, hooks, controller
+ownership or navigation changed. Work stays in this P0.7 worktree and branch.
 
-Nonzero model release does not detach callbacks. Other owners explicitly clear
-them, without establishing that cleanup for the widget. Deferred UI delivery can
-run scripts before further native reads; scene/record/context retention remains
-unproved. **SOURCE GAP remains; profile location population stays BLOCKED.**
+Ordinary rebuilds reset records before registration/delivery; destruction also
+reaches reset. Lua representation counts, parent membership and worker waits do
+not establish complete native retention or exclusion during callbacks.
+**SOURCE GAP remains; profile location population stays BLOCKED.**
 No sampler design, live overlap or runtime defect is established.
 
 Detailed anchors, reproduction ranges and limits are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — surviving model callbacks and deferred UI delivery.” Earlier sections
-retain the acquisition-proof matrix, provenance and saved runtime evidence.
+“P0.7.4 — render cleanup ordering and callback ownership limits.” Earlier sections
+retain the acquisition matrix, provenance and saved runtime evidence.
 
 ## Evidence
 
@@ -37,29 +37,29 @@ retain the acquisition-proof matrix, provenance and saved runtime evidence.
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
   12 strings. All four qualification flags remain false. Additional manual paths
   are outside that manifest; coverage is not exhaustive.
-- The model release's nonzero branch only updates its count and returns; callback
-  fields remain unchanged by that operation. Direct animation/render setters
-  only store fields. Load delivery clears its callback after return, leaving the
-  context field unchanged in that body; readiness/descendant work remains relevant.
-- Explicit null callback registrations precede release in separately inspected
-  owners. Those owners are not established as widget+0x318 replacement. Actual
-  old-model survival, complete caller-side removal and queued cancellation remain open.
-- Scene-acquire helper exists, but bounded direct-reference/literal searches found
-  no uses. Inline/aliased retention and caller-owned references are not excluded.
-  Inspected update/drain, load and resource wrappers have no local scene-retain
-  bracket; they access scene/model/record storage after callbacks return.
-- Render-registration container counting is distinct from scene retention. The
-  known load callback links a model into a scene list, calls further scene/resource
-  helpers, copies fields to the widget and invalidates layout; it is not empty.
-- Dirty consumers invoke virtuals and deferred callback records. A model-widget
-  route reaches OnUpdateModel before further widget/model accesses; delivery reads
-  node+4 after callback return. Texture records also retain raw storage pointers.
-  Layer reset frees callback nodes; exclusion during delivery is not established.
-  This does not prove tooltip color changes select a model callback or live reentry.
+- Both frame-local and UI-context rebuilds reset dirty layers before registering
+  and delivering records. Frame and UI-context destruction reach the same reset,
+  which frees callback nodes. The direct delivery loop reads its node after
+  callback return without a local retain/active-removal protocol; caller protection
+  remains unproved. Ordinary ordering does not establish callback/reset overlap.
+- UI scheduling registers a concrete update callback; it processes deferred
+  deletion before update/render work. Context teardown separately deletes frames
+  and layers before releasing its scheduler handle. Queue insertion exists, but
+  bounded direct-reference/literal searches found no uses. Full enqueue reachability,
+  registration removal semantics and reentry exclusion remain open.
+- Additional model-destructor wrappers add no callback detachment. Script
+  dispatch only creates a Lua representation when widget+4 is zero, without a
+  paired per-call native retention bracket. Representation cleanup, parent-link
+  membership and native deletion operate separately; complete ownership is unproved.
+- A scene-helper prefix conditionally distributes alternating model-list work
+  through a worker callback and event handshake. Thread creation and signal/wait
+  paths are connected; actual activation is unknown and the caller does not check
+  the completion wait result. This does not establish script/world-writer execution
+  on that worker or a scene/widget lifetime guarantee.
 - Writer/invalidation/lifetime/coherence/ABA/player-bound freshness obligations
-  remain separate and open. Raw reads are sequential; map/positionMap/zone/world
-  generation remain unqualified, area unsupported. Prior archive/script mutability,
-  resource-descendant and shared-TLS limits remain unchanged.
+  remain separate and open. Raw reads remain sequential; map/positionMap/zone/world
+  generation unqualified, area unsupported. Archive/script mutability,
+  resource-descendant and TLS limits remain unchanged.
 
 ### RUNTIME OBSERVED
 
@@ -78,19 +78,19 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Counts and callback stores operate at different scopes, and cannot alone establish
-complete context or scene lifetime. Deferred scripts followed by native reads
-increase the retention obligation without proving destructive runtime reentry,
-nested field notification or a qualified sampling phase.
+Ordinary ordering, Lua representation, parent membership and worker completion
+concern different scopes. They do not alone establish complete native context,
+scene or raw-world lifetime. Concrete cleanup paths require scheduling proof;
+they do not prove destructive reentry or a qualified sampling phase.
 
 ### UNKNOWN / SOURCE GAP
 
 - Actual surviving old models, installed callbacks/classes and list membership;
-  complete caller-side clearing and queued-record cancellation.
-- Mutation-safe callback/list traversal, layer-reset exclusion and scene/widget/
-  context retention across synchronous load, replay, render and event delivery.
-- Outer object/descriptor/listener lifetime; resource-owner/descendant completion,
-  remaining native/GUI effects and TLS behavior; concurrent/nested teardown exclusion.
+  complete caller-side clearing, queued cancellation and native retention.
+- Mutation-safe traversal, registration removal/reentry rules, concrete queue
+  insertion/destruction callers and scene/widget/context lifetime across delivery.
+- Actual worker activation, full model-helper effects and completion/exclusion
+  guarantees; outer object/descriptor/listener lifetime and resource/TLS effects.
 - Actual archive opens/selectors/views/mutations, installed scripts/overrides,
   earlier file paths, signature acceptance and open-callback effects.
 - Actual writer threads, complete writer/counter and initialization/invalidation
@@ -104,8 +104,8 @@ nested field notification or a qualified sampling phase.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — surviving release/clearing scopes,
-  scene-retention limits, load callback effects and deferred UI delivery/reset.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — reset/destruction ordering,
+  UI scheduling, representation/parent boundaries and conditional scene worker.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
@@ -115,12 +115,12 @@ nested field notification or a qualified sampling phase.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
   111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
   10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-b5kqnkpi/results.json`.
+  Report: `/tmp/wow-validation-ahchu5j2/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
-- REVIEW: three read-only reviews reconciled; callback-store scope and widget
-  model-pointer wording corrected. OnUpdateModel binding independently rechecked.
-  Full diff/status review and `git diff --check` PASS; exactly the two intended
-  documents changed, with no unrelated changes.
+- REVIEW: three read-only reviews reconciled; cleanup-before-free wording clarified
+  and reproduction ranges completed. Full diff/status review and `git diff --check`
+  PASS; exactly the two intended documents changed, with no unrelated changes.
+  Prior runtime-observation block is unchanged; persistent statuses preserved.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
 
 ## Runtime qualification and blockers
@@ -133,11 +133,11 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Trace render-record removal/reset callers and list mutation during callbacks;
-determine which caller-owned scene/widget references cover post-callback reads.
-For surviving old models, trace context invalidation beyond the bounded release/
-setter bodies without importing other owners' cleanup guarantees. Prioritize
-concrete routes to bulk cleanup/nested notification and scheduling exclusion.
+Trace UI scheduler registration removal and dispatch reentry rules, and concrete
+callers of context destruction/queue insertion. Determine whether those rules
+protect post-callback widget/scene/record reads. Follow the scene worker handshake
+only where completion/model effects bear on lifetime or writer exclusion.
+Do not import parent/Lua/model counts as a complete ownership contract.
 Use the audit's acquisition matrix: require writer, invalidation, lifetime,
 coherence and ABA evidence before sampler design. Retain SOURCE GAP while
 incomplete; client mutation helpers are not observe-only acquisition.
