@@ -6,6 +6,7 @@
 #include "AutoAttackController.h"
 #include "CombatLivenessPolicy.h"
 #include "CombatBootstrapVerificationPolicy.h"
+#include "CombatOwnershipDeadlinePolicy.h"
 #include "CombatTerminalPolicy.h"
 #include "CombatDefensiveContainmentPolicy.h"
 #include "ChaseController.h"
@@ -351,7 +352,9 @@ namespace Bot
         bool lastInitGateOffenseAllowed_=false;
         std::string lastActionProbeReason_;
         std::string lastBootstrapProbeReason_;
+        std::string lastAttackReadback_;
         CombatBootstrapVerificationPolicy bootstrapVerification_;
+        CombatOwnershipDeadlinePolicy ownershipDeadline_;
         std::uint32_t lastMeleeAttackPeriodMs_=0;
 
         static std::uint64_t ClientSelectedGuid(const Objects::WorldState& world)
@@ -379,7 +382,9 @@ namespace Bot
                 " targetNonAttackable="+(e.known ? ((e.targetFlags&0x82010182u) ? "yes" : "no") : "unknown")+
                 " evade=unknown range="+Float(target.distance)+" facing="+(s.facing ? "yes" : "no")+
                 " castOrGcdWait="+(!meleeActionEvidence_.known ? "unknown" : s.actionWait ? "yes" : "no")+
-                " actionProbe="+meleeActionEvidence_.reason+" classification=offensive_no_progress");
+                " actionProbe="+meleeActionEvidence_.reason+
+                " attackReadback="+meleeActionEvidence_.attackReason+
+                " classification="+CombatStallName(meleeDecision_.classification));
         }
 
         void BeginChaseTerminal(const Objects::WorldState& world,
@@ -722,6 +727,7 @@ namespace Bot
                 terminalSample.nowMs=nowMs; terminalSample.fresh=known;
                 terminalSample.selectionKnown=known;
                 terminalSample.inputSafe=attack.known && attack.inputSafe;
+                terminalSample.actionWait=attack.waiting;
                 terminalSample.actionKnown=attack.attack.valid && attack.attack.actionSlotFound;
                 terminalSample.attackActive=attack.attack.active;
                 ResolveMeleeTerminal(world,*target,terminalSample,tick);
@@ -734,7 +740,8 @@ namespace Bot
             sample.targetHp=known ? evidence.targetHp : 0;
             sample.evidenceKnown=known; sample.hostileEngaged=hostile;
             sample.reengageReady=known && evidence.selected==lockedGuid_ &&
-                attack.known && attack.attack.valid && attack.attack.active &&
+                attack.known && attack.inputSafe && !attack.waiting &&
+                attack.attack.valid && attack.attack.active &&
                 target->distance<=PostChargeImmediateMeleeDistance &&
                 CombatFacingPolicy::IsAbilityFacingReady(
                     FacingController::AngularDifference(world.player.rotation,
@@ -768,6 +775,7 @@ namespace Bot
                 { Fail("defensive_containment_stop_rejected",false); return; }
                 defensiveRoute_.reset();
                 meleeLiveness_.Pause(sample.nowMs);
+                ownershipDeadline_.Pause(sample.nowMs); // verified containment damage
                 meleeTerminalPending_=false;
                 Debug::Logger::Info("COMBAT DEFENSIVE CONTAINMENT state=reengage guid="+
                     Hex64(lockedGuid_)+" reason=verified_target_damage");
@@ -782,6 +790,7 @@ namespace Bot
                 if (defensiveRoute_) MovementController::HoldPosition(world.player);
                 defensiveRoute_.reset();
                 Fail(std::string("defensive_containment_exhausted:")+decision.reason,
+                    attack.known && attack.inputSafe && !attack.waiting &&
                     CombatAttackOwnershipPolicy::MayStopOwnAttack(
                         episodeAttackOwnershipEstablished_,
                         attack.attack.valid && attack.attack.actionSlotFound,
@@ -800,7 +809,7 @@ namespace Bot
                     defensiveRouteFailure_="escape_position_map_or_stop_unknown";
                     return;
                 }
-                if (!attack.known || !attack.attack.valid ||
+                if (!attack.known || !attack.inputSafe || attack.waiting || !attack.attack.valid ||
                     !attack.attack.actionSlotFound || attack.attack.active)
                 {
                     if (sample.nowMs-defensiveStopIssuedAtMs_ <
@@ -909,6 +918,7 @@ namespace Bot
                     FacingController::CalculateFacing(world.player,target)));
             s.actionKnown=meleeActionEvidence_.attack.valid && meleeActionEvidence_.attack.actionSlotFound;
             s.attackActive=meleeActionEvidence_.attack.active;
+            const bool ownershipExpired=ownershipDeadline_.Observe(s);
             meleeDecision_=meleeLiveness_.Observe(s);
             const auto bootstrapResult=bootstrapVerification_.Observe(s,meleeDecision_.damageObserved);
             if (bootstrapResult==CombatBootstrapResult::Confirmed)
@@ -932,6 +942,17 @@ namespace Bot
                     " attackActive="+(s.actionKnown ? (s.attackActive ? "yes" : "no") : "unknown")+
                     " targetHp="+std::to_string(s.targetHp)+
                     " result=failed reason=bounded_offensive_observation_no_proof"
+                    " decision=bounded_terminal_handoff inputGuards=unchanged");
+                LogCombatExecution(target,s,CombatClientEvidence5875::Execution(world,target));
+            }
+            if (ownershipExpired)
+            {
+                meleeDecision_.action=CombatRecoveryAction::Fail;
+                Debug::Logger::Info("COMBAT OWNERSHIP deadline=expired guid="+Hex64(target.guid)+
+                    " maximumNoProgressMs="+std::to_string(CombatOwnershipDeadlinePolicy::MaximumNoProgressMs)+
+                    " targetFresh="+(s.fresh ? "yes" : "no")+
+                    " actionProbe="+meleeActionEvidence_.reason+
+                    " attackReadback="+meleeActionEvidence_.attackReason+
                     " decision=bounded_terminal_handoff inputGuards=unchanged");
                 LogCombatExecution(target,s,CombatClientEvidence5875::Execution(world,target));
             }
@@ -969,7 +990,7 @@ namespace Bot
                     " result=confirmed evidence="+
                     (meleeDecision_.verified==CombatRecoveryAction::RefreshAttack ? "target_health_decreased" : "post_command_state"));
             if (meleeTerminalPending_ && !meleeTerminal_.Issued() &&
-                meleeDecision_.damageObserved)
+                meleeDecision_.damageObserved && !ownershipExpired)
             {
                 meleeTerminalPending_=false; meleeTerminal_.Reset(); lastMeleeTerminalReason_=nullptr;
                 Debug::Logger::Info("COMBAT TERMINAL TARGET result=cancelled reason=verified_target_damage");
@@ -979,7 +1000,8 @@ namespace Bot
                 if (!meleeTerminalPending_)
                 {
                     terminalCause_=bootstrapResult==CombatBootstrapResult::Failed
-                        ? "initial_attack_unverified" : "optional_offensive_recovery_exhausted";
+                        ? "initial_attack_unverified" : ownershipExpired
+                            ? "combat_ownership_no_progress" : "optional_offensive_recovery_exhausted";
                     chaseTerminalPending_=false;
                     Debug::Logger::Info("COMBAT HARD STALL targetGuid="+Hex64(lockedGuid_)+
                         " durationMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
@@ -2166,6 +2188,7 @@ namespace Bot
             meleeActionEvidence_={};
             lastMeleeClassification_=CombatStallClass::UnknownOrStale;
             bootstrapVerification_.Reset();
+            ownershipDeadline_.Reset();
             lastMeleeAttackPeriodMs_=0;
             lockedGuid_ =
                 0;
@@ -4703,7 +4726,7 @@ namespace Bot
                         lockedGuid_
                     );
 
-            if (target == nullptr)
+            if (target == nullptr || !target->valid)
             {
                 Debug::Logger::Info("COMBAT TARGET TERMINAL guid="+Hex64(lockedGuid_)+
                     " reason=target_unloaded outcome=not_killed");
@@ -4751,10 +4774,16 @@ namespace Bot
             AutoAttackController::CombatActionEvidence alternateInput{};
             if (!meleeActionEvidence_.known && lastMeleeTargetFresh_)
                 alternateInput=AutoAttackController::ProbeCombatBootstrapInput();
-            if (lockedGuid_!=lastInitGateGuid_ ||
+            const std::string attackReadback=meleeActionEvidence_.attackReason+":"+
+                (meleeActionEvidence_.attack.valid && meleeActionEvidence_.attack.actionSlotFound
+                    ? (meleeActionEvidence_.attack.active ? "active" : "inactive") : "unknown");
+            if (lockedGuid_!=lastInitGateGuid_ || attackReadback!=lastAttackReadback_ ||
                 meleeActionEvidence_.reason!=lastActionProbeReason_ ||
                 alternateInput.reason!=lastBootstrapProbeReason_)
             {
+                lastAttackReadback_=attackReadback;
+                Debug::Logger::Info("COMBAT ATTACK READBACK guid="+Hex64(lockedGuid_)+
+                    " evidence="+attackReadback+" inputPermission=independent swing=unknown");
                 lastActionProbeReason_=meleeActionEvidence_.reason;
                 lastBootstrapProbeReason_=alternateInput.reason;
                 Debug::Logger::Info("COMBAT INPUT PROBE mode=action result="+
@@ -5298,6 +5327,7 @@ namespace Bot
                 defensiveRouteFailure_="living_water_blocked";
             }
             meleeLiveness_.Pause(GetTickCount64());
+            ownershipDeadline_.Pause(GetTickCount64());
             loot_.Reset();
             recovery_.Reset();
         }

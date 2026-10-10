@@ -99,5 +99,31 @@ bad.GetScript=function() return function() end end
 check('blocked_keyboard_handler','probe')
 reset(); local loop={IsVisible=function() return false end,GetObjectType=function() return 'Frame' end}
 EnumerateFrames=function() return loop end
-check('unknown_frame_iteration_limit','probe')
+check('unknown_frame_cycle','probe')
+-- Full traversal remains bounded and checks every frame through the bound.
+local frames={}
+for i=1,16385 do frames[i]={IsVisible=function() return false end,GetObjectType=function() return 'Frame' end} end
+local index={}
+for i,f in ipairs(frames) do index[f]=i end
+EnumerateFrames=function(prev) return frames[prev and index[prev]+1 or 1] end
+for _,mode in ipairs({'probe','start','refresh','abandon','selection_probe'}) do
+ check('unknown_frame_iteration_limit',mode); assert(uses==0 and clears==0)
+end
+frames[16385]=nil; check('12|0','probe')
+frames[16384].IsVisible=function() return true end
+frames[16384].GetObjectType=function() return 'EditBox' end
+check('blocked_editbox','start'); assert(uses==0)
+frames[16384].IsVisible=function() return false end
+frames[5001]=nil; check('12|0','probe') -- old 4096-limit failure, complete now
+frames[5000].IsVisible=function() return true end
+frames[5000].IsKeyboardEnabled=function() return true end
+frames[5000].GetScript=function() return function() end end
+for _,mode in ipairs({'probe','start','refresh','abandon','selection_probe'}) do
+ check('blocked_keyboard_handler',mode); assert(uses==0 and clears==0)
+end
+-- A cycle or limit never permits repair/release or a selection clear.
+for _,mode in ipairs({'start','refresh','abandon','selection_probe'}) do
+ EnumerateFrames=function() return loop end
+ check('unknown_frame_cycle',mode); assert(uses==0 and clears==0)
+end
 print('Combat action evidence Lua: passed')

@@ -1,5 +1,64 @@
 # AI handoff
 
+## 2026-10-10 combat execution evidence and release-gate stability
+
+**READY TO LEAVE ACTIVE RELIABILITY WORK: YES.** Engineering release to offline
+P0.7 work, **not a new RUNTIME PASS**. This decision supersedes earlier
+READY FOR P0.7: NO recommendations below. One agent; continued clean `4e9a312`
+on `codex/vendor-afk-long-navigation`. P0.7/worktree untouched, no new WoW run.
+Full evidence, implementation, release matrix and one batched runtime acceptance
+plan: [COMBAT_RELEASE_GATE_2026-10-10.md](docs/COMBAT_RELEASE_GATE_2026-10-10.md).
+
+**RUNTIME OBSERVED:** rechecked the endurance raw SHA256 and relevant frame-limit,
+bootstrap expiry/global-deferral, living-defense and repeat-latch lines. Exact
+loaded-DLL binding for that old run remains UNKNOWN; no old observation is a
+qualification of this batch. Stun causality and actual swings remain UNKNOWN.
+
+**SOURCE VERIFIED / implemented:** full combat UI scan now permits 16,384 frames,
+checks every visited frame, rejects cycles, and still requires natural completion.
+Independent read-only Attack readback survives blocked/unknown input eligibility;
+strict parsing/errors/missing slots stay unknown. Readback never grants input
+permission. Containment consumers explicitly retain safe/non-wait guards.
+All active locked combat now has a 40-second no-damage ownership deadline before
+initiation gates, including living defense and stale pre-melee states. Only fresh
+selected same-object target HP decrease renews ordinary progress; chase/facing/
+latch/stale/object churn cannot. Existing bootstrap bound, three repairs,
+containment/release owners and water pause remain. Telemetry distinguishes input,
+latch and terminal deadline; invalid snapshots are non-kills.
+
+**INFERRED:** larger complete UI trees could explain the old 4096-frame limit.
+The matching client binary proves iterator advance/termination, not this live
+frame count. Runtime may still encounter a cycle/limit or another input blocker.
+Those outcomes remain bounded and must not be treated as safe input.
+
+Living defense -> egress -> health/quiet proofs -> completion -> next-snapshot
+Grind release is SOURCE VERIFIED, with strengthened regression coverage. Combat
+failure still blocks living release; the 90-second active living budget, passive
+manual interlock, corpse bounds and repeat-death geometry/history remain intact.
+No known critical ownership deadlock remains in the reviewed chain. Safe Ghost
+staging/first unsafe reclaim stays SOURCE GAP; vendor/water/AFK/reconnect/unload
+qualification remains separately pending and does not block offline P0.7.
+
+A single batched, fixed-DLL-bound supervised natural run is still necessary to
+claim changed combat recovery and successful living release at runtime. It is
+not required before catalogue/provenance development. Do not demand repeated
+runs for each helper or continue reliability polishing without new evidence.
+
+Validation PASS: **115 C++ tests, 42 audit Python + 13 QuestDB Python tests,
+SQL fixtures and 12 Lua suites**, full DLL build and diff check via
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`.
+Report `/tmp/wow-validation-yq29id0c/results.json`; console
+`/tmp/combat-release-validation.log`. Separate `cmake --build build` PASS
+(up to date). Built DLL SHA256:
+`0479619da9d898c695334eb7b8315359f124ab9897a413d209718d76c937b336`.
+This identifies the on-disk artifact, not a loaded runtime module.
+AGENTS.md now preserves the user's major-milestone/test/Git workflow.
+
+Next major task: switch to existing P0.7 worktree/branch; finish the offline
+leveling-profile catalogue, verify Orc starting-zone quest/profile provenance,
+consolidate P0.7 foundation, then P1 Shared Questing + Grinding Core. No automatic
+merge. Only milestone source/tests/docs are eligible for this checkpoint.
+
 ## 2026-10-10 supervised Grind endurance incident and release gate
 
 **READY FOR P0.7: NO.** Single coordinator, no subagents; continued clean

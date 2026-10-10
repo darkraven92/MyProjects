@@ -96,9 +96,9 @@ Do not bypass existing navigation ownership without a documented reason.
 
 ## Git
 
-Current development branch:
+Reliability checkpoint branch (verify the actual branch before work):
 
-codex/wow-internal-continuation
+codex/vendor-afk-long-navigation
 
 Before editing:
 - inspect git status
@@ -121,7 +121,31 @@ After source changes:
 - run relevant tests
 - run the full project build
 
-Do not commit automatically unless explicitly requested.
+Use GitHub for major feature/reliability/roadmap checkpoints, significant
+architecture changes, before switching branches/worktrees or a risky large
+refactor, or when explicitly requested. Do not push after each small task.
+
+The user authorizes one coherent checkpoint commit and push of the current
+branch at a completed major milestone, after full validation, a separate full
+project build, and an AI_HANDOFF.md update. Verify local HEAD, the tracking ref
+and the remote SHA after pushing. Local safety commits are allowed when useful;
+avoid excessive tiny commits. Do not merge automatically.
+
+## Milestone workflow
+
+Work as one agent; do not spawn subagents unless the user changes this instruction.
+Complete a substantial roadmap-relevant subsystem milestone before returning,
+rather than stopping after a small research finding or helper fix. Prefer
+targeted changes within the existing architecture over broad rewrites.
+
+Use targeted component tests during development and broader tests for changes
+across subsystems. Run the full validation suite and separate full build before
+the major checkpoint, not after every small edit.
+
+If evidence cannot defensibly close a real blocker, document it and continue
+with independent productive work. Do not keep polishing bounded reliability
+issues or repeating speculative reverse-engineering loops. AI_HANDOFF.md holds
+the current release decision and next major roadmap task.
 
 ## Runtime debugging
 
@@ -136,3 +160,7 @@ When diagnosing a bug:
 7. Specify what runtime evidence would prove or disprove the fix.
 
 Do not guess about causes when logs/source can answer the question.
+
+Batch related behavioral changes before requesting meaningful runtime
+qualification. Keep RUNTIME OBSERVED, SOURCE VERIFIED, INFERRED and UNKNOWN
+explicit; source/build tests never supply runtime proof.

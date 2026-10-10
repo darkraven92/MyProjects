@@ -114,6 +114,20 @@ int main()
     const auto end=monitor.find("continue; // even completion",begin);
     assert(begin!=std::string::npos && end!=std::string::npos);
     const auto held=monitor.substr(begin,end-begin);
+    const auto released=held.find("if (released)");
+    assert(released!=std::string::npos);
+    const auto combatResume=held.find("combat.ResumeAfterLivingRecovery(tick);",released);
+    const auto grindResume=held.find("grindMode.ResumeAfterDeathRecovery(world,combat,tick);",released);
+    const auto livingReset=held.find("livingDeathRecovery.Reset();",released);
+    assert(combatResume<grindResume && grindResume<livingReset && livingReset!=std::string::npos);
+    const auto combat=Read("src/Bot/CombatController.h");
+    const auto resume= combat.find("void ResumeAfterLivingRecovery");
+    const auto resumeEnd=combat.find("bool ForceAutonomyCombatRecovery",resume);
+    const auto resumeBody=combat.substr(resume,resumeEnd-resume);
+    assert(resumeBody.find("nextAcquireTick_=tick+1;")!=std::string::npos);
+    assert(resumeBody.find("SetState(CombatState::AcquiringTarget);")!=std::string::npos);
+    const auto defense=combat.find("void UpdateLivingDefense");
+    assert(combat.find("if (disengaged && LivingDefenseActive())",defense)!=std::string::npos);
     assert(held.find("livingAfkSafety.recovery=true")!=std::string::npos);
     for (const auto forbidden:{"grindMode.Update(","combat.Update(","questPlannerRuntime.Update("})
         assert(held.find(forbidden)==std::string::npos);

@@ -1,11 +1,18 @@
 # DeathRecovery current reliability model
 
-This is the normative current model after the 2026-10-10 endurance incident,
-continued from `4019517a40793654e3bef7335b6d1387afbb684d`. The chronological
+**Current release decision (2026-10-10): READY TO LEAVE ACTIVE RELIABILITY WORK: YES.**
+The [combat release gate](COMBAT_RELEASE_GATE_2026-10-10.md) supersedes the
+incident-era NO/next-milestone recommendations below. Source-bounded combat
+ownership and independent Attack readback now permit progression to offline
+P0.7; changed live combat and living release remain RUNTIME PENDING. The death,
+living, water and repeat contracts described below remain in force.
+
+This records the retained DeathRecovery model after the 2026-10-10 endurance
+incident and combat release milestone. The chronological
 [DeathRecovery audit](DEATH_RECOVERY_AUDIT.md) retains evidence and historical
 verdicts; its earlier proposals describe their source checkpoints. The complete
 [endurance audit](GRIND_ENDURANCE_INCIDENT_2026-10-10.md) records runtime observations
-and exact binding limits. **READY FOR P0.7: NO.** No P0.7 work.
+and exact binding limits. P0.7 work is now the next task; it is not changed here.
 
 The endurance run exercised two automatic reclaims/living defense handoffs,
 three deaths and one matching repeat-death terminal, but no living egress or
@@ -15,6 +22,10 @@ No formal runtime PASS is added. Combat's failed bootstrap now transfers to the
 existing bounded terminal/containment owner instead of merely logging expiry
 and remaining in Fighting. This preserves all defensive/input permissions; an
 unknown input probe may still cause terminal failure, not successful escape.
+Independent Attack readback now survives unknown input; all active locked combat
+also has a 40-second no-damage deadline before initiation gates. The bounded UI
+scan rejects cycles and permits up to 16,384 fully checked frames. See the release
+gate for the unchanged input permissions and remaining frame-cause uncertainty.
 Stun causality and successful live combat recovery remain unproved. Redeath
 cleanup has its own death-handoff telemetry; it is not water preemption.
 
@@ -218,18 +229,14 @@ Validation results are recorded in the handoff and audit for this checkpoint.
 
 ## Exact next major project milestone
 
-**Combat execution evidence and bound endurance release qualification.** Close
-the persistent full-action frame-limit obstacle without weakening input guards,
-correlate natural loss-of-control/Attack activation and validate the corrected
-bounded handoff or successful recovery. Use at least 20 minutes of normal
-supervised Grind on one fixed, demonstrably loaded source/DLL with full raw/
-lifecycle capture and pre/post hashes/mapping (label attestation as such).
-Exercise natural living defense → NavMesh egress → health recovery → controlled
-Grind release, keeping repeat terminal/no restart and water/vendor/AFK verdicts
-separate. Do not provoke death or call absent threats safe to fill a row.
+**P0.7 offline leveling-profile foundation.** Switch to the existing P0.7
+worktree/branch, complete the offline catalogue, validate Orc starting-zone
+quest/profile provenance, and consolidate the foundation before P1 Shared
+Questing + Grinding Core. Active reliability implementation stops at the
+[source-bounded release decision](COMBAT_RELEASE_GATE_2026-10-10.md).
 
-The endurance failure transition and misleading death/water label are corrected;
-the remaining combat input and qualification gaps require a coherent milestone,
-not another speculative DeathRecovery helper. Runtime paths must either be observed
-and qualified or remain explicitly pending. Safe Ghost staging, reconnect and
-completed DLL unload cannot be awarded PASS from ordinary living gameplay.
+One fixed-DLL-bound supervised natural runtime campaign remains necessary to
+qualify changed combat recovery and successful living egress/release, but is not
+a prerequisite for offline profile work. Keep absent paths and vendor/water/AFK
+verdicts separate; preserve the source gap for safe Ghost staging. Reopen active
+reliability only for concrete critical new evidence, not indefinite polishing.

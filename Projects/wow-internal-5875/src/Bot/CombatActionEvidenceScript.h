@@ -27,9 +27,14 @@ local function run()
   if f and f:IsVisible() then return 'blocked_modal_frame' end
  end
  if mode~='bootstrap' then
+  local seen={}
   local f=EnumerateFrames()
-  for i=1,4096 do
+  -- Large UI trees still require a complete scan, including late blockers.
+  -- More observation work is allowed; truncation never means input is safe.
+  for i=1,16384 do
    if not f then break end
+   if seen[f] then return 'unknown_frame_cycle' end
+   seen[f]=true
    if not f.IsVisible then return 'unknown_frame_visibility_api' end
    if not f.GetObjectType then return 'unknown_frame_object_type' end
    if f:IsVisible() then
@@ -39,7 +44,7 @@ local function run()
     if f:IsKeyboardEnabled() and (f:GetScript('OnKeyDown') or f:GetScript('OnKeyUp')) then return 'blocked_keyboard_handler' end
    end
    f=EnumerateFrames(f)
-   if i==4096 and f then return 'unknown_frame_iteration_limit' end
+   if i==16384 and f then return 'unknown_frame_iteration_limit' end
   end
  end
  if SpellIsTargeting() then return 'blocked_spell_targeting' end

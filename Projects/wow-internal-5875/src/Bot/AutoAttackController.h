@@ -3,6 +3,7 @@
 #include "GameThreadDispatcher.h"
 #include "CombatClientEvidence5875.h"
 #include "CombatActionEvidenceScript.h"
+#include "CombatAttackReadback.h"
 #include "LivingAttackEvidenceScript.h"
 #include "CombatBootstrapInputScript.h"
 #include "CombatInputProbePolicy.h"
@@ -544,36 +545,34 @@ namespace Bot
             );
         }
 
-        struct AttackStatus
-        {
-            bool valid = false;
-            bool actionSlotFound = false;
-            bool active = false;
-            int actionSlot = 0;
-        };
+        using AttackStatus = CombatAttackStatus;
 
         struct CombatActionEvidence
         {
             bool known=false, inputSafe=false, waiting=false;
             AttackStatus attack{};
             std::string reason="readback_failed";
+            std::string attackReason="not_read";
         };
         static CombatActionEvidence ProbeCombatAction()
         {
             CombatActionEvidence e{};
             std::string result;
-            if (!ExecuteLuaReadback(CombatActionEvidenceScript,"wow-internal/CombatEvidence.lua",result))
-            { e.reason=result; return e; }
+            const bool read=ExecuteLuaReadback(CombatActionEvidenceScript,
+                "wow-internal/CombatEvidence.lua",result);
             e.reason=result;
-            const auto state=CombatInputProbePolicy::Classify(result);
-            if (state==CombatInputProbeState::Blocked) { e.known=true; return e; }
-            if (state==CombatInputProbeState::Wait)
-            { e.known=true; e.inputSafe=true; e.waiting=true; return e; }
-            int slot=0, active=-1;
-            if (std::sscanf(result.c_str(),"%d|%d",&slot,&active)!=2 || slot<0 || slot>120 || active < -1 || active>1)
-                return e;
-            e.known=true; e.inputSafe=true;
-            e.attack={true,slot>0,active==1,slot};
+            if (read)
+            {
+                const auto state=CombatInputProbePolicy::Classify(result);
+                e.known=state==CombatInputProbeState::Blocked || state==CombatInputProbeState::Wait;
+                e.inputSafe=e.waiting=state==CombatInputProbeState::Wait;
+                if (ParseCombatAttackReadback(result,e.attack))
+                { e.known=true; e.inputSafe=true; }
+            }
+            // Independent read-only latch evidence survives modal/cast/frame
+            // failures. Never promote it into input permission or a swing proof.
+            if (e.attack.valid) e.attackReason="full_action_probe";
+            else Probe(e.attack,&e.attackReason);
             return e;
         }
         static CombatActionEvidence ProbeSelectionReleaseInput()
@@ -699,44 +698,16 @@ namespace Bot
             return true;
         }
 
-        static bool Probe(AttackStatus& status)
+        static bool Probe(AttackStatus& status, std::string* reason=nullptr)
         {
-            status = AttackStatus{};
-
-            static constexpr char ProbeScript[] =
-                "local a=0; "
-                "for i=1,120 do "
-                "if IsAttackAction(i) then a=i; break; end; "
-                "end; "
-                "local c=-1; "
-                "if a>0 then if IsCurrentAction(a) then c=1 else c=0 end end; "
-                "WOW_INTERNAL_AUTOATTACK_RESULT=a..'|'..c";
-
+            status={};
             std::string result;
-            if (!ExecuteLuaReadback(
-                    ProbeScript,
-                    "wow-internal/AutoAttackProbe.lua",
-                    result))
-            {
-                return false;
-            }
-
-            int slot = 0;
-            int current = -1;
-            if (std::sscanf(
-                    result.c_str(),
-                    "%d|%d",
-                    &slot,
-                    &current) != 2)
-            {
-                return false;
-            }
-
-            status.valid = true;
-            status.actionSlot = slot;
-            status.actionSlotFound = slot > 0;
-            status.active = slot > 0 && current == 1;
-            return true;
+            const bool read=ExecuteLuaReadback(CombatAttackReadbackScript,
+                "wow-internal/AutoAttackProbe.lua",result);
+            const bool parsed=read && ParseCombatAttackReadback(result,status);
+            if (reason) *reason=parsed
+                ? (status.actionSlotFound ? "readonly_action_slot" : "no_attack_slot") : result;
+            return parsed;
         }
 
         static bool Restart()

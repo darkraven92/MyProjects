@@ -1,5 +1,10 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+Current milestone and release decision: [combat execution evidence and release
+gate, 2026-10-10](COMBAT_RELEASE_GATE_2026-10-10.md). Active reliability work can
+stop for offline P0.7 progression; this adds no runtime PASS. Earlier sections
+retain their historical checkpoint scope.
+
 ## Endurance incident: unconfirmed bootstrap had no failure owner (2026-10-10)
 
 **Verified failure transition FIXED / TEST PASS / BUILD PASS; live combat recovery
