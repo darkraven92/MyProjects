@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `0c4621dc6639389fa34bbe80bda521ee13533821`
-— `docs: trace p07 listener assets and resource callback effects`.
+Starting checkpoint: `090344528c3c6f46e0f51ea7a02b44d991f1b4b9`
+— `docs: trace p07 visibility callbacks and FrameXML loading`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,22 +12,21 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: visibility callbacks and FrameXML
-selection boundaries. Three parallel read-only agents traced stock UI assets,
-native visibility dispatch and file loading. Coordinator reconciled results,
-checked key chains, re-extracted six members and traced ReloadUI request handling.
-No production code, tests, observer contract, hooks, controller ownership or
-navigation changed.
+P0.7.4 source research continuation, 2026-10-10: tooltip listener removal, model
+delivery and archive priority. Three parallel read-only agents traced those
+paths; coordinator reconciled findings, checked key binary chains and four asset
+hashes, and narrowed the button OnHide override. No production code, tests,
+observer contract, hooks, controller ownership or navigation changed.
 
-Distinguished immediate pet-widget updates from deferred parent-bar animation;
-connected conditional native visibility/OnLeave script dispatch and narrowed
-FrameXML signature, file flags and archive-open ordering. These facts do not
-establish actual loaded scripts, complete callback effects or retained lifetime.
-**SOURCE GAP remains; profile location population stays BLOCKED.**
+Conditional tooltip Hide reaches field-listener removal and clearing scripts
+before the base visibility gate. Model callback event codes separate a suppressed
+setter callback from update-driven completion. Archive insertion/lookup now has
+a conditional priority rule. None establishes loaded scripts or outer retained
+lifetime. **SOURCE GAP remains; profile location population stays BLOCKED.**
 
 Detailed anchors, asset hashes, reproduction ranges and limits are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — visibility callbacks and FrameXML selection boundaries.” Earlier
+“P0.7.4 — tooltip listener removal, model delivery and archive priority.” Earlier
 sections retain executable/archive provenance and saved runtime capture evidence.
 
 ## Evidence
@@ -37,32 +36,30 @@ sections retain executable/archive provenance and saved runtime capture evidence
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
   12 strings. All four qualification flags remain false. Additional manual paths
   and archive findings are outside that manifest; coverage is not exhaustive.
-- Inspected pet-button/base/model XML has no OnShow/OnHide declarations; the
-  parent bar has both, invoking global layout helpers. HidePetActionBar only
-  changes animation fields; the separately bound OnUpdate performs bar Hide.
-  This does not establish immediate parent OnHide in the farsight handler.
-- Global layout can Show/Hide chat frames and reposition bags through mutable
-  globals/tables. Cooldown helpers invoke model methods and Show/Hide. Six asset
-  members were re-extracted with matching pinned lengths/hashes; availability
-  does not establish actual client selection or absence of overrides.
-- Native frame Show/Hide has conditional synchronous script dispatch. Visibility
-  state changes precede child traversal and parent scripts; traversal accesses
-  node links after child virtuals return. Script bookkeeping is not a proved
-  outer world-object or listener-retention mechanism.
-- A conditional Hide→OnLeave path is resolved through owner/state checks and a
-  button override. The declared pet OnLeave hides GameTooltip. Actual live class,
-  hover state and callbacks remain UNKNOWN; derived callbacks remain open.
-  Texture/region Show/Hide paths differ from frame script dispatch.
-- ReloadUI is a separate candidate, not found in the stock farsight handler.
-  Its wrapper gates and sets a byte; an event-5 consumer later performs cleanup/
-  reload calls. This narrows one request route without excluding nested pumping.
-- FrameXML initialization checks signature/content, marks context cleanup on
-  failure, then still falls through into loading; it is not an immediate return.
-  This task did not execute the client verifier or establish signature acceptance.
-- Startup flag initialization disables one later loose-file probe. Earlier
-  index/mode paths and other callers remain open. Archive discovery/sorting/open
-  sequence and numeric arguments are traced; final priority/member selection
-  and actual successful opens remain UNKNOWN.
+- Tooltip Hide clears before base visibility checks. Conditional GUID/context
+  state reaches category-3/offset-0x40 listener removal, callback 0x529560;
+  this differs from the outer farsight callback 0x5DE0D0. The existing active/
+  pending removal protocol applies; bulk cleanup or nested notification is not
+  established by this route.
+- OnTooltipCleared can run before base Hide. Pinned assets hide a money frame;
+  its OnHide conditionally hides CoinPickupFrame. Tooltip OnHide also hides
+  shopping tooltips. Four extracted member lengths/hashes independently matched;
+  actual loaded bytes, overrides and complete child/layout effects remain open.
+- Button OnHide virtual+0x9C narrows to region/state changes and helpers; the
+  separate OnLeave callback through +0x31C still has an unresolved target.
+- Sequence setters can queue an operation; one inspected direct callback carries
+  event 1, rejected by the installed OnAnimFinished adapter. An update/drain can
+  deliver event 0 to that script. The inspected native AdvanceTime helper returns
+  without advancing. OnUpdateModel has a separate registered callback path and
+  reads widget/model fields after script return. Nested farsight execution is
+  not established.
+- Model references surround specific callbacks/queue entries, and archive open
+  increments an archive count. These operations do not prove UI-widget user
+  pointer or outer world-object/descriptor/listener retention.
+- Archive insertion orders descending signed priority, newest before equals;
+  lookup searches eligible archives in that order with per-archive selector
+  matching/fallback and special stop conditions. Actual opens, selectors, views,
+  earlier index/mode paths and loaded FrameXML remain UNKNOWN.
 - Earlier inline descriptors, shared listener nodes, bulk cleanup, resource
   continuation ordering and shared-TLS worker limits remain. Profile location/
   generation stay absent, area unsupported, XYZ without a qualified map association.
@@ -84,17 +81,20 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Conditional native callbacks widen the effect-coverage obligation; deferred bar
-animation and ReloadUI request handling narrow specific routes. Neither local
-assets nor loader order establish all live callbacks or absence of destructive
-reentry. No torn sample, unsafe runtime overlap or gameplay failure was observed.
+Tooltip hiding expands the concrete listener-mutation path, while event-code
+checks narrow a specific model callback route. Resource-specific counting does
+not discharge outer lifetime obligations. No runtime fault, unsafe overlap,
+bulk cleanup or nested field notification was observed or proved here.
 
 ### UNKNOWN / SOURCE GAP
 
-- Selected archive/loose member bytes, actual scripts/addon overrides and complete
-  reachable visibility/hover/model/layout callbacks; nested event pumping.
-- UI traversal mutation safety and outer object/descriptor/listener retention;
-  resource-owner/descendant completion, remaining object/GUI virtuals and TLS effects.
+- Loaded scripts/overrides, actual widget/hover/visibility state; remaining money/
+  coin/button/child/layout callbacks and nested event pumping.
+- Model queued-operation replay, callback-driven queue mutation and widget user
+  pointer retention; outer object/descriptor/listener lifetime; resource-owner/
+  descendant completion, remaining object/GUI virtuals and TLS effects.
+- Actual archive opens/selectors/views/mutations and open callback registration/
+  effects, earlier file paths and signature acceptance.
 - Actual writer threads, complete writer/counter and initialization/invalidation
   coverage, coherent sampling, same-map/character/address ABA, player-bound
   zone/area freshness.
@@ -106,20 +106,21 @@ reentry. No torn sample, unsafe runtime overlap or gameplay failure was observed
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — stock/native visibility paths,
-  FrameXML selection boundaries, ReloadUI route, provenance and proof limits.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — tooltip/button effects, model
+  callback delivery/retention, archive priority/selection, provenance and limits.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
 
-- SOURCE: exact-client offline audit PASS; six asset member hashes independently
+- SOURCE: exact-client offline audit PASS; four asset member hashes independently
   matched. No automated-manifest expansion or qualification upgrade.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
   111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
   10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-69w5d0v3/results.json`.
+  Report: `/tmp/wow-validation-ylzhgbvd/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
-- REVIEW: three read-only reviews reconciled; no actionable corrections.
+- REVIEW: three read-only reviews reconciled; archive-count wording narrowed
+  to the verified increment, without claiming closed destruction semantics.
   Full diff/status review and `git diff --check` PASS; exactly the two intended
   documents changed, with no unrelated changes.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
@@ -134,15 +135,15 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Follow the conditional pet-button OnLeave→GameTooltip:Hide route through the
-actual tooltip class/OnHide and remaining button callbacks. Trace cooldown
-SetSequence/model callback delivery where reachable from the stock update.
-Determine whether these paths reach bulk cleanup or nested field notification;
-distinguish UI-node mutation from retained outer world references. Complete
-lower-level archive insertion/member selection as needed for loaded-script
-provenance; do not assume open order is priority. Close writer, invalidation,
-lifetime/coherence/ABA obligations before sampler design; retain SOURCE GAP
-while incomplete. Client mutation helpers are not observe-only acquisition.
+Prioritize the newly grounded tooltip listener-removal route: trace money/coin
+Hide scripts and remaining tooltip child/layout virtuals for bulk cleanup or
+nested field notification while outer references remain live. Resolve the
+button+0x31C callback if reachable. Bound model queued-operation replay and
+widget callback-context ownership before treating model counts as protection.
+Use the conditional archive rule only when actual selection inputs are known;
+retain loaded-script UNKNOWN otherwise. Close writer, invalidation, lifetime,
+coherence and ABA obligations before sampler design; retain SOURCE GAP while
+incomplete. Client mutation helpers are not observe-only acquisition.
 
 Separately obtain manual module-absence/post-stop responsiveness evidence for
 unload acceptance. Future qualified location consumption also needs independent

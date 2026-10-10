@@ -1703,6 +1703,125 @@ actionable corrections. Full diff/status review and `git diff --check` PASS;
 exactly the two intended documents changed, with no unrelated changes.
 Runtime NOT RUN; no qualification upgrade.
 
+### P0.7.4 — tooltip listener removal, model delivery and archive priority
+
+Continued on 2026-10-10 from `090344528c3c6f46e0f51ea7a02b44d991f1b4b9`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced tooltip effects, cooldown model delivery and archive
+selection. Coordinator reconciled the results, independently checked key binary
+chains and four extracted members, and narrowed the button OnHide override.
+Only this audit and the handoff change; no production or runtime actions.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+A conditional tooltip route reaches field-listener removal, not demonstrated
+bulk cleanup or nested field notification. Model references bracket specific
+operations; archive open increments an archive count. Neither establishes
+retention of the outer world object, descriptor, listener or UI callback context.
+
+#### SOURCE VERIFIED — tooltip clearing and button effects
+
+All member paths are under `Interface\FrameXML\` in the previously pinned
+patch.MPQ. Coordinator re-extraction matched these lengths and SHA256 values;
+local availability remains distinct from actual client selection.
+
+| Member | Bytes | SHA256 |
+|---|---:|---|
+| GameTooltip.xml | 2388 | `8e1f985894bb4803dd3d26151ef0689268bcb039a15b363fa7596d039d9cee52` |
+| GameTooltip.lua | 3629 | `56c418192b32b0b4553504e7bf0ff9c90a39f4ff67a152ea6691c06ceb66a3ad` |
+| GameTooltipTemplate.xml | 41633 | `46f3f595a21a1112c10364e5c3f0486ef303de37c8cadd6b5b2b694d2941ccc5` |
+| MoneyFrame.xml | 8073 | `f346ff154e3dbbfa70f702f9e308a7e3d1c51c2206932e25d88018fdc7990007` |
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Tooltip class and ordering | Registration `0x495953–95D` associates GameTooltip (`0x842F08`) with factory `0x495C60`; `0x495C7D → 0x529240` installs table `0x808F60` at `0x5292F4`. Its +0x84 binds Hide `0x530A60`, +0x34 remains OnHide `0x76B290`. Hide first calls `0x52FFE0(0,0,0,0)` at `0x530A6B`, then tailcalls base `0x76AD50` at `0x530A73`. Clearing `0x52FFE6 → 0x530050` therefore precedes the base visibility gate, including for an already-hidden tooltip. This is conditional class resolution, not live installation evidence. |
+| Field-listener removal | Nonzero GUID at tooltip+0x368/+0x36C and nonnull +0x348 allow `0x53008E → 0x467FB0`: category 3, byte offset 0x40, callback `0x529560`, context +0x348. Matching registration `0x52A08D–A8 → 0x467E70` has length 4. Removal follows the earlier active/pending protocol at `0x468023–57`; this callback differs from outer farsight callback `0x5DE0D0`. It is not proof of removing the outer active listener, bulk manager cleanup, or nested notification. The following `0x530093–A1` clears the child's requested visibility and invokes its virtual+0x84. |
+| Clearing script and remaining virtuals | Resolver `0x529604–621` maps OnTooltipCleared (`0x854794`) to +0x44C. Nonzero script dispatch `0x53024A–263 → 0x702690` occurs during clearing. Then `0x52FFF4` invokes virtual+0x28, here `0x76A690`, which conditionally traverses lists and calls further virtual+0x20/+0x28 at `0x76A6D0/0x76A702`. Other clear-helper calls/virtuals include `0x5301F0`, `0x771D80`, `0x767C70`, `0x77FC60`; transitive closure remains open. |
+| Declared Lua effects | FrameXML.toc:13 includes GameTooltip.xml; XML:4–6 loads Lua/template and declares inheritance. XML:17–21 OnHide calls GameTooltip_OnHide and hides ShoppingTooltip1/2. Lua:101–105 resets backdrop colors and `this.default`. Template:623–625 OnTooltipCleared calls GameTooltip_ClearMoney; Lua:94–99 conditionally hides the named MoneyFrame. Template:598 declares SmallMoneyFrameTemplate inheritance; MoneyFrame.xml:289–294 OnHide conditionally hides CoinPickupFrame then clears `hasPickup`. ShoppingTooltipTemplate:628–1217 has only root OnLoad at 1212–1216, but its native tooltip Hide still clears. Mutable globals, inheritance and overrides prevent a live callback-absence claim. |
+| Backdrop and button limits | Backdrop method pairs `0x8790C8/0x8790D8` bind `0x777D30/0x7780D0`; tails use frame+0x1AC and `0x77F410/0x77F440`, not fully closed. Button table `0x81C7F8` +0x9C binds `0x779790`, narrowing the prior OnHide override. It conditionally clears old region+0xC4, calls `0x77FC60`, replaces button+0x4C4, sets new region+0xC4 and calls `0x77FCB0`, then `0x779810` and stores state+0x328. Helper `0x779810` uses button+0x338 and calls `0x772100/0x770C60`; closure remains open. The separate OnLeave callback through button+0x31C at `0x779530` still has an unresolved target; setter `0x779760` accepts caller-supplied values for +0x31C/+0x320/+0x324. |
+
+#### SOURCE VERIFIED — cooldown callbacks and resource retention
+
+The preceding section's pinned Cooldown Lua/XML and executable hashes apply.
+No native method was invoked during this offline research.
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Method bindings | Pairs `0x878978/0x878980/0x8789B8` bind SetSequence/SetSequenceTime/AdvanceTime to `0x76DEC0/0x76DFC0/0x76ECA0`. Valid paths call `0x76CF50/0x76CF80/0x76CFB0` at `0x76DF6A/0x76E08C/0x76ED5A`. The last helper is exactly `mov eax,1; ret`; its Lua wrapper returns zero results. This inspected AdvanceTime route performs no advancement; overrides remain possible. |
+| Sequence setter's direct callback | First two helpers use widget+0x318, skip null model and call `0x7121A0`. For model+0x10==0, `0x7121DF–228` queues operation code 4 with arguments; replay remains open. A loaded-path conditional callback at `0x7122C1` passes event code 1, bracketed by model acquire/release `0x7122A5/0x7122C6`. The installed callback below rejects nonzero events, so this particular site does not dispatch OnAnimFinished. This is not exhaustive closure of the whole setter or its downstream helpers. |
+| Model ownership and script target | `0x76CD30` acquires incoming model via `0x710390` at `0x76CD40`, releases previous via `0x7103A0` at `0x76CD4F`, and stores widget+0x318. `0x76CD85/0x76CD8A` installs `0x76CDC0` through `0x711BB0`: model+0x70 callback, +0x78 widget user pointer, +0x7C zero. Acquire increments model DWORD+0; release decrements and destroys/frees on zero. Resolver `0x76CCB9–CC8` maps OnAnimFinished to widget+0x3D4. Callback `0x76CDC0` permits event 0 only and dispatches that script via `0x702690` at `0x76CDDE`. Model counting does not establish retained widget or outer world references. |
+| Completion update and queue | Constructor installs `0x81C608` at `0x76C98F`; +0x38 binds `0x76D7F0`. Update first calls base OnUpdate `0x76B2C0`, obtains model scene via `0x76CFC0`, then calls `0x7074B0` at `0x76D863`. Its `0x7074D8 → 0x719370` terminal checks `0x719497–4D9` can queue model+0x70 with event 0 via `0x7194FE → 0x70A280`. Record fields are +4 callback, +8 model, +0x14 event, +0x28 widget user pointer; `0x70A3E7` acquires the model. Type-0 dispatch calls callback at `0x7075AF`, then rereads record+8 and releases model at `0x7075BB`. OnAnimFinished can execute synchronously within this update/drain; nesting within the farsight handler is not established. Queue mutation and widget-context lifetime remain separate obligations. |
+| OnUpdateModel | Resolver `0x76CC99–CA8` maps script+0x3CC; table+0x98 binds `0x76D1A0`. With a model and argument 2, `0x76D160` registers `0x76D240` via `0x773110` at `0x76D18C`. Its virtual+0x98 call at `0x76D5EA` reaches `0x76D1A0 → 0x702690` at `0x76D1BC`. After the script, widget fields/model+0x318 are reread at `0x76D1D1–1EA` before `0x710650`. Registration is not proof of actual render scheduling, nested delivery or widget retention across scripts. |
+
+#### SOURCE VERIFIED — archive insertion and per-archive selection
+
+This narrows the preceding section's unresolved priority rule without proving
+actual successful opens, current selector values or loaded FrameXML bytes.
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Numeric priority and insertion | `0x655670` forwards its second argument at `0x655679/685`; `0x6559B2/BB` stores it into archive+0x148, then `0x655A27 → 0x655BF0` finalizes. Under lock `0xC54008`, insertion starts list head `0xC53FE0` at `0x656012`, compares existing+0x148 with new at `0x656025`, follows next+4 while existing is greater, and stops on signed `jle` at `0x65602B`. Writes `0x6560AA–BC` insert before that entry, with sentinel `0xC53FDC` fallback. This path orders descending signed priority, newest before existing equals. Related view creation stores +0x148 at `0x655B2F` and repeats ordering at `0x655B60–BB8`. |
+| Eligible archive order | `0x6549A0` snapshots selector word/byte `0x866520/0x866522` at `0x654A62/67`, locks `0xC54008`, starts `0xC53FE0` at `0x654AA4` and advances next+4 at `0x654CE7–CF5`. It restricts explicit archive arguments at `0x654AC0–AC6`, skips signed +0x298>0 at `0x654AD0–AD8`, can redirect backing through +0x174 and prefix member names through +0x178. Identity and backing/path may differ. |
+| Member selection and stop conditions | Hash checks skip -2 entries at `0x654C75–C85`. Exact word+8/byte+0xA selector matches win at `0x654C87–C97`; compatible zero fallbacks are retained at `0x654C99–CB5`. Only exhaustion without a candidate advances to another archive. A selected entry+0xB bit 0 yields special status 3 through `0x654D0A → 0x654D5C`, without continuing to lower priority. Normal `0x654D18 → 0x653140` maps entry index to backing+0x290 plus index×0x2C and checks member flags. This is per-archive selection in list order, not a global best-selector search. |
+| Read/open and reference scope | Read wrapper `0x647AC6 → 0x656690 → 0x6549A0` at `0x6566EC`. Status 0/3 fails this open; status 2 takes a separate filesystem-backed route. Normal archive open stores selected archive at file+0x130 (`0x656924`), copies 11 DWORDs to +0x134 (`0x65693D`), increments archive+0x38 (`0x6569AC`). The increment concerns the archive, not world-object lifetime; archive release/destruction enforcement is not closed here. Successful opens can invoke global callback `0x86663C`, context `0x866640`, at `0x6569FC`; registration/effects remain open. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Prior raw-observer RUNTIME PASS remains limited to its saved
+capture. Location candidates stay UNQUALIFIED; profile location BLOCKED; unload
+acceptance open; vendor/water runtime pending; reconnect unimplemented; R0.1 open.
+No observer contract, navigation or controller ownership changes.
+
+**INFERRED:** tooltip hiding adds a concrete conditional listener-removal route.
+Distinct callback identities and resource-specific counts must not be treated
+as proof of destroying or retaining the outer active references. No runtime
+fault, unsafe overlap, bulk cleanup or nested field notification is established.
+
+**UNKNOWN / SOURCE GAP:** actual widget classes, loaded assets/overrides, hover
+and visibility state, full money/coin/child/layout/button effects; queued model
+operation replay, callback-driven queue mutation and widget user-pointer lifetime;
+nested pumping, world/descriptor/listener retention; actual archive opens/views/
+selectors/mutations, earlier index/mode paths, open callback and signature
+acceptance. Earlier resource-descendant/TLS boundaries, writer/invalidation
+coverage, coherence, same-map/character/address ABA and zone/area freshness remain.
+
+Reproduce with the pinned executable and `objdump -d -Mintel
+--start-address=START --stop-address=STOP` (stop exclusive); use `objdump -s`
+for tables. Re-extract these four members with the earlier pinned MPQ reader or
+an extractor producing identical bytes; it is not an implementation of client
+selection. Manual findings do not expand the automated 43-anchor/12-string
+manifest; four qualification flags and runtimeObserved remain false.
+
+| Inspection | START / STOP |
+|---|---|
+| Tooltip registration, construction and clearing | `0x495951 / 0x495962`; `0x495C60 / 0x495C88`; `0x529240 / 0x5293A5`; `0x5295D0 / 0x52964C`; `0x52A06B / 0x52A0AD`; `0x52FFE0 / 0x53026F`; `0x530A60 / 0x530A78`; `0x467FB0 / 0x468062`; `0x76A690 / 0x76A710` |
+| Button and backdrop | `0x7791E0 / 0x77920B`; `0x779760 / 0x779883`; `0x777D30 / 0x777F51`; `0x7780D0 / 0x7782F1` |
+| Model bindings, setter and counts | `0x76DEC0 / 0x76E0D5`; `0x76ECA0 / 0x76ED65`; `0x76CF50 / 0x76CFB6`; `0x76CC80 / 0x76CCDC`; `0x76CD30 / 0x76CDE7`; `0x711BB0 / 0x711BC9`; `0x7121A0 / 0x7122D5`; `0x710390 / 0x7103C2` |
+| Model delivery | `0x76D7F0 / 0x76D86D`; `0x7074B0 / 0x7075DC`; `0x719370 / 0x719503`; `0x70A280 / 0x70A3F8`; `0x76D160 / 0x76D676`; `0x773110 / 0x77319E` |
+| Archive insertion and selection | `0x655670 / 0x655690`; `0x6559AF / 0x655A33`; `0x656007 / 0x6560C4`; `0x655B19 / 0x655BE1`; `0x6549A0 / 0x654DBF`; `0x653140 / 0x653159`; `0x647AB2 / 0x647AEB`; `0x656690 / 0x656A08` |
+| Tables / strings | `0x808F60 / 0x808FF0`; `0x854780 / 0x8547C4`; `0x8790C8 / 0x8790E0`; `0x81C7F8 / 0x81C898`; `0x878978 / 0x8789C0`; `0x81C608 / 0x81C6A8` |
+
+Next task: prioritize the newly grounded tooltip listener-removal route. Trace
+money/coin Hide scripts and remaining tooltip child/layout virtuals for bulk
+cleanup or nested field notification while outer references remain live; resolve
+the button+0x31C callback if reachable. Bound model queued-operation replay and
+widget callback-context ownership before treating model counts as protection.
+Use the conditional archive rule only when actual selection inputs are known;
+retain loaded-script UNKNOWN otherwise. Keep SOURCE GAP until writer,
+invalidation, lifetime, coherence and ABA obligations close. Manual unload
+acceptance remains separate and needs module-absence/responsiveness evidence.
+
+Validation: exact-client offline audit PASS; four asset lengths/hashes
+independently matched. `python3 tools/validate.py --jobs 4` PASS, all 247 records
+(111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua
+fixtures, SQL/TSV fixture, full build and diff check). Report:
+`/tmp/wow-validation-ylzhgbvd/results.json`. Separate `cmake --build build` PASS
+for DLL, testhost, loader and GUI. Three read-only reviews reconciled; archive
+count wording narrowed to avoid claiming unproved destruction semantics.
+Full diff/status review and `git diff --check` PASS; exactly the two intended
+documents changed, with no unrelated changes. Runtime NOT RUN; no qualification
+upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
