@@ -1310,6 +1310,101 @@ PASS (DLL, testhost, loader, GUI). Three read-only reviews found no actionable
 corrections. Full diff/status inspected: exactly two task documents, no unrelated
 changes; `git diff --check` PASS. Runtime NOT RUN; no qualification upgrade.
 
+### P0.7.4 — script dispatch, loading completion and deferred close
+
+Continued on 2026-10-10 from `d67c9ba4a5e2a584cd0442056d3ac8df333dd9cc`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced farsight callbacks, loading completion and window
+routing. Coordinator checked key paths and reconciled world cleanup with worker
+shutdown. Only this audit and the handoff change. The same exact-client hash
+and bounded-source methodology apply.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+Synchronous script dispatch and wait-driven loading completion broaden the
+callback coverage obligation. A concrete deferred close path narrows one
+teardown ingress; it does not exclude destructive reentry through other paths.
+No sampler, lifetime/coherence contract or generation is qualified.
+
+#### SOURCE VERIFIED — farsight callback execution
+
+| Path | Evidence and qualification limit |
+|---|---|
+| State-gated wrappers | `0x5EE270` calls `0x5EE290` when player+0x1C70 mask 1 is clear; `0x5EE590` enters when set. The common body resolves farsight again at `0x5EE2AC–2EF`. Enable sends through `0x5AB630` at `0x5EE3E8` then sets the bit at `0x5EE3FE`; disable clears at `0x5EE4CE` then sends at `0x5EE50F`. These state tests are not a general reentry guard. Send forwarding `0x5AB630 → 0x5379A0` is distinct from inbound `0x537AA0`; it alone does not establish nested packet dispatch. |
+| Synchronous event dispatch | After either wrapper, `0x5DE14E/167 → 0x703E50` dispatches event 0xC6 before returning to the outer field-notification executor. It still dispatches when the wrapper's flag test skips the common body; initial failed player lookup returns without it. Event name is `PLAYER_FARSIGHT_FOCUS_CHANGED`: `0x51AD75` stores string `0x853314` at `0xBE14B0 = 0xBE1198 + 0xC6*4`; initialization `0x48FEA1–AB → 0x703D90` installs that name table with count 0x225. |
+| Registered script/native execution | `0x703E50` walks listener entries from `[0xCEEF68]+event*16`, calls `0x702690` at `0x703EFB`, then `0x704D50` at `0x7026B7`. That path includes virtual +4 calls (`0x704D93/9E`) and script execution `0x704E79 → 0x6F41A0 → 0x6F6960 → 0x6F5DB0`. Adapter `0x6F4250` reaches `0x6F65A0 → 0x6F6050`; native closure target is called at `0x6F61A8`, or the alternate branch enters interpreter `0x6F8720` at `0x6F65EA`. Registered handlers can therefore execute synchronously before `0x465570` resumes raw listener access. Which installed handlers reach cleanup/nested traversal remains UNKNOWN. |
+| Other unresolved callees | `0x5EE483/4AE → 0x4841A0 → 0x50D0F0`, also reached through fallback `0x48EC90`, invokes virtual +0x14/+0x24/+0x18 at `0x50D142/253/263`. The inspected callback/wrapper bodies contain no direct call to `0x464C40`, `0x467800`, `0x465330` or `0x465570`. This bounded direct-body observation is not transitive absence; script/native bindings and virtual targets remain obligations. |
+
+#### SOURCE VERIFIED — loading and close scopes
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Loading entry protocol | Allocator `0x4438B0` initializes input fields +0/+4/+8, context +0xC, normal callback +0x10, alternate callback +0x14 and optional lock +0x18; +0x1C/+0x28 start zero and +0x1D starts one (`0x44397F–999`). Submission `0x443AE0` queues/signals work. Worker calls fixed helper `0x648460` at `0x443431`, then marks +0x28 at `0x4434C9`; its inspected body does not directly invoke +0x10, and helper closure remains open. Normal drain `0x443E70` sets +0x1C at `0x443EED` before unlocked callback +0x10 at `0x443EF9`. That byte is not a callback-return witness. |
+| Wait-driven completion | Helper `0x443BD0` calls completion drain `0x443E70` at `0x443CF4/0x443D10` while waiting. Linear direct-call inventory finds callers at `0x698689`, `0x6A4A70/B6`, `0x706964`, `0x710530`; inspected `0x6A4A50/90` loops repeat until object-associated request pointers clear. Completion is not confined to event 6. These paths do not by themselves prove nested notification or world mutation. |
+| Shutdown callbacks | `0x443520` signals worker control/wakeup, waits on the worker handle at `0x44353D`, then calls `0x4435B0` at `0x443542`. Its drain can invoke queued alternate callback +0x14 at `0x44360C`. Event-6 deregistration follows at `0x44359C`. Joining the worker is distinct from completing every callback effect. |
+| Concrete callback effects | Submitter `0x71D528–590` installs normal `0x71D5E0` at `0x71D55D`, alternate `0x71D610` at `0x71D567`, optional lock zero. Normal closes input via `0x648730`, recycles through `0x4439B0`, clears owner+0xC and continues into `0x71D640`. Alternate first calls fixed read helper `0x648460` at `0x71D62A`, then jumps to normal at `0x71D632`. Thus shutdown can execute a read and continuation after worker termination; world effects remain unproved. |
+| Further completion targets | Inspected installed normal targets include `0x4497F0`, `0x44A500`, `0x6C21F0`, `0x6C3840`, `0x6C3F50` (stores `0x4496E8`, `0x44A401`, `0x6C1F33`, `0x6C3969`, `0x6C3F2D`). Global registration `0x448C00 → 0x443630` installs `0x448C10`, invoked through the consumer array at `0x443F2B`; it can submit more work at `0x448CD0 → 0x443AE0`. Separate `0x448C0A → 0x443770` installs `0x448CF0`, whose inspected body counts staging entries. This is a bounded target inventory, not complete effect coverage. |
+| World cleanup precedes loading shutdown | Context cleanup `0x403640` calls `0x401EE0` at `0x403646`; if global `0x882734` permits that body, it removes the updater at `0x401F04` and destroys the manager at `0x402011`. Only later does context cleanup drain loading work (`0x40365A → 0x443D30`) and shut down the worker (`0x40366E → 0x443520`). This local sequence is not proof of unsafe callback contents or a lifetime failure. |
+| Window input queue | Installed window callback `0x42CFE0` can submit records through `0x42D780` into a bounded global ring at `0x884CC0`, with 20-byte records and indices `0x884E34/50`. `0x42C9F0` consumes through `0x42CC00`; `0x423920` routes records through `0x4239A0`. The inspected close/system-command case at `0x42D287` with value 0xF060 produces type 5. This route defers processing; it is not direct manager teardown inside the producer. |
+| Installed close handler uses TLS | Type 5 reaches optional callback dispatch `0x423A21 → 0x423B50`. Setup `0x402858 → 0x63B460` installs `0x63C9A0` at `0x63B594/599`. It calls `0x63CDF0` then returns zero, bypassing the generic nonzero-result fallback. `0x63CDF0 → 0x41F6E0 → 0x41DB90` reads element 0 of the current context TLS block, then `0x41F9B0` looks up that context ID and conditionally changes context+0x2C from 0 to 1 at `0x41FA44` under lock. The generic fallback separately calls `0x423CA0 → 0x41F5D0 → 0x422030` and sets an output flag; it is not the installed callback's path. |
+| Later context cleanup | Main loop checks state at `0x420D79`, removes the selected context from scheduling at `0x420D94`, then calls `0x420E60` at `0x420D9B`. That dispatches event 3 (`0x420E9E`), stores state 2 (`0x420EAF`), drains queued events (`0x420EB9`), then dispatches event 4 (`0x420EC7`), whose registered `0x403640` reaches world cleanup. TLS is cleared afterward at `0x420ED9`. This proves a bounded ordinary-loop deferred close route, not recursive destruction inside the window callback or exclusion of every other reentry. |
+| Secondary window route | `0x42CFE0` can invoke global `0x884E6C` at `0x42D372`. Setter `0x42CFD0` receives `0x436210` from `0x42E340` at `0x42E346/34B`; `0x42E370` clears it. The target contains indirect calls at `0x4362E7/30F/349/3B1`. Linear inventory found no direct callers of the install/remove wrappers, so activation during startup is not established. Likewise callable pump `0x41FE50` is a research lead without an established direct caller, not evidence of actual nested pumping. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Preserve prior raw-observer RUNTIME PASS within saved capture
+limits. Location candidates remain UNQUALIFIED, profile location BLOCKED,
+unload acceptance open, vendor/water runtime pending, reconnect unimplemented,
+and R0.1 open. No production code, observer contract, ownership or navigation
+changes; no runtime failure or qualification upgrade is claimed.
+
+**INFERRED:** event labels, request flags and worker termination are insufficient
+sampling boundaries because callbacks can execute in additional synchronous
+scopes. The deferred close route narrows one ingress without proving that all
+field/script/window/loading callbacks exclude cleanup or nested traversal.
+
+**UNKNOWN / SOURCE GAP:** installed script/native listener effects, unresolved
+virtual calls, loading normal/alternate callback effects and all submitters,
+other window callback routes and TLS interactions, complete writer/counter
+coverage, retention through callback execution, initialization/invalidation,
+coherence, same-address/character/map ABA and player-bound zone/area freshness.
+
+Reproduce with `objdump -d -Mintel --start-address=START --stop-address=STOP`
+against `/home/ludvig/Games/WoW Vanilla/WoW.exe` (stop exclusive):
+
+| Inspection | START / STOP |
+|---|---|
+| Farsight wrappers/event name | `0x5DE0D0 / 0x5DE178`; `0x5EE270 / 0x5EE5A0`; `0x51AD6B / 0x51AD7F`; `0x48FEA1 / 0x48FEB0`; `0x703D90 / 0x703E42` |
+| Listener and script execution | `0x703E50 / 0x703F46`; `0x702690 / 0x7026E4`; `0x704D50 / 0x704EE2`; `0x6F41A0 / 0x6F425C`; `0x6F6960 / 0x6F69FE`; `0x6F5DB0 / 0x6F5E20`; `0x6F65A0 / 0x6F6616`; `0x6F6050 / 0x6F61BB` |
+| Virtual and send paths | `0x4841A0 / 0x4841B6`; `0x48EC90 / 0x48ECCA`; `0x50D0F0 / 0x50D310`; `0x5AB630 / 0x5AB647`; `0x5379A0 / 0x537A2B` |
+| Cleanup order | `0x403640 / 0x403698`; `0x401EE0 / 0x40209B`; `0x443520 / 0x443613`; `0x420E60 / 0x420EDE` |
+| Loading entry/wait/callbacks | `0x443300 / 0x443630`; `0x4438B0 / 0x443F50`; `0x448BF0 / 0x448D21`; `0x71D528 / 0x71D640`; `0x6A4A50 / 0x6A4ACA` |
+| Close producer/ring/dispatch | `0x42D287 / 0x42D2AF`; `0x42D780 / 0x42D7F1`; `0x42CC00 / 0x42CC70`; `0x42CBA4 / 0x42CBF8`; `0x423920 / 0x423B0E`; `0x423B50 / 0x423B67`; `0x423BB0 / 0x423BDB` |
+| Installed close/TLS/context cleanup | `0x63B570 / 0x63B59E`; `0x41FE40 / 0x41FE45`; `0x424250 / 0x42425D`; `0x63C9A0 / 0x63C9BA`; `0x63CDF0 / 0x63CDFC`; `0x41F6E0 / 0x41F6E7`; `0x41F9B0 / 0x41FA77`; `0x420D11 / 0x420DA5` |
+| Secondary window route | `0x42D35C / 0x42D37D`; `0x42CFD0 / 0x42CFD7`; `0x42E340 / 0x42E392`; `0x436210 / 0x4363C8` |
+
+Validation: exact-client offline audit PASS; `python3 tools/validate.py --jobs 4`
+PASS, all 247 records (111 C++ executables, 49 audit Python tests, 13 QuestDB
+Python tests, 10 Lua fixtures, SQL/TSV fixture, full build and diff check).
+Report: `/tmp/wow-validation-p3ma2u5s/results.json`. Separate
+`cmake --build build` PASS for DLL, testhost, loader and GUI. Three read-only
+reviews reconciled, including corrected context TLS element terminology; no
+remaining findings. Complete diff/status review and `git diff --check` PASS;
+only the two intended documentation files changed. Runtime NOT RUN.
+
+Use `objdump -s` for event string `0x853314 / 0x853334`, message tables
+`0x42D680 / 0x42D6B0` and consumer table `0x423B10 / 0x423B4C`. These manual paths do
+not expand the automated 43-anchor/12-string manifest; its four qualification
+flags and runtimeObserved remain false.
+
+Next task: identify installed `PLAYER_FARSIGHT_FOCUS_CHANGED` listeners and
+script/native bindings, and resolve the outstanding object virtual calls against
+cleanup/nested notification. Trace loading normal/alternate callback bodies and
+the remaining window dispatch routes to world writes or teardown. Require
+reachability/exclusion and a complete lifetime/coherence/ABA contract before
+sampler design; retain SOURCE GAP if proof is incomplete. Manual unload
+acceptance remains separate and needs module-absence/responsiveness evidence.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
