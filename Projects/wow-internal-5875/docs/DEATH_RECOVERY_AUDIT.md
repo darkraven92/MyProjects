@@ -1,5 +1,63 @@
 # P0.1 DeathRecovery reliability audit
 
+## Consolidated reliability milestone (2026-10-10)
+
+**IMPLEMENTED / TEST PASS / BUILD PASS; integrated runtime qualification PENDING.**
+The single current-state model is
+[DEATH_RECOVERY_CURRENT_MODEL.md](DEATH_RECOVERY_CURRENT_MODEL.md). It supersedes
+historical implementation/proposal descriptions below while retaining their
+runtime verdicts. One coordinator continued clean `dd33c4f` on
+`codex/vendor-afk-long-navigation`; no subagents, WoW session or P0.7 work.
+
+The existing bounded living owner already delivered the main post-resurrection
+behavior. Source review of the full corpse → living → normal/redeath chain found
+four related gaps, closed together here:
+
+| Source-verified gap | Change and deterministic regression |
+| --- | --- |
+| Living native reads used one short-circuit aggregate; an unavailable unrelated field could hide independent positive engagement. | Independent health/life/combat knownness; positive engagement survives partial reads, but unknown identity/life never authorizes commands. Evidence tests cover each signal and incomplete combination. |
+| No targetless Attack-action read in living recovery. | Bounded read-only existing IsAttackAction/IsCurrentAction APIs, fresh result reset and pcall; active/inactive/unknown. Missing slot/API/read cannot establish quiet release. Ten Lua cases prove bounded/error/unknown behavior without input. |
+| Command-time rejected evidence did not always enter the main quiet history. | Shared Observe path for every command/water read; transient hit/heal, combat/Attack and unknown samples reset quiet/proofs without consuming attempts or manufacturing proofs. |
+| GUID-only living identity and gaps occurring inside command reads could outlive old context; resting also blocked water handoff. | GUID/manager/player/descriptor continuity, propagated evidence-gap reset before subsequent death, and cancelable living health recovery under eligible water ownership. Existing water guards and corpse manual/reset semantics stay authoritative. |
+
+The new cross-policy milestone test covers the historical 6.301-yard reclaim
+eligibility/two probes and unchanged corpse bounds, automatic living entry,
+reachable egress, actual water-policy preemption/exit, eventual release, retained
+repeat history and fresh-Ghost latch, all 16 danger/defense/water/unknown owner
+combinations, terminal/no-retry behavior and AFK recovery/Ghost guards. Existing
+living, repeat, corpse, navigation, combat, water and AFK suites remain required.
+Production-owner sentinels supplement these executable tests; they are not a
+live client or traversal simulation.
+
+The bound capture manifest's five entries were reverified, as was the earlier
+safety log digest. The bound final session still has no death/reclaim/latch and
+cannot qualify this code. Its exact mapping was user-attested for the historical
+`f022de6` DLL, not independently captured `/proc` evidence or this build's binding.
+No earlier unbound run is used to manufacture PASS.
+
+Remaining items are classified in the current model: corpse mechanics
+IMPLEMENTED/historical P0.5.8 PASS; repeat and living paths IMPLEMENTED/RUNTIME
+PENDING; safe Ghost staging and first unsafe resurrection SOURCE GAP; early
+alive-probe defense, provenance-qualified historical recovery anchors and
+combat-event history intentionally deferred. Unselected exact hostility, Ghost
+visibility coverage and a positive candidate safety predicate are still missing.
+No absent-mob/healthy-coordinate/geometry heuristic fills those gaps. Water,
+vendor, reconnect and completed-unload qualification remain unchanged.
+
+Validation PASS: **112 C++ tests, 42 audit Python + 13 QuestDB Python tests,
+SQL fixtures, 11 Lua suites**. Full validator:
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`;
+`/tmp/wow-validation-vcq1mg47/results.json`, console
+`/tmp/death-milestone-validation.log`. Final milestone test rerun PASS after the
+gap-propagation sentinel; separate `cmake --build build` PASS (up to date).
+No runtime claims follow from these results. Only task source/tests/docs and
+the new fixture registration belong in the checkpoint; captures stay local.
+
+The exact next major project milestone is **Bound supervised Grind endurance
+qualification and release gate**, specified in the current model. Further small
+DeathRecovery source tasks require concrete new evidence; this milestone closes
+the defensible source/test scope without guessing through the remaining gaps.
+
 ## Bounded living recovery and NavMesh egress (2026-10-10)
 
 **IMPLEMENTED / RUNTIME PENDING.** This section supersedes the earlier proposal's

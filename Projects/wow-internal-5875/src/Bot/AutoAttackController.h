@@ -3,6 +3,7 @@
 #include "GameThreadDispatcher.h"
 #include "CombatClientEvidence5875.h"
 #include "CombatActionEvidenceScript.h"
+#include "LivingAttackEvidenceScript.h"
 #include "CombatBootstrapInputScript.h"
 #include "CombatInputProbePolicy.h"
 #include "CombatFacingPolicy.h"
@@ -685,6 +686,17 @@ namespace Bot
                 issued=TargetController::SetTarget(target.guid);
             });
             return issued; // Native return only; actual UI selection verifies later.
+        }
+
+        static bool ProbeLivingAttack(bool& active)
+        {
+            active=false;
+            std::string result;
+            if (!ExecuteLuaReadback(LivingAttackEvidenceScript,
+                    "wow-internal/LivingAttackEvidence.lua",result)) return false;
+            if (result!="active" && result!="inactive") return false;
+            active=result=="active";
+            return true;
         }
 
         static bool Probe(AttackStatus& status)

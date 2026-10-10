@@ -1,5 +1,46 @@
 # R0.1 unattended maintenance / connection audit
 
+## DeathRecovery reliability consolidation (2026-10-10)
+
+**IMPLEMENTED / STATIC VALIDATION PASS / RUNTIME PENDING.** Continued `dd33c4f`
+as one integrated milestone, single coordinator. The authoritative
+[current DeathRecovery model](DEATH_RECOVERY_CURRENT_MODEL.md) now consolidates
+historical P0.5.8, corpse/reclaim, repeat death, living recovery, Grind escape,
+defense, water and AFK ownership with explicit remaining classifications.
+
+The bounded living implementation is preserved and hardened: independent native
+field knownness; targetless read-only Attack involvement with explicit unknown;
+command/water observations retained in pressure history; same-character world
+object identity continuity; command-time gaps propagated before later death;
+and eligible water cancellation of living health recovery. Normal pulls/roam/
+vendor/loot remain held, navigation budgets stay finite, and terminal recovery
+does not auto-release into Grind. Tests cover the composed life/water/repeat/AFK
+sequence and existing corpse bounds as well as individual evidence failures.
+
+All five bound-capture manifest entries and the earlier unsafe-resurrection raw
+hash were rechecked. No new runtime session exists: the bound run still lacks
+the repeat path, and no living-recovery PASS is claimed. Source-qualified action
+observation is not swing/damage proof; known non-engagement never becomes Safe.
+A missing readable Attack action slot remains unknown and reaches the bounded
+manual-recovery outcome. Existing historical anchors lack general living-egress
+provenance. Safe Ghost staging/first unsafe reclaim remain SOURCE GAP; early
+alive-probe defense and stronger anchor/event history are intentionally deferred.
+
+Historical P0.5.8 PASS remains scoped as before. Vendor INSUFFICIENT EVIDENCE,
+water emergency egress RUNTIME PENDING, reconnect SOURCE GAP / NOT IMPLEMENTED
+and completed-unload evidence limits remain unchanged. P0.7 untouched.
+
+Full validator PASS: **112 C++ tests, 55 Python tests (42 audit, 13 QuestDB), SQL
+fixtures and 11 Lua suites**; report `/tmp/wow-validation-vcq1mg47/results.json`,
+console `/tmp/death-milestone-validation.log`. Final milestone test rerun and
+separate full `cmake --build build` PASS. No captures committed, no merge.
+
+Next major milestone: **Bound supervised Grind endurance qualification and
+release gate**—one fixed-build, fully bound >=20-minute normal Grind campaign
+covering naturally encountered death/recovery/redeath and correlated defense,
+water, vendor and AFK owners. Keep absent paths pending and source gaps blocked;
+another small documentation/research callback does not qualify them.
+
 ## Living post-resurrection recovery implementation (2026-10-10)
 
 **IMPLEMENTED / RUNTIME PENDING.** Following `af8e3b8`, automatic reclaim's two

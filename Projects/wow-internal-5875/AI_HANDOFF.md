@@ -1,5 +1,68 @@
 # AI handoff
 
+## 2026-10-10 DeathRecovery reliability milestone consolidated
+
+**IMPLEMENTED / TEST PASS / BUILD PASS; new behavior RUNTIME PENDING.** One
+coherent milestone from clean `dd33c4f18207b8d70051a3208f25e8f99ba2cb9b`, on
+`codex/vendor-afk-long-navigation`, single coordinator, no subagents. Read
+AGENTS.md, source/history and the complete DeathRecovery audit chain. No new
+WoW run, runtime capture commit, merge or P0.7 work.
+
+The authoritative current ownership, evidence, budgets, acceptance matrix and
+remaining blockers are now consolidated in
+[DEATH_RECOVERY_CURRENT_MODEL.md](docs/DEATH_RECOVERY_CURRENT_MODEL.md). Earlier
+sections below are historical checkpoint descriptions. The main bounded living
+owner/egress was already implemented; this milestone closes source-verified
+integration gaps rather than replacing that architecture:
+
+- Health, life and native combat have independent knownness. A failed unrelated
+  read no longer hides positively observed engagement; unknown life still cannot
+  authorize a command. Danger is Observed or Unknown, never Safe.
+- Targetless, read-only Attack-action evidence reuses the qualified Vanilla
+  action APIs, with finite scanning, explicit unknown and caught script errors.
+  No Attack action slot/read means unknown and bounded failure, not permission
+  to release. No target selection or action-bar changes are made to obtain it.
+- Command-time and water-handoff reads update the same pressure/quiet history;
+  brief damage followed by healing or a brief combat signal cannot be forgotten
+  by the next loop snapshot. These reads never count as completion proofs.
+- Same-character manager/player/descriptor replacement invalidates the living
+  episode. Command-time gaps propagate to the existing repeat-history reset
+  before the next death entry. Living completion still preserves that history.
+- Eligible water safety can cancel living health recovery; resting alone no
+  longer makes water handoff fail. Existing water priority/guards remain.
+
+Corpse/reclaim, two alive probes, repeat bounds, four living candidates, four
+cumulative replans per execution and 90-second living deadline remain. Defense
+and existing water arbitration preempt living work; normal Grind/Quest remain
+blocked until controlled release. Terminal recovery has no autonomous retries
+or alive-only release; its passive manual-recovery interlock does not expire
+into normal Grind. Existing Grind post-death escape is retained.
+
+First unsafe reclaim and the interval before the second alive probe remain
+unresolved. Safe Ghost staging is SOURCE GAP: no qualified visibility coverage,
+exact unselected hostility or positive candidate safety predicate. Existing
+last-alive/body/Grind/water anchors cannot be promoted to safe recovery anchors;
+provenance-qualified anchor history and event-based damage are intentionally
+deferred. No guessed aggro radius, terrain API or reconnect work is introduced.
+Historical P0.5.8 PASS retains its scope; repeat-death and living recovery remain
+RUNTIME PENDING. Vendor/water/reconnect/unload statuses are unchanged.
+
+Validation PASS: **112 C++ tests, 42 audit Python tests, 13 QuestDB Python tests,
+SQL fixtures and 11 Lua fixture suites**, including 10 new read-only Attack cases.
+Command: `PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`.
+Report `/tmp/wow-validation-vcq1mg47/results.json`; console
+`/tmp/death-milestone-validation.log`. The cross-policy milestone test was rerun
+after the final gap-propagation sentinel; separate `cmake --build build` PASS
+(up to date). Tests/source assertions are not live adapter/physical-motion proof.
+
+**Next MAJOR project milestone: Bound supervised Grind endurance qualification
+and release gate.** One fixed source/DLL-bound campaign of >=20 minutes normal
+supervised Grind, with full raw/lifecycle logs and pre/post hashes/mapping, to
+qualify natural death → living defense/egress/recovery → resume and naturally
+encountered failure/redeath while correlating water/vendor/AFK ownership. Keep
+component verdicts separate when paths are absent. No further small DeathRecovery
+source task is justified without new failure evidence or a closed source gap.
+
 ## 2026-10-10 bounded living post-resurrection recovery
 
 **IMPLEMENTED / RUNTIME PENDING.** Single coordinator; no subagents. Continued

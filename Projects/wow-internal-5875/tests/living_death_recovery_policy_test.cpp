@@ -167,5 +167,5 @@ int main()
     assert(follower.find("int LifetimeReplans() const { return totalReplans_; }")!=std::string::npos);
     assert(controller.find("bool CommandWorld")!=std::string::npos);
     assert(controller.find("{ Stop(world.player); policy_.Interrupt();")==std::string::npos);
-    assert(controller.find("if (same && e.known && e.alive) Stop(world.player);")!=std::string::npos);
+    assert(controller.find("if (same && e.Living()) Stop(world.player);")!=std::string::npos);
 }

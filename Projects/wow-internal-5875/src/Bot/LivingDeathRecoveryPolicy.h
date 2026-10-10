@@ -91,25 +91,33 @@ namespace Bot
             { RouteFailed(); return; }
             state_=State::Settling; proofs_=0;
         }
+        // Every fresh read, including a command guard, participates in pressure
+        // history. It cannot spend route slots or advance completion proofs.
+        bool Observe(const Sample& s)
+        {
+            if (!Owns()) return false;
+            ObserveDeadline(s.now);
+            if (!s.identity || s.guid!=guid_ || s.map!=map_)
+            { Block("living_identity_lost"); return false; }
+            if (s.hp && lastHp_ && s.hp<lastHp_) quietSince_=s.now;
+            if (s.hp) lastHp_=s.hp;
+            if (!s.alive || s.water || s.swimming || s.combat || s.aggressor || s.defense ||
+                !s.evidenceKnown || !s.movementKnown || !Finite(s.position))
+            { Interrupt(); quietSince_=s.now; return false; }
+            if (s.now<quietSince_ || s.now-quietSince_<QuietMs)
+            { Interrupt(); return false; }
+            return state_!=State::Blocked;
+        }
         Action Update(const Sample& s)
         {
             if (!Owns()) return Action::None;
-            ObserveDeadline(s.now);
-            if (!s.identity || s.guid!=guid_ || s.map!=map_)
-            { Block("living_identity_lost"); return Action::Block; }
-            if (!s.alive)
-            { Interrupt(); return state_==State::Blocked ? Action::Block : Action::Hold; }
-            if (s.hp && lastHp_ && s.hp<lastHp_) quietSince_=s.now;
-            if (s.hp) lastHp_=s.hp;
-            if (s.water || s.swimming)
-            { Interrupt(); quietSince_=s.now; return Action::Water; }
-            if (s.combat || s.aggressor || s.defense)
-            { Interrupt(); quietSince_=s.now; return Action::Defense; }
+            const bool quiet=Observe(s);
+            if (!s.identity || s.guid!=guid_ || s.map!=map_) return Action::Block;
+            if (!s.alive) return state_==State::Blocked ? Action::Block : Action::Hold;
+            if (s.water || s.swimming) return Action::Water;
+            if (s.combat || s.aggressor || s.defense) return Action::Defense;
             if (state_==State::Blocked) return Action::Block;
-            if (!s.evidenceKnown || !s.movementKnown || !Finite(s.position))
-            { Interrupt(); quietSince_=s.now; return Action::Hold; }
-            if (s.now<quietSince_ || s.now-quietSince_<QuietMs)
-            { Interrupt(); return Action::Hold; }
+            if (!quiet) return Action::Hold;
             if (state_==State::Waiting)
             {
                 if (attempts_>=MaximumCandidates)

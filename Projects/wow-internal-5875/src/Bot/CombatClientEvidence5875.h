@@ -1,5 +1,6 @@
 #pragma once
 #include "GameThreadDispatcher.h"
+#include "LivingRecoveryEvidence.h"
 #include "../Core/Memory.h"
 #include "../Objects/WorldState.h"
 #include "../Wow5875/Client.h"
@@ -14,13 +15,7 @@ namespace Bot
     // without sending CMSG_SET_SELECTION if it already equals the request.
     struct CombatClientEvidence5875
     {
-        struct LivingEvidence
-        {
-            bool identity=false, alive=false, known=false, combat=false;
-            bool scanComplete=false, aggressor=false;
-            std::uint64_t attacker=0;
-            std::uint32_t hp=0, maxHp=0;
-        };
+        using LivingEvidence = LivingRecoveryEvidence;
         // Targetless read only. Uses the same 5875 fields as Execution/FreshHealth.
         // A complete client enumeration is NOT a hostile-visibility guarantee.
         static LivingEvidence Living(const Objects::WorldState& world)
@@ -39,13 +34,13 @@ namespace Bot
                 };
                 if (!GameThreadDispatcher::IsGameThread() || !identity()) return;
                 e.identity=true;
-                e.known=Core::Memory::Read(descriptor+0x58,e.hp) &&
-                    Core::Memory::Read(descriptor+0x70,e.maxHp) && e.maxHp &&
-                    Core::Memory::Read(descriptor+0x2f8,life) &&
-                    Core::Memory::Read(descriptor+0xb8,flags);
-                if (!e.known) return;
-                e.alive=e.hp>1 && !(life&0x10u);
-                e.combat=(flags&0x80000u)!=0;
+                e.healthKnown=Core::Memory::Read(descriptor+0x58,e.hp) &&
+                    Core::Memory::Read(descriptor+0x70,e.maxHp) && e.maxHp && e.hp<=e.maxHp;
+                e.lifeKnown=Core::Memory::Read(descriptor+0x2f8,life);
+                e.combatKnown=Core::Memory::Read(descriptor+0xb8,flags);
+                e.known=e.healthKnown && e.lifeKnown && e.combatKnown;
+                e.alive=e.healthKnown && e.lifeKnown && e.hp>1 && !(life&0x10u);
+                e.combat=e.combatKnown && (flags&0x80000u)!=0;
                 std::uint32_t current=0;
                 bool complete=Core::Memory::Read(world.manager+
                     Wow5875::Offsets::ObjectManager::FirstObject,current) && current;

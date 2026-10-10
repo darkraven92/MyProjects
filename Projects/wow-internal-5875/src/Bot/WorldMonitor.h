@@ -954,6 +954,17 @@ namespace Bot
                 // update in which to turn death into an objective failure.
                 // The existing recovery controller performs the authoritative
                 // Lua confirmation; this preflight only gates mode ownership.
+                // Includes gaps found by a command-time read inside the living
+                // owner, even when the monitor's next snapshot succeeds.
+                if (livingDeathRecovery.ConsumeEvidenceGap())
+                    deathRecovery.InvalidateTerminalAliveEvidenceOnWorldGap();
+                if (livingDeathRecovery.Owns() && !livingDeathRecovery.SameWorldIdentity(world))
+                {
+                    // A same-GUID object/world replacement is an evidence gap even
+                    // if no failed Read occurred between the valid snapshots.
+                    deathRecovery.InvalidateTerminalAliveEvidenceOnWorldGap();
+                    livingDeathRecovery.InvalidateWorld();
+                }
                 deathRecovery.ObserveClearlyAlivePosition(world);
                 const bool deathBootstrap =
                     world.player.health == 1 &&
@@ -970,9 +981,6 @@ namespace Bot
                     Debug::Logger::Info("DEATH LIVING state=redeath_handoff normalModeBlocked=yes");
                 }
                 livingDeathRecovery.ObserveDeadline(nowMs);
-                const auto livingEvidence = livingDeathRecovery.Owns()
-                    ? CombatClientEvidence5875::Living(world)
-                    : CombatClientEvidence5875::LivingEvidence{};
                 const bool freshIdleAliveProbe =
                     deathRecovery.FreshIdleAliveConfirmed(tick);
                 const bool normalModeHeldForReconciliation =
@@ -1228,7 +1236,7 @@ namespace Bot
                 {
                     // Separate living owner: ordinary quest/grind/watchdog paths below
                     // cannot acquire, roam, vendor, loot or renew its finite budget.
-                    const bool released=livingDeathRecovery.Update(world,combat,tick,livingEvidence);
+                    const bool released=livingDeathRecovery.Update(world,combat,tick);
                     if (TemporaryGrindModeEnabled)
                     {
                         const auto edges=enduranceEdges.Observe(combat.LivingDefenseActive(),false,false);
