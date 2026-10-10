@@ -170,6 +170,13 @@ namespace Bot
             if (!Owns()) return;
             Stop(player); policy_.Interrupt(); Log("water_handoff");
         }
+        void YieldDeath(const Objects::PlayerState& player)
+        {
+            if (!Owns()) return;
+            // Death owns the next observation; the cached living HP/danger
+            // sample is not current evidence and this is not a water event.
+            Stop(player); policy_.Interrupt(); evidenceLog_.clear(); Log("death_handoff");
+        }
         // Called only after the monitor gives death and living-water their turns.
         // True means fresh completion; all other outcomes keep normal modes held.
         bool Update(const Objects::WorldState& world, CombatController& combat, std::uint64_t tick)

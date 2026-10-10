@@ -1,5 +1,54 @@
 # P0.2 / P0.2.1 Combat reliability audit
 
+## Endurance incident: unconfirmed bootstrap had no failure owner (2026-10-10)
+
+**Verified failure transition FIXED / TEST PASS / BUILD PASS; live combat recovery
+RUNTIME PENDING. Stun causality UNKNOWN.** The complete
+[endurance audit](GRIND_ENDURANCE_INCIDENT_2026-10-10.md) separates user observation,
+raw events, source correlation and unknowns. Starting/deployed source `4019517`;
+capture hashes pass, exact loaded-DLL binding is still missing.
+
+Two fights against entry 12856/GUID `0xF130003238007E60` reach selected, aligned
+melee and issue a bootstrap (raw 8449/36851). Verification fails at 9235/37762,
+target HP stays 100 and player HP drops to death. The full action script returns
+`unknown_frame_iteration_limit`, as it also does in successful fights; the
+separate bootstrap input probe is ready. No stun-on/off/swing/error trace proves
+why Attack was refused. RecoveryController does not own these fights, target
+validity/selection and chase handoff are corroborated, and brief health-snapshot
+staleness clears. The first failed fight precedes living recovery; an intervening
+living defense fight successfully damages the same attacker. This rules out a
+blanket living-owner suppression explanation, not every possible client failure.
+
+Source chain: dispatch spends one repair, `attackStarted_` awaits verification;
+unknown full action/input blocks ordinary liveness repairs; expiry only clears
+the pending boolean and logs failure; initial startup requires zero repairs;
+global stationary-melee recovery defers to the watchdog. The structural pending
+timer expires normally, but no owner consumes the failed initial attempt.
+
+`CombatBootstrapVerificationPolicy` now freezes the existing max(8 seconds,
+two recorded swing periods + 1 second) verification window at dispatch. Failed
+or rejected start emits `bounded_terminal_handoff` and calls the existing melee
+terminal resolver with `initial_attack_unverified`. Hostile/unknown engagement
+retains existing bounded defensive containment; unknown input can correctly
+produce terminal input-conflict failure. Fresh same-selected-GUID damage or
+known active Attack confirms; stale/unknown observations cannot extend the
+deadline. Death, new target and reset discard old verification. Repair budget,
+UI/cast/native/range/facing guards and action scripts are unchanged. No blind
+retry, synthetic stun bit or read-only-evidence input authorization is added.
+
+Failure logs include existing execution evidence; unknown Attack/cast/GCD state
+is no longer rendered as a negative observation. This is a bounded failure fix,
+not a promise to resume attacks after stun or survive an unsafe reclaim. Source
+gap remains around live loss-of-control/attack acceptance and persistent broad
+frame-scan exhaustion; they are explicit release blockers, not guessed APIs.
+
+New deterministic replay covers the observed watchdog/bootstrap mismatch,
+deadline and rejection handoff, proof guards, slow-weapon timing, invalidation,
+unchanged cast protection and bounded containment failure. Full validation:
+113 C++ tests, 55 Python tests, SQL fixtures, 11 Lua suites, DLL build/diff check;
+separate full build PASS. Report `/tmp/wow-validation-d_o2gs0_/results.json`.
+Historical P0.5.5 and P0.5.8 scoped PASS are retained. **READY FOR P0.7: NO.**
+
 ## P0.5.3 post-containment release runtime requalification prep (2026-10-08)
 
 P0.5.8 is now RUNTIME PASS per the user-reported preserved

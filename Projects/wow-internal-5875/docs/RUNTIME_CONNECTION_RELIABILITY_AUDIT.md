@@ -1,5 +1,48 @@
 # R0.1 unattended maintenance / connection audit
 
+## Supervised Grind endurance release gate (2026-10-10)
+
+**READY FOR P0.7: NO.** See the complete
+[incident/binding/chronology audit](GRIND_ENDURANCE_INCIDENT_2026-10-10.md).
+All four capture hashes and all 2,309 extract-to-raw records verified. Raw and
+lifecycle session identities agree. Deployment pre/post clean HEAD `4019517`
+and unchanged DLL SHA256 match the starting local files; exact loaded-module
+binding is absent and cannot be inherited from the earlier bound run.
+Bot duration is 14m46.451s. Entire 40,414-line raw session was considered.
+
+Two opening kills/loots/recoveries precede two unconfirmed Attack stalls and
+three deaths. A verified missing combat failure transition is fixed: expired
+or rejected bootstrap goes to existing bounded terminal/containment rather than
+remaining indefinitely in Fighting behind an unknown full action probe. No
+input guard/retry limit changes. Stun timing and why Attack was refused remain
+unknown; successful post-stun recovery is not proved. Redeath telemetry no longer
+misreports water ownership. Source/test/build validation is distinct from runtime.
+
+| Component | This session's verdict |
+| --- | --- |
+| DeathRecovery living recovery | RUNTIME PENDING: two owned defense handoffs, no normal Grind release, zero egress candidates/routes/completions. |
+| Repeat-death breaker | Complete matching runtime behavior observed: 24421-ms/2.054-yd latch, release/fresh Ghost, terminal zero retrieves and no restart. Formal RUNTIME PENDING: exact loaded-DLL binding missing. Earlier 8.942-yd redeath correctly does not latch. |
+| Combat | Missing bootstrap failure handoff corrected and statically validated; no live validation of changed code, stun cause unknown. |
+| Vendor | No episode/trip/sale; INSUFFICIENT EVIDENCE unchanged. |
+| Water | No emergency/block/egress; false water log is a redeath call-site label, not qualification. RUNTIME PENDING unchanged. |
+| AFK | Native active/clear and guarded blocks observed; no confirmed bot input. Terminal Ghost cannot auto-clear AFK. Later external-input-consistent clock/key changes are not bot proof. No qualification broadening. |
+| World/reconnect | Fifteen healthy/valid samples, no world gap or disconnect. Reconnect SOURCE GAP / NOT IMPLEMENTED unchanged. |
+| Stop/unload | Explicit GUI stop, action cleanup/cache teardown/unload request understood. No completed-unload proof. |
+
+All 20 navigation intents release; repeated corpse precision attempts finish
+within existing controller bounds. No living egress route, vendor detour or
+normal Grind pull causes the post-reclaim deaths. First unsafe resurrection and
+safe Ghost staging remain unresolved; historical P0.5.8 PASS remains narrow.
+
+Full validation PASS: 113 C++ tests, 42 audit + 13 QuestDB Python tests, SQL
+fixtures and 11 Lua suites; full DLL build/diff check and separate full build.
+Report `/tmp/wow-validation-d_o2gs0_/results.json`, console
+`/tmp/endurance-validation.log`. Next MAJOR milestone: **combat execution evidence
+and bound endurance release qualification**, resolving guard-preserving Attack
+evidence and qualifying natural combat recovery plus living egress/controlled
+release on a demonstrably loaded fixed DLL. No captures committed, no merge,
+no P0.7 work or unrelated reconnect changes.
+
 ## DeathRecovery reliability consolidation (2026-10-10)
 
 **IMPLEMENTED / STATIC VALIDATION PASS / RUNTIME PENDING.** Continued `dd33c4f`

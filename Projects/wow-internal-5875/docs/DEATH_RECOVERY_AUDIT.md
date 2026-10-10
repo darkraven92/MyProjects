@@ -1,5 +1,51 @@
 # P0.1 DeathRecovery reliability audit
 
+## Supervised endurance: living defense and repeat terminal (2026-10-10)
+
+**Living recovery RUNTIME PENDING; repeat breaker RUNTIME PENDING (loaded-DLL
+binding incomplete). READY FOR P0.7: NO.** The complete
+[endurance incident audit](GRIND_ENDURANCE_INCIDENT_2026-10-10.md) records all
+hashes, binding limits, raw line references, navigation attempts and final gates.
+All four manifest entries match; every extract record matches raw. Pre/post
+deployment `4019517`/DLL digest agrees with the starting local files, but no
+session-specific module mapping/hash/attestation binds those bytes to Wine PID
+296. Earlier `f022de6` attestation is not transferable. The raw log, including
+the full terminal tail, contains 14m46.451s of bot operation.
+
+Three natural deaths follow two ordinary kills/loots. Reclaims at 6.622/6.832 yd
+each issue once and obtain two fresh alive probes. Both enter LivingRecovery,
+block normal Grind, and hand off exact-attacker defense under positive combat/
+direct-target evidence. First defense damages the attacker; second has no
+verified attack progress. Both die with living attempts=0/navigation=no, so no
+candidate search, egress, health completion, normal release or living deadline
+is runtime-qualified. Grind post-death escape stays pending behind recovery and
+its own >=90%-health/no-aggressor guard; no egress returns the player to danger.
+
+Death 2 is 8.942 yd from the first confirmed-alive point: no latch is correct.
+Death 3 is 2.054 yd/24421 ms from the second point: body latch, normal spirit
+release, fresh Ghost, then `recent_reclaim_redeath`, retrieveAttempts=0,
+strategiesExhausted=yes, normalModeBlocked=yes. No further reclaim/corpse route
+starts through stop. AFK-active terminal Ghost blocks recovery correctly; later
+native AFK clear/held physical key still yields no bot delivery confirmation.
+The positive repeat path is now present; missing exact runtime binding, rather
+than missing gameplay, prevents its formal PASS.
+
+Source-correlated fix: bootstrap verification expiry previously logged failure
+without leaving Fighting when full action evidence was unavailable. Its failed
+observation now enters the existing bounded combat terminal/containment path,
+with input guards intact; no attack-success/stun-resume runtime claim is made.
+Redeath's reused `YieldWater` generated a false water label; `YieldDeath` now
+preserves cleanup and logs the correct event without stale living evidence.
+No repeat radius/window, corpse/living route budget, water/AFK guard or release
+criterion changes. Actual outside/inside radius coordinates have regressions.
+
+First unsafe reclaim (including HP loss between alive probes), safe Ghost
+staging and unproved combat recovery remain blockers. Historical P0.5.8 PASS
+retains its scope; vendor/water/reconnect/unload statuses remain separate.
+Full validation PASS: 113 C++ / 55 Python tests, SQL fixtures, 11 Lua suites,
+DLL build/diff check; separate full build PASS. Report
+`/tmp/wow-validation-d_o2gs0_/results.json`. No captures committed or P0.7 touched.
+
 ## Consolidated reliability milestone (2026-10-10)
 
 **IMPLEMENTED / TEST PASS / BUILD PASS; integrated runtime qualification PENDING.**

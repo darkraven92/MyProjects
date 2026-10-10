@@ -1,5 +1,71 @@
 # AI handoff
 
+## 2026-10-10 supervised Grind endurance incident and release gate
+
+**READY FOR P0.7: NO.** Single coordinator, no subagents; continued clean
+`4019517a40793654e3bef7335b6d1387afbb684d` on
+`codex/vendor-afk-long-navigation`. Complete evidence/chronology, attribution,
+fixes and seven separate qualification decisions are in
+[GRIND_ENDURANCE_INCIDENT_2026-10-10.md](docs/GRIND_ENDURANCE_INCIDENT_2026-10-10.md).
+This section supersedes the older next-task recommendations below.
+
+All four capture-manifest entries verified; all 2,309 extract records match the
+40,414-line raw log. Entire session and lifecycle tail inspected. Deployment
+pre/post HEAD and DLL digest match the starting checkout/on-disk DLL; however
+this session lacks loaded-module mapping/hash or explicit user attestation.
+Wine PID 296/session `296.134361223514045240.91289047.504` is corroborated, but
+the prior PID 124315 mapping belongs to another run. **Exact loaded-DLL binding
+remains UNKNOWN.** Observed gameplay is 14m46.451s, not the proposed >=20 minutes.
+
+Runtime: two successful opening kills/loots/health recoveries, then three deaths
+against the same direct aggressor. Two reclaims each have two fresh alive probes,
+repeat arming and living defense-only ownership. No normal Grind resumes after
+either reclaim; both living episodes remain attempts=0 because engagement
+preempts planning. First defense deals damage but dies ~8.942 yd from resurrection,
+outside the unchanged eight-yard breaker. Next redeath latches at 24421 ms/2.054 yd;
+ReleaseSpirit/fresh Ghost → Failed/recent_reclaim_redeath, zero retrieves/routes,
+retained normal-mode block and no restart through GUI stop.
+
+Verified source bug: full combat action probe remains
+`unknown_frame_iteration_limit`; a dispatched bootstrap expires without proof,
+but previously only logged failure. The spent first-start budget prevents
+another initial start, ordinary liveness cannot authorize repair with unknown
+input, and global stationary-melee recovery defers to it. Both observed failed
+fights remain Fighting until death. **Implemented:** one fixed dispatch-time
+verification window now transfers failed/rejected bootstrap to the existing
+bounded terminal/containment owner, without widening input permissions or retry
+budgets. Execution evidence is logged on failure; unknown Attack/cast readback
+is labeled unknown. Redeath now logs a distinct death handoff rather than a
+false water event with cached living HP. Regression tests cover the failure
+chain, proof/timeout/reset guards, actual repeat geometry and owner wiring.
+
+This fixes bounded ownership, not successful offense/survival. With unknown
+full input, existing containment can fail closed immediately. Stun start/end,
+server swing/input rejection and why Attack failed are not in this capture:
+**stun-resume causality UNKNOWN; changed combat behavior RUNTIME PENDING**.
+Living recovery stays RUNTIME PENDING (no egress/completion/release exercised).
+Repeat behavior is observed end-to-end but RUNTIME PENDING solely for missing
+exact loaded-DLL binding. Historical P0.5.8 PASS retains its scope. Vendor and
+water were unexercised; AFK detection/blocking has no confirmed bot delivery.
+Native AFK clears later with changed input clock/held key, not proved bot action.
+No world gap/reconnect; GUI stop/unload request understood, completed unload
+unproved. First unsafe reclaim/safe Ghost staging remain unresolved SOURCE GAP.
+
+Full validation PASS: **113 C++ tests, 42 audit Python + 13 QuestDB Python tests,
+SQL fixtures and 11 Lua suites**, plus full DLL build and diff check.
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`; report
+`/tmp/wow-validation-d_o2gs0_/results.json`, console `/tmp/endurance-validation.log`.
+Separate `cmake --build build` PASS. These results are not runtime qualification.
+
+Next MAJOR milestone: **combat execution evidence and bound endurance release
+qualification**—close the full-action frame-limit/input-evidence obstacle with
+qualified evidence, correlate naturally occurring loss-of-control/Attack outcomes,
+and exercise successful living NavMesh egress/recovery/controlled release on one
+fixed, demonstrably loaded DLL with full raw/lifecycle capture and >=20 minutes
+of supervised natural play. Preserve separate pending vendor/water/AFK verdicts;
+do not invent safety radii, force death or waive guards. Authorized checkpoint
+contains only related source/tests/docs; no captures, merge or P0.7 work.
+
 ## 2026-10-10 DeathRecovery reliability milestone consolidated
 
 **IMPLEMENTED / TEST PASS / BUILD PASS; new behavior RUNTIME PENDING.** One

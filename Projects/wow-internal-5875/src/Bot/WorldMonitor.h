@@ -976,7 +976,7 @@ namespace Bot
                 if (deathShouldOwn && livingDeathRecovery.Owns())
                 {
                     // Rearm already retained the repeat-death record; do not reset it here.
-                    livingDeathRecovery.YieldWater(world.player);
+                    livingDeathRecovery.YieldDeath(world.player);
                     livingDeathRecovery.Reset();
                     Debug::Logger::Info("DEATH LIVING state=redeath_handoff normalModeBlocked=yes");
                 }

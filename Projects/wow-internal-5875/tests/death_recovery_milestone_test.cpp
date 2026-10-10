@@ -118,6 +118,11 @@ int main()
     for (const auto forbidden:{"grindMode.Update(","combat.Update(","questPlannerRuntime.Update("})
         assert(held.find(forbidden)==std::string::npos);
     assert(monitor.find("if (waterEmergency.Blocked())")<begin);
+    const auto redeath=monitor.find("if (deathShouldOwn && livingDeathRecovery.Owns())");
+    const auto redeathEnd=monitor.find("livingDeathRecovery.ObserveDeadline",redeath);
+    const auto redeathBlock=monitor.substr(redeath,redeathEnd-redeath);
+    assert(redeathBlock.find("livingDeathRecovery.YieldDeath(world.player)")!=std::string::npos);
+    assert(redeathBlock.find("YieldWater")==std::string::npos);
     assert(monitor.find("!livingDeathRecovery.SameWorldIdentity(world)")!=std::string::npos);
     const auto gap=monitor.find("if (livingDeathRecovery.ConsumeEvidenceGap())");
     assert(gap!=std::string::npos && gap<monitor.find("const bool deathShouldOwn"));

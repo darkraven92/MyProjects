@@ -52,6 +52,19 @@ int main()
     assert(!policy.ShouldBlock(true));
     assert(policy.ObserveCorpse({0, 0, 8}));
 
+    // Endurance capture geometry: first redeath is outside the engineered
+    // 8-yard bound (8.942 yd), second is inside (2.054 yd). First age is
+    // synthetic: this test must not invent a runtime monotonic timestamp.
+    policy.RecordAutomaticAlive(112743,1,{1814.078f,-2438.831f,87.153f},1000);
+    policy.BeginDeath(112743,1,21000);
+    assert(!policy.ObserveCorpse({1805.453f,-2440.467f,88.854f}));
+    assert(!policy.ShouldBlock(true));
+    policy.RecordAutomaticAlive(112743,1,{1812.097f,-2439.518f,87.578f},30000);
+    policy.BeginDeath(112743,1,30000+24421);
+    assert(policy.ObserveCorpse({1810.099f,-2439.740f,87.999f}));
+    assert(!policy.ShouldBlock(false));
+    assert(policy.ShouldBlock(true));
+
     const auto nan = std::numeric_limits<float>::quiet_NaN();
     const auto inf = std::numeric_limits<float>::infinity();
     for (const auto invalid : {P::Point{nan, 0, 0}, P::Point{0, inf, 0}, P::Point{0, 0, nan}})

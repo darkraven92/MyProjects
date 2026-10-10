@@ -1,10 +1,22 @@
 # DeathRecovery current reliability model
 
-This is the normative current model after the 2026-10-10 consolidation milestone,
-continued from `dd33c4f18207b8d70051a3208f25e8f99ba2cb9b`. The chronological
+This is the normative current model after the 2026-10-10 endurance incident,
+continued from `4019517a40793654e3bef7335b6d1387afbb684d`. The chronological
 [DeathRecovery audit](DEATH_RECOVERY_AUDIT.md) retains evidence and historical
-verdicts; its earlier proposals describe their source checkpoints. This milestone
-is source/test/build work, **not a new runtime qualification**. No P0.7 work.
+verdicts; its earlier proposals describe their source checkpoints. The complete
+[endurance audit](GRIND_ENDURANCE_INCIDENT_2026-10-10.md) records runtime observations
+and exact binding limits. **READY FOR P0.7: NO.** No P0.7 work.
+
+The endurance run exercised two automatic reclaims/living defense handoffs,
+three deaths and one matching repeat-death terminal, but no living egress or
+normal-mode release. All capture hashes verify; deployment/local source and
+on-disk DLL agree, while session-specific loaded-module binding remains unknown.
+No formal runtime PASS is added. Combat's failed bootstrap now transfers to the
+existing bounded terminal/containment owner instead of merely logging expiry
+and remaining in Fighting. This preserves all defensive/input permissions; an
+unknown input probe may still cause terminal failure, not successful escape.
+Stun causality and successful live combat recovery remain unproved. Redeath
+cleanup has its own death-handoff telemetry; it is not water preemption.
 
 ## Current state and ownership
 
@@ -169,20 +181,21 @@ AFK gap. Historical qualified Ghost prevention is not revoked or generalized.
 | Item | Implementation / remaining qualification |
 | --- | --- |
 | Corpse routing/reclaim, directed-edge memory, two alive probes | IMPLEMENTED; historical P0.5.8 RUNTIME PASS within original scope. |
-| Nearby repeat-death breaker | IMPLEMENTED / RUNTIME PENDING; exact bound run lacked the path. |
-| Living ownership, targetless evidence, defense/water arbitration, bounded NavMesh egress and fail-closed terminal | IMPLEMENTED / RUNTIME PENDING; this milestone adds no live run. |
+| Nearby repeat-death breaker | IMPLEMENTED / RUNTIME PENDING. Endurance positive path observed at 24421 ms/2.054 yd; exact loaded-DLL binding is missing. Earlier 8.942-yd redeath correctly falls outside the contract. |
+| Living ownership, targetless evidence, defense/water arbitration, bounded NavMesh egress and fail-closed terminal | IMPLEMENTED / RUNTIME PENDING. Two entries/defense handoffs hold normal modes; zero egress attempts, no completion/release or living timeout. |
+| Unconfirmed Attack bootstrap failure ownership | IMPLEMENTED / TEST PASS / BUILD PASS; RUNTIME PENDING. Existing bounded combat terminal handles expiry/rejection; successful post-stun attack recovery remains unknown. |
 | Manual-alive/reset/world-gap and AFK invariants | IMPLEMENTED; deterministic regression coverage, new integrated runtime path pending. |
 | Safe Ghost staging / first unsafe resurrection | SOURCE GAP. No qualified Ghost visibility coverage, unselected exact hostility or positive candidate safety predicate. Empty/partial scans cannot close it. |
 | Defense between reclaim dispatch and the second alive probe | Intentionally deferred; existing Ghost/alive confirmation contract is preserved. A separate qualified life/command handoff is required before changing it. |
 | Provenance-qualified historical living anchors / combat-event damage history | Intentionally deferred; current records do not supply the necessary evidence. |
 | Cross-map recovery, hostile-water stationary defense, new reconnect/terrain readers | Outside this milestone; existing source/runtime blockers remain. |
 
-The bound `death-repeat-bound-2026-10-10` manifest's five hashes were reverified
-in this milestone. Its final session still has no death/reclaim/latch/living
-recovery, so it cannot qualify these paths. Exact mapping remains the explicit
-user attestation for the historical `f022de6` DLL, not a captured `/proc` artifact
-or binding for this build. The earlier safety log hash was also rechecked; its
-unsafe outcomes motivate the work but do not qualify the changed binary.
+The earlier `death-repeat-bound-2026-10-10` session contains no death/reclaim
+path; its historical `f022de6` mapping attestation cannot be transferred.
+The new `grind-endurance-2026-10-10` session contains the repeat path but lacks
+exact loaded-module binding. These complementary gaps cannot be combined to
+manufacture a qualified run. The full new raw/manifest/lifecycle analysis is
+in the endurance audit; earlier hash checks remain historical audit records.
 
 ### Acceptance matrix
 
@@ -196,6 +209,8 @@ unsafe outcomes motivate the work but do not qualify the changed binary.
 | Repeat evidence retained after success / terminal latch | Completed living episode followed by nearby redeath; full existing repeat-policy boundary/reset tests |
 | AFK during recovery/dead/Ghost | Cross-policy recovery block and Ghost already-AFK/in-flight guards; existing AFK suites |
 | P0.5.8 mechanics retained | Existing death ownership/evidence/liveness/transition tests plus historical 6.301-yard reclaim/two-probe and unchanged-budget checks |
+| Failed bootstrap cannot silently retain Fighting | `combat_bootstrap_verification_test` replay/proof/deadline/reset scenarios and terminal-wiring sentinels |
+| Endurance redeath geometry and correct handoff label | Actual outside/inside-eight-yard coordinates in repeat-policy test; death versus water call-site sentinel |
 
 Source integration sentinels complement executable policy/Lua tests; they do
 not emulate the live client, dispatch timing or physical NavMesh traversal.
@@ -203,17 +218,18 @@ Validation results are recorded in the handoff and audit for this checkpoint.
 
 ## Exact next major project milestone
 
-**Bound supervised Grind endurance qualification and release gate.** Use one
-coherent qualification campaign for this fixed source/DLL checkpoint: at least
-20 minutes of ordinary supervised Grind with complete raw/lifecycle capture,
-pre/post source and DLL hashes, and recorded runtime mapping (identify explicit
-user attestation as such). Capture natural automatic reclaim → living defense/
-egress/recovery → controlled resume, and naturally encountered bounded failure
-or nearby redeath → fresh-Ghost repeat terminal/no reclaim. Correlate water,
-vendor and AFK owners in the same campaign and preserve separate component
-verdicts when a path is absent. Do not provoke a dangerous death to fill a row.
+**Combat execution evidence and bound endurance release qualification.** Close
+the persistent full-action frame-limit obstacle without weakening input guards,
+correlate natural loss-of-control/Attack activation and validate the corrected
+bounded handoff or successful recovery. Use at least 20 minutes of normal
+supervised Grind on one fixed, demonstrably loaded source/DLL with full raw/
+lifecycle capture and pre/post hashes/mapping (label attestation as such).
+Exercise natural living defense → NavMesh egress → health recovery → controlled
+Grind release, keeping repeat terminal/no restart and water/vendor/AFK verdicts
+separate. Do not provoke death or call absent threats safe to fill a row.
 
-No further small DeathRecovery source callback is required without a concrete
-new failure or newly qualified evidence. Runtime paths must either be observed
+The endurance failure transition and misleading death/water label are corrected;
+the remaining combat input and qualification gaps require a coherent milestone,
+not another speculative DeathRecovery helper. Runtime paths must either be observed
 and qualified or remain explicitly pending. Safe Ghost staging, reconnect and
 completed DLL unload cannot be awarded PASS from ordinary living gameplay.

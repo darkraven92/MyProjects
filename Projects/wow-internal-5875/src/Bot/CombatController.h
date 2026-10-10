@@ -5,6 +5,7 @@
 
 #include "AutoAttackController.h"
 #include "CombatLivenessPolicy.h"
+#include "CombatBootstrapVerificationPolicy.h"
 #include "CombatTerminalPolicy.h"
 #include "CombatDefensiveContainmentPolicy.h"
 #include "ChaseController.h"
@@ -350,9 +351,8 @@ namespace Bot
         bool lastInitGateOffenseAllowed_=false;
         std::string lastActionProbeReason_;
         std::string lastBootstrapProbeReason_;
-        bool bootstrapVerificationPending_=false;
-        std::uint64_t bootstrapVerificationGuid_=0;
-        std::uint64_t bootstrapDispatchedAtMs_=0;
+        CombatBootstrapVerificationPolicy bootstrapVerification_;
+        std::uint32_t lastMeleeAttackPeriodMs_=0;
 
         static std::uint64_t ClientSelectedGuid(const Objects::WorldState& world)
         {
@@ -378,7 +378,8 @@ namespace Bot
                 " playerPacified="+(e.known ? ((e.playerFlags&0x20000u) ? "yes" : "no") : "unknown")+
                 " targetNonAttackable="+(e.known ? ((e.targetFlags&0x82010182u) ? "yes" : "no") : "unknown")+
                 " evade=unknown range="+Float(target.distance)+" facing="+(s.facing ? "yes" : "no")+
-                " castOrGcdWait="+(s.actionWait ? "yes" : "no")+" classification=offensive_no_progress");
+                " castOrGcdWait="+(!meleeActionEvidence_.known ? "unknown" : s.actionWait ? "yes" : "no")+
+                " actionProbe="+meleeActionEvidence_.reason+" classification=offensive_no_progress");
         }
 
         void BeginChaseTerminal(const Objects::WorldState& world,
@@ -893,6 +894,7 @@ namespace Bot
             // A stale object snapshot is not a stationary live target sample.
             s.fresh=s.fresh && s.targetHp==target.health && s.playerHp==world.player.health;
             lastMeleeTargetFresh_=s.fresh;
+            lastMeleeAttackPeriodMs_=s.attackPeriodMs;
             meleeActionEvidence_=AutoAttackController::ProbeCombatAction();
             // Health sampling remains authoritative even when the Attack
             // action probe is unavailable during a bounded bootstrap.
@@ -908,31 +910,30 @@ namespace Bot
             s.actionKnown=meleeActionEvidence_.attack.valid && meleeActionEvidence_.attack.actionSlotFound;
             s.attackActive=meleeActionEvidence_.attack.active;
             meleeDecision_=meleeLiveness_.Observe(s);
-            if (bootstrapVerificationPending_ && bootstrapVerificationGuid_==target.guid)
+            const auto bootstrapResult=bootstrapVerification_.Observe(s,meleeDecision_.damageObserved);
+            if (bootstrapResult==CombatBootstrapResult::Confirmed)
             {
-                const bool damage=s.fresh && meleeDecision_.damageObserved;
-                const bool latch=s.fresh && s.actionKnown && s.attackActive;
-                if (damage || latch)
-                {
-                    bootstrapVerificationPending_=false;
-                    attackStarted_=true;
-                    Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
-                        Hex64(target.guid)+" attackKnown="+(s.actionKnown ? "yes" : "no")+
-                        " attackActive="+(latch ? "yes" : "no")+
-                        " targetHp="+std::to_string(s.targetHp)+
-                        " result=confirmed reason="+(damage ? "target_hp_decreased" : "attack_latch_active"));
-                }
-                else if (s.nowMs>=bootstrapDispatchedAtMs_ &&
-                    s.nowMs-bootstrapDispatchedAtMs_>=
-                        std::max<std::uint64_t>(8000,
-                            2u*std::uint64_t(s.attackPeriodMs)+1000))
-                {
-                    bootstrapVerificationPending_=false;
-                    Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
-                        Hex64(target.guid)+" attackKnown="+(s.actionKnown ? "yes" : "no")+
-                        " attackActive=no targetHp="+std::to_string(s.targetHp)+
-                        " result=failed reason=bounded_offensive_observation_no_proof");
-                }
+                attackStarted_=true;
+                Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
+                    Hex64(target.guid)+" attackKnown="+(s.actionKnown ? "yes" : "no")+
+                    " attackActive="+(s.actionKnown ? (s.attackActive ? "yes" : "no") : "unknown")+
+                    " targetHp="+std::to_string(s.targetHp)+
+                    " result=confirmed reason="+(meleeDecision_.damageObserved ?
+                        "target_hp_decreased" : "attack_latch_active"));
+            }
+            else if (bootstrapResult==CombatBootstrapResult::Failed)
+            {
+                // The normal watchdog cannot repair with unknown full action
+                // evidence. Transfer to its existing bounded terminal owner;
+                // never leave a spent bootstrap silently parked in Fighting.
+                meleeDecision_.action=CombatRecoveryAction::Fail;
+                Debug::Logger::Info("COMBAT INIT state=attack_verify guid="+
+                    Hex64(target.guid)+" attackKnown="+(s.actionKnown ? "yes" : "no")+
+                    " attackActive="+(s.actionKnown ? (s.attackActive ? "yes" : "no") : "unknown")+
+                    " targetHp="+std::to_string(s.targetHp)+
+                    " result=failed reason=bounded_offensive_observation_no_proof"
+                    " decision=bounded_terminal_handoff inputGuards=unchanged");
+                LogCombatExecution(target,s,CombatClientEvidence5875::Execution(world,target));
             }
             if (meleeDecision_.damageObserved)
             {
@@ -977,7 +978,8 @@ namespace Bot
             {
                 if (!meleeTerminalPending_)
                 {
-                    terminalCause_="optional_offensive_recovery_exhausted";
+                    terminalCause_=bootstrapResult==CombatBootstrapResult::Failed
+                        ? "initial_attack_unverified" : "optional_offensive_recovery_exhausted";
                     chaseTerminalPending_=false;
                     Debug::Logger::Info("COMBAT HARD STALL targetGuid="+Hex64(lockedGuid_)+
                         " durationMs="+std::to_string(meleeLiveness_.NoDamageMs(s.nowMs))+
@@ -1014,9 +1016,8 @@ namespace Bot
             attackStarted_=issued && !initialBootstrap;
             if (initialBootstrap)
             {
-                bootstrapVerificationPending_=issued;
-                bootstrapVerificationGuid_=issued ? target.guid : 0;
-                bootstrapDispatchedAtMs_=issued ? GetTickCount64() : 0;
+                bootstrapVerification_.Begin(target.guid,GetTickCount64(),
+                    lastMeleeAttackPeriodMs_,issued);
                 Debug::Logger::Info("COMBAT INIT state=attack_bootstrap guid="+
                     Hex64(target.guid)+" action=attack result="+
                     (issued ? "dispatched" : "rejected")+" reason="+bootstrapOutcome);
@@ -2164,9 +2165,8 @@ namespace Bot
             meleeDecision_={};
             meleeActionEvidence_={};
             lastMeleeClassification_=CombatStallClass::UnknownOrStale;
-            bootstrapVerificationPending_=false;
-            bootstrapVerificationGuid_=0;
-            bootstrapDispatchedAtMs_=0;
+            bootstrapVerification_.Reset();
+            lastMeleeAttackPeriodMs_=0;
             lockedGuid_ =
                 0;
 
