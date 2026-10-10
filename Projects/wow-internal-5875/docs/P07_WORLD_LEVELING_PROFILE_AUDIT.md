@@ -3,7 +3,8 @@
 This checkpoint implements isolated, advisory policies, synthetic regression
 tests and the P0.7.4 unqualified raw location lifecycle observer. It does not
 integrate profile selection into the running bot or qualify current location
-or any new behavior in WoW. Earlier checkpoint sections below are historical.
+or any new gameplay behavior in WoW. The P0.7.4 runtime reconciliation below
+records the raw observer PASS only. Earlier checkpoint sections are historical.
 
 Baseline: 75cadc00b8343837b8fbb40c29a648d5dbc56298, branch
 codex/p07-world-zone-preparation. The World Evidence, Existing Profile / Quest
@@ -608,10 +609,73 @@ reader now exists. Every current-location/world-lifetime qualification and
 
 ### RUNTIME OBSERVED
 
-**None for P0.7.4.** No WoW launch, injection, logout, Enter World or stop/unload
-test was performed in this implementation task. Historical connection-observer
-runtime results do not qualify this new reader. CryptoAPI availability under
-the configured Wine prefix, actual raw values and P0.7.4 detach remain pending.
+At implementation time, no WoW launch, injection, logout, Enter World or
+stop/unload test was performed. The later capture reconciliation below supersedes
+that historical NOT RUN status for raw observation only.
+
+#### Capture reconciliation — 2026-10-10
+
+**P0.7.4 RAW LOCATION LIFECYCLE OBSERVER — RUNTIME PASS**
+
+The user-supplied result in AI_HANDOFF.md is corroborated by independently
+inspecting the saved retry capture. No new WoW run was performed in this task.
+Source, runtime-evidence and validation research ran in three parallel read-only
+subagents before coordinator edits; their conclusions agree on the limited
+qualification below.
+
+Provenance: `runtime-captures/p074-location-lifecycle-retry-2026-10-10/`,
+main `wow-internal.log` lines 11–21 and `wow-internal.lifecycle.log` lines 19–34;
+PID `296`, session `296.134360886272945680.57555570.500`.
+The lifecycle file is cumulative: lines 1–18 belong to the earlier PID 300
+attempt. That earlier capture has only one in-world candidate row and cannot
+substitute for the retry transitions. Capture files are ignored local artifacts;
+the following sanitized record preserves the relevant evidence in this audit.
+
+| File | SHA256 |
+|---|---|
+| Retry `wow-internal.log` | `5914e5adda888f0719eeb952503e4171ed358c3f0038c6c81639f53a347a7dd9` |
+| Retry `wow-internal.lifecycle.log` | `cb058a9adbfe462e260e9e316b1388e914686dfc4c1d6afea99ab7e63130f380` |
+
+| sampleMs | worldStage | manager | playerGuid | localPlayer | mapCandidate | zoneCandidate | areaCandidate |
+|---|---|---|---|---|---|---|---|
+| 57556117 | complete | `0x14fe508` | `0x1aa56` | `0xde68008` | 1 | 14 | 363 |
+| 57607710 | manager_missing | `0x0` | unknown | unknown | unknown | 14 | 363 |
+| 57607967 | manager_missing | `0x0` | unknown | unknown | unknown | 0 | 0 |
+| 57628493 | active_guid_missing | `0x8d35d08` | `0x0` | unknown | 1 | 0 | 0 |
+| 57633505 | complete | `0x8d35d08` | `0x1aa56` | `0x19da8008` | 1 | 14 | 363 |
+
+The full capture supplies explicit `unknown` identity values in later teardown,
+where the previous handoff excerpt said “not supplied.” Startup reports
+`fileFingerprint=pass`; each of the five rows reports `locationSignatures=pass`,
+`locationQualification=unqualified`, `locationReason=source_lifetime_gap`,
+`worldCorrelation=sequential`, and `inputOwner=none commands=none`.
+This confirms the fingerprint helper succeeded in this recorded session only.
+Every row retains `serverConnected=yes` and historical `lastGlueScreen=charselect`;
+current UI visibility, loading, disconnect and action eligibility remain unknown.
+
+Zone/area storage remains 14/363 after manager loss, then clears. The new manager
+exposes map 1 while its active GUID is zero. The same GUID returns with new
+manager/local-player pointers and matching candidates. These are observed
+storage transitions, not qualified location samples or exact visible-screen
+times. The source paths in sections A–C explain why the observer permits these
+rows: zone/area reads are independent of manager availability, and raw map reads
+do not require an active player. No gameplay owner or profile transition occurs.
+
+GUI `stop_button` targets PID 296 at monotonicMs `57660593`; observer STOP
+follows at `57660823`, then logical `RUNTIME DETACHED` and bootstrap
+`unload_requested` at `57660824`. The capture contains no action-command markers.
+Source boundary checks separately establish the observer's input-free path;
+absence of logged commands alone is not an exhaustive input trace.
+
+**UNKNOWN:** completed OS module unload, post-stop client responsiveness,
+visible-screen/loading annotations and heartbeat continuity during unchanged
+dwell. **SOURCE GAP (completion telemetry):** current `DllMain` handles attach
+only, and `UnloadSelf` emits `unload_requested` before `FreeLibraryAndExitThread`.
+Logical detach/request telemetry therefore cannot prove completed unload.
+Absence of a nonexistent completion marker is not evidence of unload failure.
+The observer PASS is preserved; complete manual-runbook acceptance is not
+claimed. Map/zone/area remain **UNQUALIFIED** and profile location population
+remains **BLOCKED**.
 
 ### INFERRED
 
@@ -668,10 +732,12 @@ prefix. Normal user UI actions are the only transition source.
 9. After world return, record the fresh complete snapshot and compare GUID,
    pointers and candidates with step 4. No gameplay may start. Record an optional
    natural zone transition only if one happens without manufacturing it.
-10. Press **Stop Bot**. Require observer `BOT SESSION STOP`, `RUNTIME DETACHED`,
-    bootstrap unload request and DLL detach/unload markers, with no stop/hold,
-    attack, AFK or other input operation.
-11. Confirm WoW remains running and responsive with the runtime detached. Keep
+10. Press **Stop Bot**. Require observer `BOT SESSION STOP`, logical
+    `RUNTIME DETACHED` and bootstrap `DLL LIFECYCLE event=unload_requested`,
+    with no stop/hold, attack, AFK or other input operation. The current source
+    emits no DLL_PROCESS_DETACH completion marker; these are pre-unload records.
+11. Independently confirm module absence and that WoW remains running and
+    responsive after the request; record the observation method and time. Keep
     the complete logs and screen annotations together. Static control-flow
     checks alone cannot prove successful runtime unload.
 
@@ -733,8 +799,69 @@ Validation on 2026-10-10:
   this task's 11 files; no staging or commit.
 - Source comparison with `71e2ed6`: no edits to WorldMonitor, bootstrap,
   WorldState, profile evidence/adapter, Grind or any protected gameplay owner.
-- Runtime: NOT RUN / PENDING. In particular, the new fingerprint helper's Wine
-  runtime behavior and P0.7.4 Stop Bot/detach require the manual procedure above.
+- Runtime at implementation time: NOT RUN / PENDING. The later capture
+  reconciliation above confirms fingerprint/raw observation/stop telemetry;
+  completed unload and post-stop responsiveness remain unverified.
+
+### Source research continuation — 2026-10-10
+
+Starting checkpoint: `f10daba3d955808de2c55f789153ee2730cb5031`.
+The exact executable offline audit was rerun successfully against
+`/home/ludvig/Games/WoW Vanilla/WoW.exe` (same SHA256 recorded above).
+All 43 instruction anchors and 12 strings still match. Its four location/lifetime
+qualification flags and `runtimeObserved` correctly remain false: the offline
+tool cannot incorporate runtime evidence. Manual disassembly additionally
+narrows the preferred zone-updater GUID provenance:
+
+| SOURCE VERIFIED bounded instruction path | Consequence / remaining limit |
+|---|---|
+| `0x5DB900` increments a counter and updates at threshold 10; lookup of `0xC4DA98/9C` with type mask 8 precedes the fallback active-player lookup with mask 0x10. Selected object +0xE0 and map getter feed `0x67E510`. | Cache updates are conditional and can use another source. Invocation count is not a freshness timestamp. |
+| `0x6006E0` compares its input pair with `0xC4DA98/9C`; equality branches to return at `0x6006FB`. Stores at `0x600791/0x60079A` publish the input as separate DWORDs. The new-pair type-8 lookup at `0x600829` follows publication. | Published pair equality cannot establish a freshly validated object, atomic identity or world generation. |
+| Caller `0x4958C3` reads the active GUID through `0x468550`, then passes it to the setter at `0x4958D1`. Another caller at `0x5EE477` passes the pair from the object's descriptor pointer `[esi+8]`, offsets +0/+4. | One active-player caller does not prove that all updater GUIDs belong to the current player. Alternate-object semantics remain UNKNOWN. |
+| `0x6006C7/0x6006D1` zero the preferred pair in separate stores. | This is a clear path, not a monotonic generation or a proven pre-teardown invalidation boundary. |
+
+These new paths were inspected with `objdump`, independently reconciled by the
+coordinator and source researcher, and are not added to the offline tool's
+43-anchor manifest. Reproduction commands (read-only):
+
+```sh
+objdump -d -Mintel --start-address=0x5db900 --stop-address=0x5db980 '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x6006b0 --stop-address=0x600860 '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x4958c3 --stop-address=0x4958da '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x5ee443 --stop-address=0x5ee48a '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+```
+
+**INFERRED:** the runtime stale-cache and early-map observations are consistent
+with the previously traced late zone/area reset and early manager publication.
+They do not identify exact client instructions executing at each poll.
+**SOURCE GAP:** no source-qualified lifetime/initialization predicate, serialized
+sampling boundary, player-bound zone/area freshness or generation/ABA mechanism
+was established. This bounded inspection is not an exhaustive writer/call-graph
+audit. Root, GUID, candidate equality and server connection remain insufficient.
+No production source, test, reader contract or controller ownership changed.
+
+Next source task: trace caller/update scheduling and owner switch/destroy paths
+to determine whether a defensible serialized read boundary exists; finish the
+alternate-object ownership analysis before designing a location sampler. If no
+boundary can be established, retain the explicit SOURCE GAP. Profile population
+must remain blocked pending both source qualification and the independent
+runtime cases listed above. A separate manual module-absence/responsiveness
+observation is still needed to close the existing runbook's unload acceptance.
+
+Reconciliation validation on 2026-10-10:
+
+- Exact-client offline audit: PASS; additional disassembly manually reviewed
+  independently. Capture hashes verified and all five documented rows/fixed
+  qualification labels compared successfully with the saved retry log.
+- `python3 tools/validate.py --jobs 4`: PASS, all 247 records; 111 C++
+  executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
+  SQL/TSV fixture, full MinGW build and diff check.
+  Report: `/tmp/wow-validation-gkxuejoo/results.json`.
+- Separate `cmake --build build`: PASS (DLL, testhost, loader, GUI).
+- Independent read-only source/evidence reviews: no corrections. Complete diff
+  inspected; `git diff --check -- .`: PASS. Only this audit and AI_HANDOFF.md
+  changed; no production source/tests changed and nothing staged or committed.
+- Runtime: existing capture inspected; no new run and no qualification upgrade.
 
 ## Regression and validation
 

@@ -3,141 +3,151 @@
 ## Repository state
 
 Branch: `codex/p07-world-zone-preparation` (observed in this worktree).
-Starting checkpoint: `42a5a7b88acec9d4c55feb57dcf102c7b691983c` — `chore: add AI handoff protocol`.
-Current HEAD: `42a5a7b88acec9d4c55feb57dcf102c7b691983c`; this documentation update is uncommitted.
-Working tree: Clean at task start; now contains only unstaged modifications to `AGENTS.md` and `docs/AI_HANDOFF.md`. Nothing staged or committed in this task.
-
+Starting checkpoint and current HEAD: `f10daba3d955808de2c55f789153ee2730cb5031`
+— `chore: add AI handoff protocol`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
-The older branch/path descriptions in AGENTS.md and CODEX_PROJECT_STATE.md
-are historical; use the observed branch and checkpoint above for continuation.
+Clean at task start; now contains uncommitted documentation changes listed below.
+Nothing staged or committed. Historical branch/path descriptions in AGENTS.md
+and CODEX_PROJECT_STATE.md do not describe this checkout.
 
-## Current task
+## Task and result
 
-Roadmap phase: P0.7.4 raw location lifecycle runtime-result handoff.
-Objective: Maintain the permanent protocol and record the supplied runtime evidence and actual checkpoint without changing production source or tests.
-Status: Complete, documentation only; no commit requested or made. Updated 2026-10-10.
+Roadmap phase: P0.7.4 lifecycle capture reconciliation and location-source
+research continuation. Completed 2026-10-10, documentation only.
 
-## Result
+Reconciled the prior user-supplied observer PASS against the full saved retry
+capture, corrected the manual unload runbook to match existing telemetry, and
+continued exact-client research into the zone updater's preferred GUID.
+Three parallel read-only agents independently researched runtime evidence,
+location sources and validation/status boundaries before coordinator edits.
+Their reconciled conclusion: retain the observer PASS, distinguish logical
+detach from completed unload, and keep profile location population blocked.
+No production source, tests, gameplay ownership or navigation changed.
 
-Summary: Updated the existing protocol to the requested rule formatting and
-refreshed this handoff with the user-supplied P0.7.4 runtime result.
-The committed P0.7 sequence is foundation `386ddaf`, isolated evidence adapter
-`93dad5c`, location source-gap research `71e2ed6`, and raw observer `100034e`.
-P0.7.4 adds unqualified location diagnostics through the existing connection
-observer; it does not qualify location or enable runtime profile selection.
-The detailed continuation reference is
+Detailed evidence, capture hashes, exact instruction addresses, reproduction
+commands and next research scope are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-especially P0.7.4 and its controlled manual lifecycle runbook. Its historical
-NOT RUN / PENDING statements predate the runtime result recorded below; the
-detailed audit was not edited because this task permits only two files.
+P0.7.4 capture reconciliation and source research continuation.
 
 ## Evidence
 
 ### SOURCE VERIFIED
 
-- Git branch, HEAD, clean starting status and checkpoint history were inspected.
-- The prior handoff source inspection found `ConnectionObservationPolicy.h` emits
-  `locationQualification=unqualified locationReason=source_lifetime_gap`
-  and `inputOwner=none commands=none`.
-- The committed P0.7.4 audit records fingerprint/signature-gated raw reads,
-  independent candidate failure groups, profile exclusion and preserved gameplay
-  ownership. This task did not repeat the full source audit or executable audit.
-- The requested protocol remains present once; only the two listed documents changed.
+- Current branch, clean starting status, history and source were inspected.
+- Exact executable SHA256/PE layout, 43 instruction anchors and 12 strings
+  pass the existing offline audit. This qualifies bounded source provenance
+  only; all four current-location/lifetime qualification flags remain false.
+- Additional manual disassembly confirms separate preferred-GUID stores at
+  `0x600791/0x60079A`, equality suppression, and type-8 lookup after publication.
+  Both active-GUID and object-derived callers exist. These new bounded paths
+  are not part of the automated 43-anchor manifest or an exhaustive call graph.
+- Raw observer sampling is sequential, with no lifetime/generation contract.
+  Profile map/zone and position-map association remain absent; area unsupported.
+- DllMain has no DLL_PROCESS_DETACH completion logger. UnloadSelf logs its
+  request before FreeLibraryAndExitThread; logical IPC detach precedes unload.
 
 ### RUNTIME OBSERVED
 
 **P0.7.4 RAW LOCATION LIFECYCLE OBSERVER — RUNTIME PASS**
 
-Provenance: runtime result and lifecycle values supplied by the user for this
-task. No new WoW run or independent raw-log inspection was performed here.
+Prior user-supplied status preserved and now corroborated by direct inspection
+of `runtime-captures/p074-location-lifecycle-retry-2026-10-10/`:
+`wow-internal.log` lines 11–21 and `wow-internal.lifecycle.log` lines 19–34.
+PID `296`, session `296.134360886272945680.57555570.500`.
+These are ignored local artifacts; the tracked detailed audit preserves hashes
+and the sanitized five-row evidence table. Earlier PID 300 records are separate.
+No new WoW run, attach or input was performed in this task.
 
-| Observed stage | manager | playerGuid | localPlayer | mapCandidate | zoneCandidate | areaCandidate |
-| --- | --- | --- | --- | --- | --- | --- |
-| In-world | `0x14fe508` | `0x1aa56` | `0xde68008` | `1` | `14` | `363` |
-| Logout / teardown | `0x0` | unknown | unknown | unknown | `14` | `363` |
-| Later teardown | `0x0` | not supplied | not supplied | unknown | `0` | `0` |
-| New world initialization | `0x8d35d08` | `0x0` | unknown | `1` | `0` | `0` |
-| Fresh world return | `0x8d35d08` | `0x1aa56` | `0x19da8008` | `1` | `14` | `363` |
-
-Zone/area are runtime-observed stale after world identity disappears.
-mapCandidate can appear before active-player identity exists. The same player
-GUID returned with fresh manager/local-player pointers. "Not supplied" marks
-omitted evidence rather than an observed unknown value.
+- In-world: manager `0x14fe508`, GUID `0x1aa56`, player `0xde68008`, candidates
+  map/zone/area `1/14/363`.
+- Manager loss: identity unavailable, map unknown, zone/area retained `14/363`;
+  subsequent sample clears zone/area to `0/0` with identity explicitly unknown.
+- New manager `0x8d35d08`: GUID zero, player unknown, candidates `1/0/0`.
+- Return: same GUID, new player `0x19da8008`, candidates `1/14/363`.
+- File fingerprint and all five live-signature samples PASS; all rows retain
+  unqualified/sequential/no-owner/no-command labels. Server predicate remains
+  yes; historical charselect does not establish the visible screen.
+- GUI Stop Bot, observer STOP, logical RUNTIME DETACHED and unload_requested
+  are recorded. These confirm stop-path telemetry, not completed module unload.
 
 ### INFERRED
 
-The observed stale zone/area values and early map publication support retaining
-the source lifetime gate. Matching values after return do not establish valid
-current-player location, cross-field coherence or a world generation.
+Observed stale zone/area and early map publication agree with the traced late
+reset/early publication paths. They do not identify exact execution points at
+sampling time, prove current-player location, coherence or a world generation.
 
-### UNKNOWN
+### UNKNOWN / SOURCE GAP
 
-The supplied lifecycle excerpt does not include fingerprint-helper or
-Stop Bot/detach telemetry; those details were not independently inspected here.
-SOURCE GAP: current-world lifetime, initialization,
-zone/area player binding, cross-field coherence and generation/ABA handling.
-Profile map/zone and position-map association remain unknown; area is unsupported.
-SOURCE GAP: live Glue/UI action eligibility and reconnect remain unqualified;
-reconnect is not implemented. No merge-target comparison was performed.
+- SOURCE GAP: qualified world lifetime/initialization, alternate GUID ownership,
+  player-bound zone/area freshness, coherence, generation/ABA and serialized
+  sampling boundary. Profile location population remains BLOCKED.
+- SOURCE GAP: completed-unload telemetry is absent. Actual module absence,
+  post-stop client responsiveness, visible-screen/loading annotations and
+  heartbeat continuity during unchanged dwell are not established by capture.
+  Missing completion telemetry does not establish an unload failure.
+- Live Glue/UI eligibility and reconnect remain unqualified; reconnect is not
+  implemented. No merge-target comparison or whole-branch verification occurred.
 
-## Files changed
+## Exact files changed
 
-- `AGENTS.md` — formatted the last two protocol rules as requested bullets.
-- `docs/AI_HANDOFF.md` — updated checkpoint, runtime evidence, qualification and continuation status.
-
-These are the exact changes for this task. No production source or tests changed.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — reconcile saved runtime evidence,
+  clarify historical status and unload runbook, record bounded source research.
+- `docs/AI_HANDOFF.md` — current checkpoint, evidence, validation and next task.
 
 ## Validation
 
-C++: Not run for this documentation task. Committed P0.7.4 audit reports PASS, 111 C++ executables.
-Python: Not run here. P0.7.4 audit reports PASS, 49 audit Python tests.
-QuestDB: Not run here. P0.7.4 audit reports PASS, 13 QuestDB Python tests.
-Lua/SQL: Not run here. P0.7.4 audit reports PASS, 10 Lua fixtures and SQL/TSV fixture.
-Build: Not run for documentation-only changes. P0.7.4 audit reports full MinGW validation build and separate `cmake --build build` PASS (DLL, testhost, loader, GUI).
-git diff --check: PASS for this task.
+- SOURCE: exact-client offline source audit PASS; bounded additional disassembly
+  independently reviewed. Five documented capture rows and fixed qualification
+  labels match the saved retry log in a separate comparison; hashes verified.
+- TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records: 111 C++
+  executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
+  SQL/TSV fixture, full MinGW build and diff check.
+  Report: `/tmp/wow-validation-gkxuejoo/results.json`.
+- BUILD: separate `cmake --build build` PASS (DLL, testhost, loader, GUI).
+- REVIEW: independent read-only evidence/source reviews found no corrections;
+  complete diff inspected; `git diff --check -- .` PASS. Only the two listed
+  documents changed, nothing staged; production source/tests unchanged.
+- RUNTIME: saved capture inspected only; no new run. Test/build success does
+  not extend the raw-observer runtime qualification.
 
-Historical results above come from the committed P0.7.4 audit (2026-10-10,
-247 validation records PASS, report recorded as
-`/tmp/wow-validation-vvyf3kod/results.json`); the report itself was not revalidated.
-Final `git status --short` confirms only the two intended documents changed.
+## Runtime qualification and blockers
 
-## Runtime qualification
+- Raw lifecycle observer: **RUNTIME PASS**, limited as described above.
+- mapCandidate / zoneCandidate / areaCandidate: **UNQUALIFIED**.
+- ProfileWorldEvidence location population: **BLOCKED** by source gaps.
+- Full manual-runbook unload acceptance: completed module unload and subsequent
+  client responsiveness still need independent observation.
+- Vendor episode and water emergency egress remain runtime pending; automatic
+  reconnect remains unimplemented and R0.1 is not closed.
 
-Status: **P0.7.4 RAW LOCATION LIFECYCLE OBSERVER — RUNTIME PASS**, as supplied by the user; limited to raw lifecycle observation.
-
-- mapCandidate remains **UNQUALIFIED**.
-- zoneCandidate remains **UNQUALIFIED**.
-- areaCandidate remains **UNQUALIFIED**.
-- ProfileWorldEvidence location population remains **BLOCKED**.
-
-Evidence still required: Before profile consumption, establish source-qualified
-lifetime/initialization, player binding, coherence and generation/ABA handling,
-then independently qualify loading, teardown, same-map reload, map transfer and
-zone/area-only changes. The observed lifecycle does not close these source gaps
-or qualify any candidate. Vendor/water acceptance needs separate runtime evidence.
-
-## Open blockers
-
-- None for this documentation task.
-- Qualified profile location consumption is blocked by the source gaps above.
-- Vendor episode and water emergency egress runtime acceptance remain pending;
-  consult the connection reliability audit and
-  [WATER_SWIMMING_DROWNING_AUDIT.md](WATER_SWIMMING_DROWNING_AUDIT.md).
-- Automatic reconnect remains unimplemented; R0.1 is not closed.
+No blocker to this documentation/research task. No candidate was promoted and
+no runtime gameplay fix is claimed.
 
 ## Recommended next task
 
-Reconcile the supplied runtime result with the full lifecycle capture in the
-detailed P0.7.4 audit in a separately authorized task. Continue source research
-for location lifetime/initialization and player binding before considering
-ProfileWorldEvidence population. Do not promote raw candidates from matching
-values alone. Keep Detour/NavMesh and existing controller ownership intact.
+Continue source research into a defensible serialized sampling/lifetime boundary:
+trace update scheduling against constructor publication, object destruction and
+temporary owner switching. Finish the preferred zone-updater GUID ownership
+analysis across its callers. Establish initialization/invalidation ordering and
+coherence/ABA handling before designing or implementing any profile location
+sampler. Retain SOURCE GAP if the evidence does not establish that contract.
+
+Separately close the existing unload runbook with manual module-absence and
+post-stop client-responsiveness evidence. Matching values or another ordinary
+logout/login alone cannot qualify profile location. Future qualified consumption
+also needs independent loading, teardown, same-map reload, map-transfer and
+zone/area-only runtime cases. Preserve Detour/NavMesh and controller ownership.
 
 ## Integration / merge status
 
-Safe to commit: Yes, for these two documentation files only; no commit performed.
-Safe to merge: These documentation edits are suitable for review/merge. Whole-branch integration is UNKNOWN: no target comparison or merge verification was performed; location population remains blocked despite the observer runtime PASS.
-Manual runtime test required: No for this documentation task or recording the supplied observer PASS; yes for future qualified location consumption and the pending vendor/water qualifications.
+Manual runtime evidence required: No new run for this reconciliation/source
+research; yes for outstanding unload acceptance, future qualified location
+consumption and pending vendor/water qualifications.
+Safe to commit: Yes, for the two listed documentation files; validation passed.
+No commit requested or made.
+Safe to merge: These documentation edits are suitable for review/merge.
+Whole-branch integration remains UNKNOWN; no target comparison/merge
+verification performed, and qualified profile location remains blocked.
 
 ## Persistent project statuses
 
