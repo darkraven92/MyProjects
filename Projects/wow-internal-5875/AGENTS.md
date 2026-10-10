@@ -136,3 +136,51 @@ When diagnosing a bug:
 7. Specify what runtime evidence would prove or disprove the fix.
 
 Do not guess about causes when logs/source can answer the question.
+
+## AI handoff protocol
+
+For every substantial task, maintain:
+
+docs/AI_HANDOFF.md
+
+At the end of each task, update that file with the current project handoff.
+
+The handoff must contain:
+
+- branch
+- starting checkpoint
+- current HEAD, if committed
+- task / roadmap phase
+- concise result
+- exact files changed
+- validation results
+- runtime qualification status
+- unresolved blockers
+- recommended next task
+- whether manual runtime evidence is required
+- whether the work is safe to commit
+- whether the work is safe to merge
+
+Keep these evidence classes explicitly separated when relevant:
+
+- SOURCE VERIFIED
+- RUNTIME OBSERVED
+- INFERRED
+- UNKNOWN
+
+Rules:
+
+- AI_HANDOFF.md is a concise handoff, not a replacement for detailed audit docs.
+- Never claim runtime PASS from static tests.
+- Never silently upgrade UNKNOWN evidence.
+- Record SOURCE GAP explicitly where applicable.
+- If the worktree has uncommitted changes, say so.
+- Do not commit automatically unless explicitly instructed.
+- Keep the handoff free of passwords, credentials, account secrets, or other sensitive data.
+
+When parallel subagents are used, summarize their reconciled conclusions rather
+than copying their full reports.
+
+At the end of a task, AI_HANDOFF.md must be sufficient for another AI agent to
+understand the current checkpoint and continue the project without needing the
+previous Codex conversation.
