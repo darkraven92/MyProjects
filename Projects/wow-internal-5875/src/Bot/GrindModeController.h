@@ -2429,6 +2429,13 @@ namespace Bot
                 "DEATH RECOVERY 14G.4.2: GrindMode suspended; approach/roam/vendor movement ownership cleared at death anchor.");
         }
 
+        void ObserveAutomaticAliveForLivingRecovery()
+        {
+            // RecordDeath must account for a redeath even while normal Grind
+            // remains suspended. No scanning, maintenance or movement resumes.
+            deathEpisodeRecorded_ = false;
+        }
+
         void ResumeAfterDeathRecovery(
             const Objects::WorldState& world,
             CombatController& combat,

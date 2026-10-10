@@ -14,6 +14,74 @@ namespace Bot
     // without sending CMSG_SET_SELECTION if it already equals the request.
     struct CombatClientEvidence5875
     {
+        struct LivingEvidence
+        {
+            bool identity=false, alive=false, known=false, combat=false;
+            bool scanComplete=false, aggressor=false;
+            std::uint64_t attacker=0;
+            std::uint32_t hp=0, maxHp=0;
+        };
+        // Targetless read only. Uses the same 5875 fields as Execution/FreshHealth.
+        // A complete client enumeration is NOT a hostile-visibility guarantee.
+        static LivingEvidence Living(const Objects::WorldState& world)
+        {
+            LivingEvidence e{};
+            GameThreadDispatcher::Invoke([&]
+            {
+                std::uint64_t selected=0, guid=0;
+                std::uint32_t descriptor=0, flags=0, life=0;
+                const auto identity = [&]() {
+                    return world.valid && world.player.valid && world.localPlayer &&
+                        world.localPlayer==world.player.address && Selection(world,selected) &&
+                        Core::Memory::Read(world.player.address+0x30,guid) && guid==world.activePlayerGuid &&
+                        Core::Memory::Read(world.player.address+0x08,descriptor) && descriptor &&
+                        descriptor==world.player.descriptors;
+                };
+                if (!GameThreadDispatcher::IsGameThread() || !identity()) return;
+                e.identity=true;
+                e.known=Core::Memory::Read(descriptor+0x58,e.hp) &&
+                    Core::Memory::Read(descriptor+0x70,e.maxHp) && e.maxHp &&
+                    Core::Memory::Read(descriptor+0x2f8,life) &&
+                    Core::Memory::Read(descriptor+0xb8,flags);
+                if (!e.known) return;
+                e.alive=e.hp>1 && !(life&0x10u);
+                e.combat=(flags&0x80000u)!=0;
+                std::uint32_t current=0;
+                bool complete=Core::Memory::Read(world.manager+
+                    Wow5875::Offsets::ObjectManager::FirstObject,current) && current;
+                bool playerSeen=false;
+                unsigned count=0;
+                for (; complete && current && !(current&1u) && count<4096; ++count)
+                {
+                    std::uint64_t unitGuid=0, victim=0;
+                    std::uint32_t type=0, next=0, desc=0, hp=0;
+                    complete=Core::Memory::Read(current+0x14,type) &&
+                        Core::Memory::Read(current+0x30,unitGuid) &&
+                        Core::Memory::Read(current+0x3c,next) && next!=current;
+                    if (!complete) break;
+                    if (type==3 || type==4)
+                    {
+                        complete=unitGuid && Core::Memory::Read(current+0x08,desc) && desc &&
+                            Core::Memory::Read(desc+0x58,hp) && Core::Memory::Read(desc+0x40,victim);
+                        if (!complete) break;
+                        if (unitGuid==world.activePlayerGuid) playerSeen=current==world.localPlayer;
+                        else if (hp && victim==world.activePlayerGuid)
+                        {
+                            e.aggressor=true; // positive pressure even if later enumeration fails
+                            // WorldState exposes type-3 units only. Never invent a type-4 combat target.
+                            for (const auto& unit:world.units)
+                                if (!e.attacker && type==3 && unit.valid && unit.guid==unitGuid &&
+                                    unit.address==current && unit.descriptors==desc && unit.health)
+                                    e.attacker=unitGuid;
+                        }
+                    }
+                    current=next;
+                }
+                e.scanComplete=complete && playerSeen && count<4096 && (!current || (current&1u));
+                if (!identity()) e={};
+            });
+            return e;
+        }
         struct ExecutionEvidence
         {
             bool known=false, aggressorsKnown=false, aggressor=false;

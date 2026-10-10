@@ -7837,6 +7837,9 @@ namespace Navigation
                 replans_;
         }
 
+        // Unlike the physical-stall counter, this never resets on route progress.
+        int LifetimeReplans() const { return totalReplans_; }
+
         float PlannedPathLength() const
         {
             return

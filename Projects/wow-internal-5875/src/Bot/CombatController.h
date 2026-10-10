@@ -319,6 +319,8 @@ namespace Bot
         CombatLivenessPolicy meleeLiveness_{};
         CombatTerminalPolicy meleeTerminal_{};
         CombatDefensiveContainmentPolicy defensiveContainment_{};
+        bool livingDefenseOnly_ = false;
+        std::uint64_t livingDefenseGuid_ = 0;
         std::unique_ptr<Navigation::GenericNavMeshPathFollower> defensiveRoute_{};
         bool defensiveContainmentUsed_=false;
         bool postContainmentRelease_=false;
@@ -2354,6 +2356,14 @@ namespace Bot
 
             warrior_.EndTarget();
 
+            if (livingDefenseOnly_)
+            {
+                if (killed && target && target->valid && target->health==0)
+                    QueueDeferredCorpse(*target,tick);
+                EnterPostTargetDelay(tick);
+                return; // no loot transaction or ordinary acquisition during living recovery
+            }
+
             /*
              * Only a confirmed dead target can become a
              * corpse-loot job. A lost target skips loot.
@@ -3457,6 +3467,37 @@ namespace Bot
         }
 
     public:
+        bool LivingDefenseActive() const
+        {
+            return state_==CombatState::WaitingForTargetSelection ||
+                state_==CombatState::WarriorChargeFacing || state_==CombatState::WarriorOpening ||
+                state_==CombatState::Chasing || state_==CombatState::Fighting ||
+                state_==CombatState::DefensiveContainment;
+        }
+        // Only the exact freshly observed attacker may be adopted. No fallback
+        // selected target, pull selector, loot, recovery or quest owner is run.
+        void UpdateLivingDefense(const Objects::WorldState& world, std::uint64_t tick,
+            std::uint64_t attacker, bool disengaged)
+        {
+            if (disengaged && LivingDefenseActive())
+            {
+                AutoAttackController::Stop();
+                chase_.Stop(); defensiveRoute_.reset(); recovery_.Reset();
+                ResetTargetState();
+                SetState(CombatState::AcquiringTarget);
+                Debug::Logger::Info("DEATH LIVING defense=released reason=fresh_disengagement");
+                return;
+            }
+            livingDefenseOnly_=true;
+            livingDefenseGuid_=attacker;
+            if (LivingDefenseActive()) Update(world,tick);
+            else if (attacker && (state_==CombatState::Idle ||
+                state_==CombatState::AcquiringTarget || state_==CombatState::PostKillDelay))
+                AdoptExactTargetForDefense(world,attacker,tick);
+            livingDefenseGuid_=0;
+            livingDefenseOnly_=false;
+        }
+
         // The maintenance owner does not run Update (which could acquire a
         // target). Retire only the elapsed delay; all real combat states and
         // pending corpse ownership remain authoritative.
@@ -4190,6 +4231,12 @@ namespace Bot
                 state_ ==
                     CombatState::AcquiringTarget)
             {
+                if (livingDefenseOnly_)
+                {
+                    if (livingDefenseGuid_)
+                        AdoptExactTargetForDefense(world,livingDefenseGuid_,tick);
+                    return;
+                }
                 if (tick < nextAcquireTick_)
                     return;
 
@@ -5306,7 +5353,7 @@ namespace Bot
         }
 
         void ResumeAfterDeathRecovery(
-            std::uint64_t tick)
+            std::uint64_t tick, bool defenseOnly = false)
         {
             loot_.Reset();
             recovery_.Reset();
@@ -5323,7 +5370,19 @@ namespace Bot
             SetState(CombatState::AcquiringTarget);
 
             Debug::Logger::Info(
-                "DEATH RECOVERY 14G.4.2: CombatController resumed at AcquiringTarget; normal recovery gate owns low post-resurrection HP.");
+                defenseOnly
+                    ? "DEATH LIVING combat=defense_only normalAcquisition=blocked"
+                    : "DEATH RECOVERY 14G.4.2: CombatController resumed at AcquiringTarget; normal recovery gate owns low post-resurrection HP.");
+        }
+
+        void ResumeAfterLivingRecovery(std::uint64_t tick)
+        {
+            // Preserve corpses earned in defense; ordinary loot arbitration may
+            // consume them after the living owner has actually released.
+            recovery_.Reset(); ResetTargetState(); recentAggressorUntil_.clear();
+            ClearPlannerQuestTarget();
+            nextAcquireTick_=tick+1;
+            SetState(CombatState::AcquiringTarget);
         }
 
         bool ForceAutonomyCombatRecovery(

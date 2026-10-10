@@ -1,5 +1,152 @@
 # P0.1 DeathRecovery reliability audit
 
+## Bounded living recovery and NavMesh egress (2026-10-10)
+
+**IMPLEMENTED / RUNTIME PENDING.** This section supersedes the earlier proposal's
+“living egress unimplemented” description; all historical runtime verdicts retain
+their original scope. Single coordinator implementation from `af8e3b8`, branch
+`codex/vendor-afk-long-navigation`; no new WoW session. The repeat-death circuit
+breaker remains RUNTIME PENDING: the bound session below did not exercise it.
+
+### Verified gap and evidence limits
+
+The previously audited safety capture's raw hash was rechecked:
+`runtime-captures/death-safety-2026-10-10/wow-internal.log`, SHA256
+`53a8cddeb95f64e15f440d525f65afad29959da50fd017c798b5cb5dd54bf223`.
+Its lines 19110–19143 show confirmed resurrection followed immediately by normal
+ownership/defense; 21070–21137 show death at the same logged position. The earlier
+audit documents its missing exact source/DLL binding. This is motivation and
+observed chronology, not runtime qualification of this new code.
+
+Current-source control flow confirmed the gap: `CompleteRecovery` accepted two
+fresh alive probes, `FinalizeAliveEpisode` set Done, and WorldMonitor immediately
+resumed Combat/Grind. Existing Grind post-death escape waits for health and is
+not a dedicated ownership boundary. A separate living owner now bridges this
+transition; it does not change reclaim eligibility or the two alive probes.
+Danger before/during those probes and the first unsafe reclaim remain unresolved.
+
+### Ownership and source-qualified evidence
+
+`LivingDeathRecoveryPolicy` is deterministic; `LivingDeathRecoveryController`
+implements its bounded actions. WorldMonitor enters it only for automatic Done,
+rearms the corpse controller immediately, and withholds ordinary resume. Its
+branch runs after existing water arbitration and before normal quest/grind/
+combat/watchdog dispatch. The completion tick also returns early. Manual-alive
+completion does not acquire this owner. Redeath stops its route and returns to
+the existing corpse controller without clearing repeat history. Grind records
+the next death independently; defense-earned corpses remain deferred until release.
+
+`CombatClientEvidence5875::Living` is read-only and runs on the game thread.
+It uses existing signature/manager/player identity verification from `Selection`,
+checks player GUID/address/descriptors before and after enumeration, reads
+health/max health (`+0x58/+0x70`), native unit combat flag (`+0xb8`, mask
+`0x80000`) and player Ghost flag (`+0x2f8`, mask `0x10`). These fields were already
+used by `Execution`/`FreshHealth`; no new Lua API is presumed. The bounded
+4096-object walk uses the existing type/GUID/next/descriptor layout and reads
+live unit target GUID (`+0x40`). It requires complete termination and the same
+local player before absence of engagement can contribute to a quiet observation.
+
+Positive live type-3/type-4 target-to-player evidence blocks egress even if a
+later read fails. Only a matching type-3 WorldState unit can become an exact
+CombatController defense target; this does not invent player/PvP targeting.
+Native combat without a target still blocks normal movement/release. A decrease
+in sampled HP records pressure and restarts the quiet interval, without asserting
+combat damage or its cause. No event-based damage history, unseen-attacker
+coverage, hostile aggro radius or Ghost threat visibility is established. A
+unit targeting the player is conservatively treated as engagement evidence;
+this adapter does not prove that every such unit is hostile. Missing/partial
+reads are unknown, never a safety verdict. Hidden or non-targeting threats remain
+possible even after successful recovery.
+
+CombatController's scoped defense entry permits exact-attacker adoption and
+existing active defense states only. Ordinary acquisition is gated inside the
+FSM too; finishing defense queues loot without starting a loot transaction.
+Fresh complete disengagement releases defense. A world gap discards the old
+intent before any later defensive adoption. Combat terminal failure blocks
+normal resume. An unknown attacker cannot authorize a guessed target or a new
+pull; existing defense failure policies are not weakened.
+
+Living-water arbitration retains its existing priority and gates ahead of this
+owner. Its handoff is additionally checked against fresh targetless engagement
+while living recovery owns control. It may cancel the living route; ordinary
+water emergency/terminal behavior remains authoritative. Swimming without an
+eligible water owner holds living navigation instead of applying Ghost traversal
+permissions. After water release the original living deadline still applies.
+No water emergency qualification is awarded. Existing AFK recovery safety is
+passed on every living-owner tick, including its terminal state; AFK native
+combat/water/dead/Ghost gates are unchanged.
+
+### Finite egress and completion contract
+
+| Bound or condition | Implemented behavior |
+| --- | --- |
+| Active lifetime | 90,000 ms steady deadline from automatic alive completion, including defense/water waits; never renewed by progress or replanning. |
+| Evidence before movement | Same identity, alive, complete fresh engagement reads, known non-swimming movement, no active defense, two seconds since observed engagement/HP loss/unknown evidence. |
+| Candidate set | At most four attempt slots; direction uses current orientation plus successive quarter turns, requested 18 yards from resurrection XYZ. No hard-coded route or historical “safe” anchor. |
+| Route acceptance | Planning-only GenericNavMeshPathFollower/Detour must reach the full destination; projected displacement >=12 yards. Then a fresh command guard precedes a separate execution request. |
+| Route constraints | Living `AvoidUntilQualified`, no full-map fallback, existing path validation and episode-local directed-transition avoidance. Each execution stops on reaching four lifetime replans (not the follower's progress-reset stall counter); the absolute deadline also bounds loading/planning. |
+| Interruptions/failures | A canceled planning/execution attempt consumes its slot. Failed/partial/near projections advance only within four slots. Exhaustion blocks. No standalone retry timer renews the episode. |
+| Arrival/recovery | Actual displacement >=12 yards; existing RecoveryController may recover health after arrival. Further pressure yields to defense. Falling back inside 12 yards after arrival blocks release. |
+| Release | Alive, >=95% HP, no positive engagement/defense/water owner, quiet interval, three fresh observations >=250 ms apart, then fresh command-world/health/displacement checks and standing dispatch. Only committed completion resumes normal modes on the next snapshot. |
+| World/identity loss | Drop route/evidence and require manual recovery. Do not issue commands to a foreign/unknown player or resume from stale proofs. |
+| Terminal policy | No autonomous route/search/release; passive manual-recovery interlock keeps normal modes blocked while defense and eligible existing water ownership remain possible. |
+
+The 18/12-yard distances are engineering displacement bounds, **not aggro or
+safety radii**. Reachability and absence of observed engagement do not prove a
+safe destination. No healthy historical anchor is used because its threat/water
+provenance is insufficient here. A candidate may remain dangerous and cause
+another death; repeat-death semantics remain unchanged (120 seconds/eight yards),
+so a death outside that original neighborhood is not newly covered.
+
+A terminal block is deliberately not an infinite active recovery loop: automatic
+search, movement and recovery stop, and no retry budget resets. Its normal-mode
+interlock persists until explicit session stop/restart or a new death hands off
+to corpse recovery. Auto-expiring that interlock would blindly restart beside a
+failed egress. Deadline evaluation continues before water ownership; a world gap
+blocks immediately. Map identity uses the existing configured map (currently 1),
+not a newly qualified live map reader; seamless cross-map support is not claimed.
+
+### Deterministic coverage and runtime gate
+
+`living_death_recovery_policy_test.cpp` covers automatic versus manual entry,
+positive aggressor/native-combat/defense priority, water preemption including
+terminal defense availability, full reachable egress/arrival, quiet/HP recovery,
+spaced proofs and committed release, no route, partial/near projections, finite
+candidate/replan failure, unchanged deadline across interruptions, unknown life,
+HP pressure, incomplete observations, world/identity/map loss, time rollback,
+post-arrival displacement loss and repeat-policy preservation. Production wiring
+sentinels check that normal dispatch is bypassed, exact defense does not use a
+selected-target fallback, defense loot is deferred, and living NavMesh options
+retain water restrictions/full-reachability/replan guards. These are policy and
+source integration tests, not a simulated live client or runtime qualification.
+
+Validation PASS: `PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`
+completed **110 C++ tests**, registered Python/SQL/Lua suites, full DLL build and
+diff check. Report: `/tmp/wow-validation-jwp2i55y/results.json`; console:
+`/tmp/death-living-recovery-final-validation.log`. The living policy/integration
+test was also compiled and run again after the cumulative-replan guard change.
+These are static/build results, not runtime evidence.
+
+A future supervised run must bind source/branch/DLL and runtime mapping before
+relying on execution. Require a natural reclaim with unchanged two fresh alive
+probes, `repeatDeath=armed`, `DEATH RECOVERY EXIT resumeMode=LivingRecovery` and
+`DEATH LIVING entered=automatic_alive_confirmed`. Trace all commands/owners:
+no normal pull/roam/vendor/loot while held; exact positive aggressor gets defense;
+qualified water preemption follows its existing policy; otherwise preflight →
+routing → actual displacement → recovery → three calm fresh observations →
+`complete` → next-snapshot normal resume. Sparse `DEATH LIVING` transitions and
+five-second status include reason, attempts, engagement/read completeness, HP,
+attacker and normal-mode blocking; NavMesh logs supply destination/motion detail.
+
+Also require a naturally encountered failure/preemption/world gap to stop within
+the budgets and retain `blocked_manual_recovery`, without route restarts or
+normal acquisition. If nearby redeath occurs, independently verify the original
+release/fresh-Ghost/repeat-terminal/zero-retrieve/AFK requirements below. Do not
+provoke death or treat a successful build, absent attacker, unload request or
+unbound old run as PASS. First unsafe resurrection, safe Ghost staging, vendor,
+water emergency egress, reconnect and completed DLL unload remain unqualified
+as previously recorded. Historical P0.5.8 PASS is not broadened; P0.7 untouched.
+
 ## Bound runtime qualification (2026-10-10): repeat path NOT EXERCISED
 
 **INSUFFICIENT EVIDENCE; the repeat-death circuit breaker remains IMPLEMENTED /

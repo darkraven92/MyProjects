@@ -1,5 +1,48 @@
 # R0.1 unattended maintenance / connection audit
 
+## Living post-resurrection recovery implementation (2026-10-10)
+
+**IMPLEMENTED / RUNTIME PENDING.** Following `af8e3b8`, automatic reclaim's two
+fresh alive confirmations now enter a distinct bounded living owner rather than
+immediately resuming normal Grind/Quest work. Read-only targetless native combat,
+identity/life and bounded object-target evidence gate navigation and release;
+HP loss renews a quiet interval. Exact-attacker CombatController defense remains
+available, while ordinary acquisition/roam/vendor/loot/watchdogs are held.
+Existing living-water arbitration remains ahead of recovery, and existing AFK
+recovery/native/water/Ghost guards remain authoritative.
+
+The integrated attempt permits four 18-yard candidates, full NavMesh reachability,
+>=12-yard projected/actual displacement, living water avoidance and at most four
+replans per execution under an absolute 90-second deadline. After egress, health
+recovery, >=95% HP, three spaced fresh calm observations and final command/posture
+checks allow normal resume on a subsequent world snapshot. These distances are
+engineering bounds, not aggro radii or claims of a safe destination. Unknown
+engagement evidence cannot qualify release. World/identity loss or exhaustion
+leads to a passive manual-recovery interlock: no new automatic navigation/retry,
+normal mode stays blocked, defense/eligible water handling remain available.
+The interlock itself deliberately does not auto-expire into ordinary Grind.
+
+Manual-alive completion does not inherit this owner. Redeath returns to the
+existing corpse controller with its repeat record intact. The unchanged repeat
+breaker remains **RUNTIME PENDING**, because the bound session below lacks the
+path. This implementation does not prevent the first unsafe reclaim or protect
+the earlier alive-probe interval; safe pre-resurrection staging is unimplemented.
+No new Ghost visibility or live-map capability is asserted. The qualified subset,
+precise budgets/evidence limits, deterministic tests and runtime acceptance are
+in the [DeathRecovery audit](DEATH_RECOVERY_AUDIT.md#bounded-living-recovery-and-navmesh-egress-2026-10-10).
+
+Validation PASS: `PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`
+completed **110 C++ tests**, registered Python/SQL/Lua suites, full DLL build and
+diff check. Report: `/tmp/wow-validation-jwp2i55y/results.json`; console:
+`/tmp/death-living-recovery-final-validation.log`. The living policy/integration
+test was also compiled and run again after the cumulative-replan guard change.
+These are static/build results, not runtime evidence. No new WoW
+run. Historical P0.5.8 PASS is unchanged; vendor INSUFFICIENT EVIDENCE, water
+emergency egress RUNTIME PENDING, reconnect SOURCE GAP / NOT IMPLEMENTED and
+completed-unload evidence limits are unchanged. P0.7 untouched. Earlier sections
+below are historical checkpoint records; their “living egress unimplemented”
+statements are superseded only by this runtime-pending implementation.
+
 ## Bound DeathRecovery session (2026-10-10): INSUFFICIENT EVIDENCE
 
 The repeat-death circuit breaker remains **IMPLEMENTED / RUNTIME PENDING**.

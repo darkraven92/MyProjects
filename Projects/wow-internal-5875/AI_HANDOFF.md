@@ -1,5 +1,61 @@
 # AI handoff
 
+## 2026-10-10 bounded living post-resurrection recovery
+
+**IMPLEMENTED / RUNTIME PENDING.** Single coordinator; no subagents. Continued
+`af8e3b84b7088ea617e41bca1c86903524638dd0` on
+`codex/vendor-afk-long-navigation`. Read AGENTS.md, this handoff, source/history
+and the preceding audits. No new WoW session or runtime qualification. The
+older sections below describe their respective checkpoints, not current source.
+
+Automatic reclaim still requires the existing two fresh alive probes and arms
+the unchanged repeat-death history. Instead of immediately resuming Grind,
+WorldMonitor starts a separate `LivingDeathRecoveryController`. It holds normal
+Grind/Quest acquisition, roam, vendor, loot and watchdog activity. Manual-alive
+completion retains its existing resume path. A subsequent death returns to
+DeathRecovery without resetting the repeat record.
+
+The living owner uses fresh, identity-checked native combat/life fields and a
+bounded targetless object scan. Positive target-to-player evidence permits only
+exact-attacker defense through CombatController; absence of observed attackers
+is never called safe. HP loss renews the quiet interval without assigning a
+cause. Existing living-water arbitration runs first; no Ghost water exemption
+is reused. AFK runs through its existing recovery guard.
+
+After two quiet seconds with qualified observations, at most four candidates
+18 yards from the confirmed-alive position are tested with planning-only
+Detour/NavMesh reachability. Full destination reachability and at least 12 yards
+projected/actual displacement are required. Living water avoidance, directed
+transition memory and a four-replan limit apply. These are displacement budgets,
+not hostile aggro radii or safety guarantees. After arrival, existing health
+recovery runs; >=95% HP, three spaced fresh calm observations, final fresh
+identity/life/water/engagement checks and a standing dispatch gate release normal
+ownership on the next snapshot.
+
+The entire active attempt has a 90-second steady deadline, including preemption.
+No route, exhausted candidates/replans, identity/world loss, failed stop/posture
+or deadline leads to a terminal manual-recovery interlock. It performs no new
+automatic navigation/retry/release; defense and the existing water owner remain
+available. This passive normal-mode block intentionally has no automatic expiry;
+stop/restart or a new death ends the living episode. Merely remaining alive does
+not clear it. Explicit world gaps invalidate route, evidence and stale defense
+intent; configured map remains the existing map 1, not a new live-map capability.
+
+See [implementation, limits and runtime acceptance](docs/DEATH_RECOVERY_AUDIT.md#bounded-living-recovery-and-navmesh-egress-2026-10-10).
+The first unsafe resurrection (including danger during the two alive probes)
+is unresolved. Safe pre-resurrection staging remains unimplemented. Living
+egress and the repeat-death breaker remain RUNTIME PENDING. Historical P0.5.8
+PASS, vendor INSUFFICIENT EVIDENCE, water emergency egress RUNTIME PENDING,
+reconnect SOURCE GAP / NOT IMPLEMENTED and unload evidence limits are unchanged.
+P0.7 untouched; no captures staged, no merge.
+
+Validation PASS: `PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4`
+completed **110 C++ tests**, registered Python/SQL/Lua suites, full DLL build and
+diff check. Report: `/tmp/wow-validation-jwp2i55y/results.json`; console:
+`/tmp/death-living-recovery-final-validation.log`. The living policy/integration
+test was also compiled and run again after the cumulative-replan guard change.
+These are static/build results, not runtime evidence.
+
 ## 2026-10-10 bound DeathRecovery runtime qualification
 
 **INSUFFICIENT EVIDENCE / repeat-death circuit breaker RUNTIME PENDING.** The

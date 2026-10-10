@@ -16,6 +16,7 @@
 #include "RuntimeRobustnessSupervisor.h"
 #include "CombatController.h"
 #include "DeathRecoveryController.h"
+#include "LivingDeathRecoveryController.h"
 #include "BotDeathOwnershipPolicy.h"
 #include "GrindModeController.h"
 #include "GrindEnduranceDiagnosticPolicy.h"
@@ -418,6 +419,7 @@ namespace Bot
             std::string lastAfkSafetyDecision;
             RuntimeRobustnessSupervisor runtimeRobustness;
             DeathRecoveryController deathRecovery;
+            LivingDeathRecoveryController livingDeathRecovery;
 
             QuestPlannerProbe questPlannerProbe;
 
@@ -718,6 +720,7 @@ namespace Bot
                     // Two terminal manual-alive probes must belong to a
                     // continuous run of valid snapshots for the same player.
                     deathRecovery.InvalidateTerminalAliveEvidenceOnWorldGap();
+                    livingDeathRecovery.InvalidateWorld();
                     escapeDiagnostic.Reset();
                     const EscapeEvaluationEpisodeInput invalidEscapeWorld{};
                     const auto escapeEvent =
@@ -959,6 +962,17 @@ namespace Bot
                     deathRecovery.IsActive(), deathRecovery.IsFailed(),
                     world.player.valid, world.player.health,
                     world.player.maxHealth, deathBootstrap);
+                if (deathShouldOwn && livingDeathRecovery.Owns())
+                {
+                    // Rearm already retained the repeat-death record; do not reset it here.
+                    livingDeathRecovery.YieldWater(world.player);
+                    livingDeathRecovery.Reset();
+                    Debug::Logger::Info("DEATH LIVING state=redeath_handoff normalModeBlocked=yes");
+                }
+                livingDeathRecovery.ObserveDeadline(nowMs);
+                const auto livingEvidence = livingDeathRecovery.Owns()
+                    ? CombatClientEvidence5875::Living(world)
+                    : CombatClientEvidence5875::LivingEvidence{};
                 const bool freshIdleAliveProbe =
                     deathRecovery.FreshIdleAliveConfirmed(tick);
                 const bool normalModeHeldForReconciliation =
@@ -1090,6 +1104,7 @@ namespace Bot
                     }
                     return TemporaryGrindModeEnabled && !deathShouldOwn &&
                         !normalModeHeldForReconciliation && !threat && lockDead &&
+                        livingDeathRecovery.AllowsWaterHandoff(observed) &&
                         !combat.Recovery().IsActive() && !grindMode.FirstAidActive() &&
                         !grindMode.Failed() && !vileFamiliarsTurnIn.IsActive() &&
                         !questPlannerRuntime.OwnsControl() &&
@@ -1108,6 +1123,7 @@ namespace Bot
                 const auto waterDecision = waterEmergency.Update(waterSample);
                 if (waterDecision.entered)
                 {
+                    livingDeathRecovery.YieldWater(world.player);
                     Debug::Logger::Info("WATER EMERGENCY state=entered trigger=swimming previousOwner=" +
                         std::string(combat.StateName()) + " previousGrindOwner=" + grindMode.StateName() +
                         " previousWriter=" + ClickToMoveController::LastCommand().writer +
@@ -1195,6 +1211,7 @@ namespace Bot
                         "WATER BLOCK state=exited reason=death_recovery_ownership");
                 if (waterEmergency.Blocked())
                 {
+                    livingDeathRecovery.YieldWater(world.player);
                     // No ordinary owner or watchdog runs during bounded egress
                     // or terminal manual recovery. AFK observes, but a
                     // water-unsafe candidate is not dispatched speculatively.
@@ -1205,6 +1222,36 @@ namespace Bot
                     ++tick;
                     Sleep(PollIntervalMs);
                     continue;
+                }
+
+                if (livingDeathRecovery.Owns())
+                {
+                    // Separate living owner: ordinary quest/grind/watchdog paths below
+                    // cannot acquire, roam, vendor, loot or renew its finite budget.
+                    const bool released=livingDeathRecovery.Update(world,combat,tick,livingEvidence);
+                    if (TemporaryGrindModeEnabled)
+                    {
+                        const auto edges=enduranceEdges.Observe(combat.LivingDefenseActive(),false,false);
+                        if (edges.combatStarted) ++enduranceCombatStarts;
+                    }
+                    if (released)
+                    {
+                        combat.ResumeAfterLivingRecovery(tick);
+                        if (TemporaryGrindModeEnabled)
+                            grindMode.ResumeAfterDeathRecovery(world,combat,tick);
+                        else questPlannerRuntime.ResumeAfterDeathRecovery(tick);
+                        livingDeathRecovery.Reset();
+                        runtimeRobustness.Reset();
+                    }
+                    AutonomySample inactiveLivingSample{};
+                    autonomySupervisor.Update(inactiveLivingSample,tick);
+                    AfkSafety livingAfkSafety{};
+                    livingAfkSafety.recovery=true;
+                    sharedAfk.Update(world.player,world.activePlayerGuid,livingAfkSafety,
+                        nowMs,"PostResurrectionRecovery");
+                    ++tick;
+                    Sleep(PollIntervalMs);
+                    continue; // even completion requires a fresh next-world acquisition tick
                 }
 
                 // Explicit AFK qualification starts only on stationary healthy
@@ -1452,10 +1499,17 @@ namespace Bot
 
                     if (deathRecovery.IsDone())
                     {
+                        const bool automatic=deathRecovery.AutomaticCompletion();
                         const bool rearmed =
                             deathRecovery.RearmAfterConfirmedAlive();
-                        combat.ResumeAfterDeathRecovery(tick);
-                        if (TemporaryGrindModeEnabled)
+                        combat.ResumeAfterDeathRecovery(tick,automatic);
+                        if (automatic)
+                        {
+                            if (TemporaryGrindModeEnabled)
+                                grindMode.ObserveAutomaticAliveForLivingRecovery();
+                            livingDeathRecovery.Begin(world,GrindModeController::MapIdValue(),GetTickCount64());
+                        }
+                        else if (TemporaryGrindModeEnabled)
                             grindMode.ResumeAfterDeathRecovery(
                                 world, combat, tick);
                         else
@@ -1465,7 +1519,7 @@ namespace Bot
                             "DEATH RECOVERY EXIT episode=" +
                             std::to_string(deathRecoveryEpisode) +
                             " resumeMode=" +
-                            std::string(TemporaryGrindModeEnabled
+                            std::string(automatic ? "LivingRecovery" : TemporaryGrindModeEnabled
                                 ? "Grind" : "Questing") +
                             " aliveConfirmed=yes");
 

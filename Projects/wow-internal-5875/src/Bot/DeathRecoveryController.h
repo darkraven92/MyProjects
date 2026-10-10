@@ -153,6 +153,7 @@ namespace Bot
 
         DeathProbe lastProbe_{};
         DeathRecoveryRepeatDeathPolicy repeatDeath_{};
+        bool automaticCompletion_ = false;
 
         static std::uint64_t MonotonicMs()
         {
@@ -954,6 +955,7 @@ namespace Bot
 
         void FinalizeAliveEpisode(std::uint64_t tick, const char* reason)
         {
+            automaticCompletion_ = std::strcmp(reason,"automatic_alive_confirmed")==0;
             corpseNavigator_.reset();
             if (anchorGuid_ != 0)
             {
@@ -1873,6 +1875,7 @@ namespace Bot
 
         void Reset()
         {
+            automaticCompletion_ = false;
             repeatDeath_.Reset();
             corpseNavigator_.reset();
             corpseNavigatorFullMapCounted_ = false;
@@ -1964,6 +1967,7 @@ namespace Bot
                    state_ != DeathRecoveryState::Failed;
         }
         bool IsDone() const { return state_ == DeathRecoveryState::Done; }
+        bool AutomaticCompletion() const { return IsDone() && automaticCompletion_; }
         bool IsFailed() const { return state_ == DeathRecoveryState::Failed; }
         bool IdleAliveConfirmed() const { return idleAliveConfirmed_; }
         bool FreshIdleAliveConfirmed(std::uint64_t tick) const
