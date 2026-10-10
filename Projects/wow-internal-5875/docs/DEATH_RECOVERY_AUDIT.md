@@ -1,6 +1,121 @@
 # P0.1 DeathRecovery reliability audit
 
-## Resurrection location safety investigation (2026-10-10)
+## Repeat-death circuit breaker (2026-10-10 continuation)
+
+**Bounded mitigation IMPLEMENTED; runtime qualification PENDING. Safe-point
+staging and DeathRecovery-owned living egress remain NOT IMPLEMENTED.** This
+continues checkpoint `602bf2b` on `codex/vendor-afk-long-navigation`; the worktree
+was clean (no uncommitted changes to discard). Three parallel read-only reviews
+rechecked recovery architecture, Ghost threat evidence, and NavMesh/egress.
+The P0.7 worktree was not accessed. Historical **P0.5.8 RUNTIME PASS is preserved**
+for its original route/reclaim/alive-confirmation/resume scope.
+
+### Evidence and bounded scope
+
+The preserved capture and its hashes below were rechecked. Lines 19110–19143
+confirm automatic resurrection and defense; lines 21070–21137 show the next
+death at the same position. The second sequence repeats at lines 26859–29274.
+These observed outcomes justify a repeat-death circuit breaker without assuming
+that Ghost object visibility is complete or that a different candidate is safe.
+They do not establish an exact wall-clock interval: the first confirmation is
+between ticks 1472/1485, with the next death before tick 1541; the second is after
+2005 with the next death before 2091. Tick spacing is not elapsed-time proof.
+
+The source path still permits the first close reclaim without assessing nearby
+hostiles. In addition, automatic completion previously called `Reset()` through
+`RearmAfterConfirmedAlive()` without retaining the confirmed resurrection
+location. A subsequent death was therefore a fresh automatic recovery episode,
+even at that location. The new policy retains only the previous verified
+automatic-alive location/identity/time across that rearm and detects a repeat
+outcome. This is a deliberate bounded fallback, not safe resurrection staging.
+
+### Implementation and ownership
+
+`DeathRecoveryRepeatDeathPolicy.h` defines a session-local, one-record guard:
+
+- Record actual player XYZ, same player GUID/map and steady-clock time only
+  after the existing Ghost + issued RetrieveCorpse + two fresh alive probes.
+- At the next confirmed death, freeze eligibility if it occurred within
+  **120,000 ms inclusive** of that confirmation. Compare the observed dead body
+  or subsequently read current server corpse location in **3D, <=8 yards**.
+  The window/radius are conservative engineering choices, not an aggro radius
+  or measured runtime safety limits. Neither changes reclaim eligibility.
+- Ghost bootstrap never compares the graveyard, old healthy position or
+  persisted routing anchor. It waits for current server corpse evidence.
+  Identity mismatch, rollback, expired time or invalid coordinates cannot
+  establish a repeat. Missing evidence leaves the historical recovery path.
+- A positive match latches for that death. Normal bounded spirit release runs;
+  after a fresh Ghost confirmation, enter the existing `Failed` owner with
+  `recent_reclaim_redeath`. A latched match plus cached Ghost evidence waits for
+  a fresh probe without starting a route. There is no automatic safe-point
+  search, retry cooldown, reclaim fallback, or timer-based release of the block.
+- Explicit reset/new session, world gap and confirmed manual-alive completion
+  clear the record. Clearing history does not release `Failed`; its existing
+  two fresh same-character alive probes are still required. Ordinary automatic
+  rearm preserves the record. Healthy observations do not refresh its age.
+
+No new navigation or living owner is introduced. Combat, water and AFK dispatch
+and priorities are unchanged, including the already qualified Failed-Ghost AFK
+path. A block is reached before another automatic reclaim, while dead/Ghost;
+it does not retain a living character in a new defenseless state. The existing
+release attempts, anchor wait, route/reclaim bounds and monotonic liveness remain
+authoritative if fresh evidence cannot be obtained. The safety verdict does
+not earn a strategic route continuation or reset any budget.
+
+Sparse `DEATH SAFETY repeatDeath=armed/latched` telemetry records GUID, map,
+confirmed position, corpse position, age at death, separation, observation
+source and `threatCoverage=unknown`; the existing terminal line records the
+final block. No API, memory writer, hostile classification or aggro assumption
+is added. NavMesh remains authoritative for all existing corpse routes.
+Map identity here uses the existing caller-supplied controller map (currently
+map 1 in WorldMonitor); this patch adds no live map reader or cross-map support.
+World-gap invalidation remains necessary; map comparison is not new map-sensing
+qualification.
+
+### Verification and remaining acceptance
+
+`death_recovery_repeat_death_policy_test.cpp` covers first death, captured
+repeat-position geometry with synthetic time, inclusive time/distance boundaries,
+vertical/distant death, identity/map mismatch, unknown identity, nonfinite
+coordinates, rollback, expired history, delayed server anchor, sticky verdict,
+rearm/reset lifetime and Ghost-only blocking. Integration sentinels check the
+production reclaim gate and the source/reset lifetime of evidence. Existing
+death ownership, liveness, terminal, AFK, water and combat suites remain required.
+These are deterministic/source checks, not execution of the Windows controller
+against a live client.
+
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4` passed all
+**109 C++ tests**, registered Python/SQL/Lua suites, full `cmake --build build`
+and diff check. Report: `/tmp/wow-validation-dw90ybrq/results.json`; console:
+`/tmp/death-repeat-safety-validation.log`. After the final explicit guard against
+strategic budget renewal for a latched verdict, the new deterministic test was
+recompiled with `-Wall -Wextra -Werror` and passed; the full build was rerun.
+These checks do not qualify runtime behavior or safe staging/living egress.
+
+Next supervised normal runtime must capture the deployed DLL hash/revision and:
+
+1. A natural first death/reclaim with unchanged fresh eligibility and two alive
+   probes; `repeatDeath=armed` must name the actual confirmed-alive position.
+2. If a natural nearby redeath occurs within the window, a matching latch using
+   body/current-server evidence, normal release, fresh Ghost confirmation and
+   terminal `recent_reclaim_redeath`, with no subsequent automatic reclaim or
+   restarted route. Record stopped navigation and continued Ghost AFK behavior.
+3. If manual resurrection occurs, two fresh same-player alive probes before
+   normal ownership resumes; no old automatic-reclaim record carried forward.
+
+A reclaim after a positive latch, release on timer expiry, a route restarted
+while awaiting fresh Ghost confirmation, or a latch from a foreign/stale anchor
+would disprove the implementation's contract. Do not provoke death to test it.
+No new WoW session was launched for this patch.
+
+This guard can stop unattended resurrection after a nearby death for reasons
+other than hostile mobs. It cannot prevent the first unsafe resurrection,
+deaths outside the window/radius, a death before automatic alive confirmation,
+or repeats across world gaps/session reset. It is not a positive safety verdict.
+Safe staging and living egress still need the evidence and ownership work in
+the prior investigation below; their seven acceptance cases remain unimplemented.
+
+## Resurrection location safety investigation (2026-10-10, prior checkpoint 602bf2b)
 
 **New safety gap: RUNTIME OBSERVED / SOURCE VERIFIED. Safe staging and
 DeathRecovery-owned living egress: NOT IMPLEMENTED — evidence gap.**

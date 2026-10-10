@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DeathRecoveryPolicy.h"
+#include "DeathRecoveryRepeatDeathPolicy.h"
 #include "DeathRecoveryTerminalPolicy.h"
 #include "DeathRecoveryAnchorStore.h"
 #include "CorpseLocation5875.h"
@@ -151,6 +152,30 @@ namespace Bot
         int aliveProbeStreak_ = 0;
 
         DeathProbe lastProbe_{};
+        DeathRecoveryRepeatDeathPolicy repeatDeath_{};
+
+        static std::uint64_t MonotonicMs()
+        {
+            return static_cast<std::uint64_t>(std::chrono::duration_cast<
+                std::chrono::milliseconds>(SteadyClock::now().time_since_epoch()).count());
+        }
+
+        void ObserveRepeatDeathCorpse(const char* source)
+        {
+            if (!repeatDeath_.ObserveCorpse(
+                    {deathPosition_.x, deathPosition_.y, deathPosition_.z}))
+                return;
+            const auto previous = repeatDeath_.ConfirmedPosition();
+            Debug::Logger::Info("DEATH SAFETY repeatDeath=latched source=" +
+                std::string(source) + " playerGuid=" + std::to_string(episodePlayerGuid_) +
+                " mapId=" + std::to_string(mapId_) +
+                " ageAtDeathMs=" + std::to_string(repeatDeath_.AgeAtDeathMs()) +
+                " separation=" + Float(repeatDeath_.Separation()) +
+                " confirmedPosition=(" + Float(previous.x) + "," + Float(previous.y) +
+                "," + Float(previous.z) + ") corpsePosition=(" + Float(deathPosition_.x) +
+                "," + Float(deathPosition_.y) + "," + Float(deathPosition_.z) +
+                ") decision=block_after_ghost_confirmation threatCoverage=unknown");
+        }
 
         static const char* StateNameInternal(DeathRecoveryState state)
         {
@@ -667,7 +692,7 @@ namespace Bot
                 " stationaryFailures=" +
                 std::to_string(consecutiveStationaryRouteFailures_) +
                 " corpseDistance=" + Float(corpseDistance));
-            if (!TryStrategicContinuation(player, tick, reason))
+            if (repeatDeath_.Latched() || !TryStrategicContinuation(player, tick, reason))
                 EnterFinalTerminal(player, tick, LivenessReasonName(reason));
             return false;
         }
@@ -944,8 +969,17 @@ namespace Bot
             SetState(DeathRecoveryState::Done, tick);
         }
 
-        void CompleteRecovery(std::uint64_t tick)
+        void CompleteRecovery(const Objects::WorldState& world, std::uint64_t tick)
         {
+            repeatDeath_.RecordAutomaticAlive(episodePlayerGuid_, mapId_,
+                {world.player.x, world.player.y, world.player.z}, MonotonicMs());
+            Debug::Logger::Info("DEATH SAFETY repeatDeath=armed playerGuid=" +
+                std::to_string(episodePlayerGuid_) + " mapId=" + std::to_string(mapId_) +
+                " position=(" + Float(world.player.x) + "," + Float(world.player.y) +
+                "," + Float(world.player.z) + ") windowMs=" +
+                std::to_string(DeathRecoveryRepeatDeathPolicy::RecentReclaimMs) +
+                " radius=" + Float(DeathRecoveryRepeatDeathPolicy::RepeatDeathDistance) +
+                " threatCoverage=unknown");
             ++recoveries_;
             Debug::Logger::Info("================================");
             Debug::Logger::Info("DEATH RECOVERY 14G.4.2: RESURRECTION CONFIRMED");
@@ -961,6 +995,7 @@ namespace Bot
     public:
         void InvalidateTerminalAliveEvidenceOnWorldGap()
         {
+            repeatDeath_.Reset();
             if (IsActive() && !worldStateLost_)
             {
                 worldStateLost_ = true;
@@ -1227,6 +1262,11 @@ namespace Bot
             corpseNavigatorReadyCounted_ = false;
             corpseNavigatorPrecision_ = false;
 
+            repeatDeath_.BeginDeath(world.valid ? episodePlayerGuid_ : 0,
+                mapId_, MonotonicMs());
+            if (!confirmedGhost)
+                ObserveRepeatDeathCorpse("observed_dead_body");
+
             MovementController::HoldPosition(world.player);
 
             Debug::Logger::Info("DEATH CORPSE ANCHOR source=" +
@@ -1321,6 +1361,7 @@ namespace Bot
                                 " dead=no ghost=no hp=" +
                                 std::to_string(world.player.health) + "/" +
                                 std::to_string(world.player.maxHealth));
+                            repeatDeath_.Reset();
                             FinalizeAliveEpisode(tick,
                                 "manual_alive_confirmed");
                         }
@@ -1368,6 +1409,7 @@ namespace Bot
                     nextActionTick_ = tick;
                 }
                 deathPosition_ = {serverPoint.x, serverPoint.y, serverPoint.z};
+                ObserveRepeatDeathCorpse("current_server_corpse");
                 haveCorpseAnchor_ = true;
                 anchorSource_ = CorpseAnchorSource::ServerCorpseLocation;
                 if (changed)
@@ -1450,6 +1492,17 @@ namespace Bot
             // snapshot before UnitIsGhost() has positively transitioned. Completion is
             // legal only in WaitingForAlive after we have observed ghost state, issued
             // RetrieveCorpse successfully, and received consecutive fresh non-ghost probes.
+
+            // Keep normal bounded spirit release, then stop under the existing
+            // Ghost/Failed owner. No route, safety retry or RetrieveCorpse may
+            // bypass a latched repeat death; waiting never expires the verdict.
+            if (repeatDeath_.ShouldBlock(freshProbe && lastProbe_.isGhost))
+            {
+                EnterFinalTerminal(world.player, tick, "recent_reclaim_redeath");
+                return;
+            }
+            if (repeatDeath_.Latched() && lastProbe_.valid && lastProbe_.isGhost)
+                return; // Await fresh confirmation without starting a Ghost route.
 
             if (state_ == DeathRecoveryState::ReleasingSpirit)
             {
@@ -1707,7 +1760,7 @@ namespace Bot
                     Debug::Logger::Info(
                         "DEATH RECOVERY 14G.4.2.1: resurrection accepted only after ghost + RetrieveCorpse + consecutive alive probes.");
                     Debug::Logger::Info("DEATH RECLAIM phase=verify result=confirmed reason=fresh_alive_probes");
-                    CompleteRecovery(tick);
+                    CompleteRecovery(world, tick);
                     return;
                 }
 
@@ -1820,6 +1873,7 @@ namespace Bot
 
         void Reset()
         {
+            repeatDeath_.Reset();
             corpseNavigator_.reset();
             corpseNavigatorFullMapCounted_ = false;
             corpseNavigatorReadyCounted_ = false;
@@ -1895,7 +1949,9 @@ namespace Bot
         {
             if (state_ != DeathRecoveryState::Done)
                 return false;
+            const auto recentReclaim = repeatDeath_;
             Reset();
+            repeatDeath_ = recentReclaim;
             return state_ == DeathRecoveryState::Idle;
         }
 

@@ -2,6 +2,17 @@
 
 ## New DeathRecovery safety investigation (2026-10-10)
 
+Continuation from `602bf2b`: a bounded **repeat-death circuit breaker is now
+implemented, RUNTIME PENDING**. After a verified automatic resurrection, a
+same-player/map death within 120 seconds and eight yards latches a veto based
+only on observed body/current-server-corpse evidence. Normal bounded release
+runs; fresh Ghost confirmation then enters the existing terminal owner before
+another reclaim. Rearm retains the short history; world gap/reset/manual-alive
+completion clears it. No new living owner, route search, or safety retry is
+introduced, so combat/water/AFK priorities remain unchanged. This does not
+prevent the first dangerous reclaim or qualify safe staging/egress. See the
+[implementation and runtime acceptance](DEATH_RECOVERY_AUDIT.md#repeat-death-circuit-breaker-2026-10-10-continuation).
+
 The separately preserved `runtime-captures/death-safety-2026-10-10/` run shows
 two confirmed reclaims followed by direct aggression and death at the respective
 resurrection positions. Current source checks close reclaim eligibility and

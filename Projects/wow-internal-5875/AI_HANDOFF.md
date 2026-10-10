@@ -1,5 +1,55 @@
 # AI handoff
 
+## 2026-10-10 DeathRecovery continuation: bounded repeat-death block
+
+**IMPLEMENTED / RUNTIME PENDING.** Continued clean checkpoint `602bf2b` on
+`codex/vendor-afk-long-navigation`; no uncommitted task changes existed. Three
+parallel read-only reviews covered architecture, Ghost threat evidence and
+NavMesh/egress. P0.7 worktree untouched. Historical P0.5.8 RUNTIME PASS remains
+qualified for its original scope.
+
+The new `DeathRecoveryRepeatDeathPolicy` records actual confirmed-alive XYZ,
+player GUID/map and steady time after automatic reclaim's two fresh alive
+probes. A next death within 120 seconds and eight yards (3D, inclusive) latches
+a repeat verdict using observed body or current server corpse evidence. Ghost
+graveyard/persisted/last-healthy positions are never used. Age is frozen at
+death, so a corpse run cannot expire a positive verdict. Normal bounded release
+still runs; fresh Ghost confirmation enters existing `Failed` with reason
+`recent_reclaim_redeath`, before another automatic reclaim. Cached Ghost evidence
+waits for a fresh probe without routing. No safety retry, added navigation,
+new living owner or combat/water/AFK priority changes.
+Map matching uses the existing controller-supplied map (currently map 1), not
+a newly qualified live map reader; cross-map support remains out of scope.
+
+Automatic rearm preserves only this short session-local history. Explicit reset,
+world gap or confirmed manual-alive completion clears it; terminal ownership
+still requires its existing two fresh same-character alive probes to release.
+Telemetry: `DEATH SAFETY repeatDeath=armed/latched`, identity/positions, age at
+death, separation, source, unknown threat coverage, then existing terminal log.
+
+This is a circuit breaker against the observed repeating outcome, **not a fix
+for the first unsafe resurrection**. The 120-second/eight-yard neighborhood is
+an engineering bound, not an aggro measurement. It may stop after deaths from
+other causes and cannot protect outside the window/radius, before the initial
+alive confirmation, or across world/session gaps. Safe staging and living egress
+remain unimplemented: Ghost visibility is unqualified, and a living owner needs
+defense-only handoff plus correct water/AFK arbitration. The prior design and
+seven future acceptance cases remain in the [DeathRecovery audit](docs/DEATH_RECOVERY_AUDIT.md).
+
+Deterministic coverage added for repeat geometry, time/3D boundaries, unknown/
+foreign/stale evidence, Ghost bootstrap, sticky verdict and reset/rearm lifetime,
+with production integration sentinels. Full validation PASS: **109 C++ tests**,
+registered Python/SQL/Lua suites, full build and diff check. Report:
+`/tmp/wow-validation-dw90ybrq/results.json`; log:
+`/tmp/death-repeat-safety-validation.log`. Final guard against strategic budget
+renewal for a latched verdict received another targeted test and full build.
+No new WoW session launched; capture hashes below were rechecked. Next runtime
+must bind DLL/revision and show natural reclaim→nearby redeath→latch→release→
+fresh Ghost→terminal block without another reclaim/navigation restart. Also
+verify retained Ghost AFK and two-probe manual-alive release if that occurs.
+Do not intentionally kill the character to qualify it. All earlier vendor,
+water and reconnect verdicts remain unchanged.
+
 ## 2026-10-10 DeathRecovery location safety investigation
 
 **Safety gap observed and source verified; safe staging/living egress NOT
