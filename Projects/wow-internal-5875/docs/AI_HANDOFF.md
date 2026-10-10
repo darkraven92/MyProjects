@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `b3101eb87d4e5532e3b1eabae3a484f794760684`
-— `docs: trace p07 script callbacks and deferred close`.
+Starting checkpoint: `0c4621dc6639389fa34bbe80bda521ee13533821`
+— `docs: trace p07 listener assets and resource callback effects`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,23 +12,23 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: declared listener and resource
-callback effects. Three parallel read-only agents traced script bindings,
-loading continuations and secondary window targets. Coordinator reconciled
-results, checked key sites and narrowed object/graphics virtual bindings.
+P0.7.4 source research continuation, 2026-10-10: visibility callbacks and FrameXML
+selection boundaries. Three parallel read-only agents traced stock UI assets,
+native visibility dispatch and file loading. Coordinator reconciled results,
+checked key chains, re-extracted six members and traced ReloadUI request handling.
 No production code, tests, observer contract, hooks, controller ownership or
 navigation changed.
 
-Identified a concrete stock farsight listener declaration in local assets,
-resource continuations that outlive request-pointer clearing, and GUI callbacks
-behind HWND properties. These narrow source obligations without proving the
-live callback set, complete side effects or retained-reference safety.
+Distinguished immediate pet-widget updates from deferred parent-bar animation;
+connected conditional native visibility/OnLeave script dispatch and narrowed
+FrameXML signature, file flags and archive-open ordering. These facts do not
+establish actual loaded scripts, complete callback effects or retained lifetime.
 **SOURCE GAP remains; profile location population stays BLOCKED.**
 
-Detailed anchors, exact asset hashes, reproduction ranges and limits are in
+Detailed anchors, asset hashes, reproduction ranges and limits are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — declared listener and resource callback effects.” Earlier sections
-retain exact executable provenance and saved runtime capture evidence.
+“P0.7.4 — visibility callbacks and FrameXML selection boundaries.” Earlier
+sections retain executable/archive provenance and saved runtime capture evidence.
 
 ## Evidence
 
@@ -36,35 +36,36 @@ retain exact executable provenance and saved runtime capture evidence.
 
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
   12 strings. All four qualification flags remain false. Additional manual paths
-  and archive extraction are outside that manifest; coverage is not exhaustive.
-- Local patch.MPQ FrameXML.toc/XML/Lua declare the stock PetActionBar listener
-  for PLAYER_FARSIGHT_FOCUS_CHANGED. Its event branch calls PetActionBar_Update;
-  the apparent ControlReleased call is commented out. Coordinator re-extracted
-  three members and matched pinned hashes. This is asset evidence, not live
-  installation or archive-precedence evidence.
-- Native event registration/removal, register-all and target cleanup are mapped.
-  Register-all prevents literal event searches from enumerating every listener.
-  Pet API registrations are bound, but UI methods, script overrides and native
-  helper effects remain open. UI event nodes and object-field listeners are
-  distinct protocols; one cannot supply the other's lifetime guarantee.
-- Selected unit/player getter slots resolve to movement helpers, which may
-  resolve another object and invoke more virtuals. GameObject position/angle
-  helpers can invoke object+0x210 virtual slots +0x44/+0x48. These mappings
-  narrow targets without proving all types, all effects or retained lifetime.
-- Loading callbacks parse textures/map/model resources, publish resource globals,
-  and can submit additional texture work. Request pointers in 0x6C3840,
-  0x6C3F50 and the earlier 0x71D5E0 path clear before downstream completion.
-  The 0x71D640 success bit is set before dependent callbacks. Neither pointer
-  null nor a local ready bit establishes completion of all descendants.
-- Graphics allocation slots are conditionally resolved for the two known
-  factory tables; backend/helper/error callback closure remains incomplete.
-  Resource/global writes are not established map/zone/area or manager writes.
-- Secondary window targets resolve through GetPropA/SetPropA OsGuiPointer and
-  two control vtables into dynamic local/parent callbacks. Literal-address and
-  earlier direct-reference absence do not prove the route cannot activate.
-- Earlier inline descriptor storage, shared listener nodes, bulk cleanup,
-  deferred close and shared-TLS worker limits remain. Profile location/generation
-  stay absent, area unsupported, XYZ without a qualified map association.
+  and archive findings are outside that manifest; coverage is not exhaustive.
+- Inspected pet-button/base/model XML has no OnShow/OnHide declarations; the
+  parent bar has both, invoking global layout helpers. HidePetActionBar only
+  changes animation fields; the separately bound OnUpdate performs bar Hide.
+  This does not establish immediate parent OnHide in the farsight handler.
+- Global layout can Show/Hide chat frames and reposition bags through mutable
+  globals/tables. Cooldown helpers invoke model methods and Show/Hide. Six asset
+  members were re-extracted with matching pinned lengths/hashes; availability
+  does not establish actual client selection or absence of overrides.
+- Native frame Show/Hide has conditional synchronous script dispatch. Visibility
+  state changes precede child traversal and parent scripts; traversal accesses
+  node links after child virtuals return. Script bookkeeping is not a proved
+  outer world-object or listener-retention mechanism.
+- A conditional Hide→OnLeave path is resolved through owner/state checks and a
+  button override. The declared pet OnLeave hides GameTooltip. Actual live class,
+  hover state and callbacks remain UNKNOWN; derived callbacks remain open.
+  Texture/region Show/Hide paths differ from frame script dispatch.
+- ReloadUI is a separate candidate, not found in the stock farsight handler.
+  Its wrapper gates and sets a byte; an event-5 consumer later performs cleanup/
+  reload calls. This narrows one request route without excluding nested pumping.
+- FrameXML initialization checks signature/content, marks context cleanup on
+  failure, then still falls through into loading; it is not an immediate return.
+  This task did not execute the client verifier or establish signature acceptance.
+- Startup flag initialization disables one later loose-file probe. Earlier
+  index/mode paths and other callers remain open. Archive discovery/sorting/open
+  sequence and numeric arguments are traced; final priority/member selection
+  and actual successful opens remain UNKNOWN.
+- Earlier inline descriptors, shared listener nodes, bulk cleanup, resource
+  continuation ordering and shared-TLS worker limits remain. Profile location/
+  generation stay absent, area unsupported, XYZ without a qualified map association.
 
 ### RUNTIME OBSERVED
 
@@ -83,20 +84,20 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Asset declarations and virtual mappings narrow possible paths but do not establish
-actual live callbacks or transitive absence of cleanup/nested traversal. Request
-and ready flags are insufficient full-continuation witnesses. No destructive
-reentry, torn sample, unsafe runtime overlap or gameplay failure was observed.
+Conditional native callbacks widen the effect-coverage obligation; deferred bar
+animation and ReloadUI request handling narrow specific routes. Neither local
+assets nor loader order establish all live callbacks or absence of destructive
+reentry. No torn sample, unsafe runtime overlap or gameplay failure was observed.
 
 ### UNKNOWN / SOURCE GAP
 
-- Actual FrameXML/archive selection, installed/addon-mutated event targets,
-  synchronous UI scripts/native helpers and complete callback closure.
-- Resource-owner retention, decoder/backend/error callbacks, all submitters,
-  remaining object virtuals, GUI activation/callbacks and helper TLS effects.
-- Objects/descriptors/listeners retained across callbacks; actual writer threads,
-  complete writer/counter and initialization/invalidation coverage, coherent
-  sampling, same-map/character/address ABA and player-bound zone/area freshness.
+- Selected archive/loose member bytes, actual scripts/addon overrides and complete
+  reachable visibility/hover/model/layout callbacks; nested event pumping.
+- UI traversal mutation safety and outer object/descriptor/listener retention;
+  resource-owner/descendant completion, remaining object/GUI virtuals and TLS effects.
+- Actual writer threads, complete writer/counter and initialization/invalidation
+  coverage, coherent sampling, same-map/character/address ABA, player-bound
+  zone/area freshness.
 - Completed unload, post-stop responsiveness, visible-screen/loading annotations
   and heartbeat continuity during unchanged dwell remain unestablished. Missing
   completion telemetry does not establish unload failure.
@@ -105,18 +106,18 @@ reentry, torn sample, unsafe runtime overlap or gameplay failure was observed.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — asset/native bindings, bounded
-  resource/GUI effects, reproduction/provenance and remaining proof obligations.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — stock/native visibility paths,
+  FrameXML selection boundaries, ReloadUI route, provenance and proof limits.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
 
-- SOURCE: exact-client offline audit PASS; three extracted asset member hashes
-  independently matched. No automated-manifest expansion or qualification upgrade.
+- SOURCE: exact-client offline audit PASS; six asset member hashes independently
+  matched. No automated-manifest expansion or qualification upgrade.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
   111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
   10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-j9fy1hek/results.json`.
+  Report: `/tmp/wow-validation-69w5d0v3/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
 - REVIEW: three read-only reviews reconciled; no actionable corrections.
   Full diff/status review and `git diff --check` PASS; exactly the two intended
@@ -133,14 +134,15 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Trace the declared stock pet-action update's UI methods and possible synchronous
-OnShow/OnHide scripts; establish FrameXML selection and the limits of addon/event
-listener enumeration. Prioritize routes to bulk object cleanup or nested field
-notification while outer references remain live. Resolve resource-owner
-retention/descendant completion and outstanding object/GUI callback targets as
-needed for that proof. Close writer, invalidation, coherence and ABA obligations
-before any profile location sampler design; retain SOURCE GAP while incomplete.
-Client mutation helpers are not an observe-only acquisition mechanism.
+Follow the conditional pet-button OnLeave→GameTooltip:Hide route through the
+actual tooltip class/OnHide and remaining button callbacks. Trace cooldown
+SetSequence/model callback delivery where reachable from the stock update.
+Determine whether these paths reach bulk cleanup or nested field notification;
+distinguish UI-node mutation from retained outer world references. Complete
+lower-level archive insertion/member selection as needed for loaded-script
+provenance; do not assume open order is priority. Close writer, invalidation,
+lifetime/coherence/ABA obligations before sampler design; retain SOURCE GAP
+while incomplete. Client mutation helpers are not observe-only acquisition.
 
 Separately obtain manual module-absence/post-stop responsiveness evidence for
 unload acceptance. Future qualified location consumption also needs independent

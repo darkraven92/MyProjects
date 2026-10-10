@@ -1568,6 +1568,141 @@ corrections. Full diff/status review and `git diff --check` PASS; exactly the tw
 intended documents changed, with no unrelated changes. Runtime NOT RUN; no
 qualification upgrade.
 
+### P0.7.4 — visibility callbacks and FrameXML selection boundaries
+
+Continued on 2026-10-10 from `0c4621dc6639389fa34bbe80bda521ee13533821`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced stock UI assets, native visibility dispatch and FrameXML
+loading. Coordinator checked key chains, re-extracted six asset members and
+examined the separate ReloadUI request/consumer route. Only this audit and the
+handoff change; no runtime actions or production changes.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+The stock asset path distinguishes immediate widget updates from later bar
+animation. Native visibility can synchronously execute scripts, but neither
+that capability nor a locally available archive establishes the live callback
+set, destructive reentry, retained-reference safety or a sampling boundary.
+
+#### SOURCE VERIFIED — bounded stock visibility paths
+
+All member paths below are under `Interface\FrameXML\`. The preceding section's
+patch archive, PetActionBarFrame Lua/XML and extraction-reader hashes still
+apply. Additional archive `/home/ludvig/Games/WoW Vanilla/Data/interface.MPQ`
+has SHA256 `3f3d739035fc0aa33f4b379e6e046edd31c77509a2414bfb74a17f324c162f6a`.
+
+| Archive/member | Bytes | SHA256 |
+|---|---:|---|
+| patch/ActionButtonTemplate.xml | 2661 | `2226543118b1fe54af9b998ac5a5cc17f5fa87301168dfc27ae25d4b0824d36f` |
+| patch/Cooldown.xml | 560 | `f2207bdc4fb0269a37acd0d0c886f49dacd0e1c07743b12901e527c13942a550` |
+| interface/Cooldown.lua | 745 | `619608ac636ac5875e6590c3ad3159c9b4c21183efa2e059b94c4a06c6dd2869` |
+| patch/UIParent.lua | 54330 | `eec3b8f2f771f5c42b8db6aca2cdff8953c839f90fa4cda051ab73d72a073e5b` |
+| patch/FloatingChatFrame.lua | 42739 | `bcd07daf93ff1f5fe7c879e43e99cb9abad4759eced9791d3347ecf9b8fe498f` |
+| patch/ContainerFrame.lua | 24456 | `77fbf69cea3ff7ff685c6102810266eb5b4c78a4811ca63faa0350ab0a91d6a8` |
+
+Coordinator re-extraction matched these lengths/hashes. Reproduce with the
+previous section's MPQ extraction snippet, substituting these exact archive and
+member names; another extractor must produce the same pinned bytes. The scratch
+reader remains an offline research aid, not the client loader or a tracked tool.
+Cooldown.lua was absent from the inspected patch archive and available in
+interface.MPQ; this does not prove the client's fallback selection.
+
+| Declared path | Evidence and limit |
+|---|---|
+| Button/model scripts | PetActionBarFrame.xml:4 inherits ActionButtonTemplate; its own scripts at 35–55 have no OnShow/OnHide. ActionButtonTemplate.xml:3–89 has no Scripts or further root inheritance; cooldown child at 63 inherits CooldownFrameTemplate. Cooldown.xml:4–12 has OnUpdateModel/OnAnimFinished, no OnShow/OnHide. Pet AutoCast model XML:25–32 has only OnLoad. These are bounded declarations, not a live absence proof against overrides or native hooks. |
+| Deferred parent bar hide | Farsight handler calls PetActionBar_Update, whose conditional HidePetActionBar body (Lua:181–190) changes slide fields/mode. The actual `this:Hide()` is in the separately bound OnUpdate at Lua:79–82 (XML:202–204). Parent bar OnShow/OnHide (XML:205–210) call UIParent_ManageFramePositions. Do not equate farsight notification with immediate parent-bar OnHide. |
+| Other widget effects | Pet button OnLeave (XML:53–55) calls PetActionButton_OnLeave (Lua:307–309), which calls GameTooltip:Hide. The conditional native Hide-to-leave path is detailed below; live delivery remains unestablished. UIParent.lua:1500–1510 SetDesaturation calls SetDesaturated or falls back to SetVertexColor. Cooldown.lua:2–12 calls SetSequence(0), Show/Hide; callbacks at 14–34 invoke time/model helpers and may Hide. Their synchronous native effects are not all resolved. |
+| Layout expands to other frames | UIParent.lua:1592–1774 uses mutable globals/tables and frame positioning/visibility/size methods, then FCF_DockUpdate at 1772 and updateContainerFrameAnchors at 1773. FloatingChatFrame.lua:1049–1140 iterates DOCKED_CHAT_FRAMES, calls Show at 1069 or Hide at 1075, plus tab helpers. ContainerFrame.lua:472–552 iterates mutable bag-frame names and calls scale/position methods; tooltip block 541–551 is commented out. These paths do not establish a direct bulk object cleanup or nested field-notification call; dynamic closure remains open. |
+
+#### SOURCE VERIFIED — native visibility and reload requests
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Frame method binding | Show/Hide name-function pairs `0x878FC0/0x878FC8` bind `0x775750/0x775810`. They write frame+0xD0 to 1/0 and invoke virtual +0x88/+0x84 at `0x7757FB/0x7758BB`. Constructor `0x769090` installs table `0x81C498` at `0x7692E5`; its slots `0x81C520/0x81C51C` resolve to `0x76AE10/0x76AD50`. This is conditional resolution for the inspected class, not all widget classes. |
+| Transition and synchronous hooks | Show checks requested visibility/parent visibility and skips the transition when already visible; Hide skips when hidden. Writes to +0xD4 at `0x76AE7B/0x76AD93` precede child traversal and scripts. Child virtuals `0x76AED5/0x76ADEE` return before traversal reads node+4 at `0x76AEDB/0x76ADF4`. Parent hooks `0x76AEF5/0x76ADFD` resolve via +0x30/+0x34 to `0x76B260/0x76B290`. Resolver `0x76A14D–17C` binds OnShow/OnHide to +0x130/+0x138. Nonzero script fields and +0x114==0 allow `0x76B27B/0x76B2AB → 0x702690 → 0x704D50 → 0x704E79` synchronous script execution. This does not prove the live pet control has those callbacks or that node/object lifetime is retained across them. |
+| Conditional hide-to-leave delivery | Before child traversal and OnHide, `0x76AD9D → 0x764920 → 0x76AFE0` tests frame+0xCC bits 0–3 and calls `0x764BA0` at `0x76B00A`. Its index-2 route, outer flag zero, matching UI-owner+0x7C and frame+0xAC!=3 allow virtual+0x50 at `0x764CD4` after clearing owner+0x7C. Base table binds `0x76B6F0`, whose +0x148 script field (OnLeave per `0x76A1AD–1BC`) reaches `0x702690` at `0x76B753`. Button construction installs table `0x81C7F8` at `0x778733`; its +0x50 override `0x7794E0` calls the base at `0x7794F4` only when button+0x328 is nonzero. Further +0x31C callback at `0x779530` remains indirect. This supplies a conditional native link to the declared pet OnLeave→tooltip Hide, not proof it fires in the live farsight case. |
+| Derived and region distinctions | Button OnHide override `0x7791E0` can call virtual+0x9C before jumping to `0x76B290`. Other Show/Hide pairs `0x87C178/180` and `0x87C208/210` bind `0x79B770/0x79B830` and `0x79CDB0/0x79CE70`; these write region+0xC4 and call visibility/list helpers `0x77FCB0/0x77FC60`. The frame script route cannot be assigned indiscriminately to textures/regions. All derived effects remain a coverage obligation. |
+| Script bookkeeping is not world retention | `0x702690` increments `0xCEEAC4`, conditionally changes `0xCEEAC0` around script execution, then conditionally restores it and decrements/clamps the counter. These inspected operations do not retain the outer world object, descriptor storage or notification nodes, nor prove exclusion of destructive reentry. |
+
+ReloadUI is a separately inspected candidate, not a call found in the stock
+farsight handler. Name/function pair `0x83DE78` binds string `0x83F298` to
+`0x4884D0`, which calls `0x491380`. That calls gate `0x494A50(10)` and, only on
+nonzero return, sets byte `0xB4B3F4` at `0x49138E`. The wrapper returns without
+directly invoking the reload consumer. Initialization clears the byte at
+`0x490124` and registers `0x495590` for event 5 at `0x49015A`. The consumer tests
+the byte at `0x49565B` and calls `0x490BD0` then `0x48FBF0` at `0x495664/669`.
+This narrows one deferred request route, not every possible nested event pump.
+The cleanup body itself drains loading at `0x490BE9`, dispatches event 0x10F at
+`0x490C2A`, and invokes a UI object's virtual+4 at `0x490C9B`; downstream effects
+remain open. It is not evidence of direct object-manager teardown from ReloadUI
+or of stock pet-handler reachability to that function.
+
+#### SOURCE VERIFIED — FrameXML load and file-selection limits
+
+| Path | Evidence and limit |
+|---|---|
+| Signature/content gate | Initialization `0x48FF4D → 0x6F10F0` passes FrameXML.toc (`0x842F7C`), Bindings.xml (`0x842F9C`) and key pointer `0x7FFBB0`. Helper builds `%s.sig` (`0x871330`), opens via `0x6F1131 → 0x648620`, requires size 0x114 at `0x6F1143`, calls verifier `0x6F16F0` at `0x6F1192`, then hashes TOC/dependencies through `0x6F1200` and compares four DWORDs. Return paths are 0 missing signature, 1 malformed/verification failure, 2 content mismatch, 3 match. This task inspected code; it did not execute the client signature verifier or establish actual success. |
+| Failure marking and continued load | Table `0x4901C8` sends 0/1/2 through diagnostics `0x48FF5E/6B/78` then `0x48FF90 → 0x401560(10)`. That records `0x882738` and forwards through `0x41F9A0 → 0x41F9B0`, the earlier context-cleanup marking path. Result 3 jumps to `0x48FF95`. Failure marking falls through into subsequent loading; it is not an immediate return. Actual load `0x48FFED → 0x6EDB90` opens again at `0x6EDC28 → 0x648620`, skips # lines at `0x6EDCD9`, prefixes paths and calls `0x6EDE10` at `0x6EDD51`. Lua branch `0x6EDF0F → 0x704BC0`; another branch calls `0x6EDAA0` at `0x6EDF2F`. Later digest compare `0x490038` can mark failure at `0x490043`. No selected archive/member bytes are established by this chain alone. |
+| Startup narrows one loose-file probe | `0x40215B → 0x402210` clears global `0x865B44` via `0x40221A → 0x648C20`, resets flags `0x865B40` via `0x402221 → 0x648BE0(0)`. Read chain `0x648620 → 0x6477C0 → 0x647E60` combines flags at `0x647E72` and has earlier mode/index branches. At `0x648116–11F`, zero 0x865B44 strips low two flags before `0x654920 → 0x6549A0`; those bits gate filesystem probe `0x654B76 → 0x654DD0`. This is not universal loose-file exclusion: earlier branches, other callers and actual globals remain open. |
+| Archive discovery/open sequence | `0x402366 → 0x403740` enumerates Data\patch-?.MPQ at `0x40377F`, sorts with `0x403AE0` at `0x403796`, appends patch.MPQ via `0x4037AF`, traverses collected entries backward at `0x4037EB`, and opens via `0x4037F4 → 0x648DD0 → 0x655670` (call `0x648E2F`). Numeric arguments start at 0x40 and increase on successful opens at `0x4037FD/FE`. Lower-level insertion/selection, locale/member rules and actual successful opens remain UNKNOWN. Open order/arguments are not a proved archive-priority rule. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Preserve prior raw-observer RUNTIME PASS within saved capture
+limits. Location candidates remain UNQUALIFIED, profile location BLOCKED,
+unload acceptance open, vendor/water runtime pending, reconnect unimplemented,
+and R0.1 open. No observer contract, controller or navigation changes.
+
+**INFERRED:** declarations, availability and loader ordering cannot establish
+the live UI callback set. Conditional synchronous visibility scripts widen the
+effect proof obligation; the deferred stock bar hide and ReloadUI request narrow
+specific routes. Neither proves absence of every destructive reentry or a safe
+sampling phase. No runtime fault or overlap is claimed.
+
+**UNKNOWN / SOURCE GAP:** selected archive/loose member provenance, actual
+script/native overrides, reachable visibility/hover/model/layout callbacks and
+reference retention, nested pumping, complete resource-owner/descendant effects,
+all writer/counter/invalidation paths, coherence and same-address/character/map
+ABA, player-bound zone/area freshness. Earlier bulk-cleanup, inline-descriptor,
+shared-node and shared-TLS worker limitations remain.
+
+Reproduce binary inspection with `objdump -d -Mintel --start-address=START
+--stop-address=STOP` against the exact WoW.exe (stop exclusive); use `objdump -s`
+for table/string rows. Asset extraction/line reproduction is described above.
+
+| Inspection | START / STOP |
+|---|---|
+| Frame methods / visibility scripts | `0x775750 / 0x7758C7`; `0x769090 / 0x769340`; `0x76AD50 / 0x76AEFF`; `0x76B260 / 0x76B2B1`; `0x76A148 / 0x76A1C8`; `0x702690 / 0x7026E4`; `0x704D50 / 0x704EDF` |
+| Conditional leave / region distinction | `0x764920 / 0x764A1F`; `0x76AFE0 / 0x76B01C`; `0x764BA0 / 0x764CE0`; `0x76B6F0 / 0x76B75D`; `0x7794E0 / 0x779538`; `0x7791E0 / 0x77920B`; `0x79B770 / 0x79B8E4`; `0x79CDB0 / 0x79CF24`; `0x77FC60 / 0x77FD0A` |
+| Reload request / consumer | `0x4884D0 / 0x4884D8`; `0x491380 / 0x491396`; `0x494A50 / 0x494B60`; `0x490113 / 0x49015F`; `0x495590 / 0x495679`; `0x490BD0 / 0x490CDE` |
+| FrameXML gates and readers | `0x48FF3A / 0x490048`; `0x6F10F0 / 0x6F1471`; `0x6F16F0 / 0x6F1771`; `0x6EDB90 / 0x6EDDAB`; `0x6EDE10 / 0x6EDF50` |
+| File flags / archive discovery | `0x402150 / 0x402226`; `0x403740 / 0x403802`; `0x403AE0 / 0x403AF5`; `0x648620 / 0x6486F2`; `0x647E60 / 0x64817C`; `0x648BE0 / 0x648C28`; `0x654920 / 0x654D70`; `0x654DD0 / 0x654E90`; `0x648DD0 / 0x648E38` |
+| Visibility tables | `0x878FC0 / 0x878FD0`; `0x81C498 / 0x81C524`; `0x81C7F8 / 0x81C884`; `0x87C178 / 0x87C188`; `0x87C208 / 0x87C218` |
+| Tables / names | `0x83DE78 / 0x83DE80`; `0x83F298 / 0x83F2A1`; `0x4901C8 / 0x4901D8`; `0x842F7C / 0x842FAC` |
+
+Manual paths and archive findings do not expand the automated 43-anchor/12-string
+manifest. All four qualification flags and runtimeObserved remain false.
+
+Next task: follow the now-proven conditional pet-button OnLeave→GameTooltip:Hide
+route through the actual tooltip class/OnHide and remaining button callbacks;
+trace cooldown SetSequence/model callback delivery where reachable from the
+stock update. Determine whether these paths can reach bulk cleanup or nested
+field notification, and distinguish UI-node mutation from outer world-object
+retention. Complete lower-level archive insertion/member selection only as needed
+to establish loaded-script provenance; do not assume open order is priority.
+Keep SOURCE GAP until writer/lifetime/coherence/ABA coverage closes. Manual unload
+acceptance remains separate and needs module-absence/responsiveness evidence.
+
+Validation: exact-client offline audit PASS; six asset lengths/hashes and the
+interface archive hash independently matched. `python3 tools/validate.py --jobs 4`
+PASS, all 247 records (111 C++ executables, 49 audit Python tests, 13 QuestDB
+Python tests, 10 Lua fixtures, SQL/TSV fixture, full build and diff check).
+Report: `/tmp/wow-validation-69w5d0v3/results.json`. Separate `cmake --build build`
+PASS for DLL, testhost, loader and GUI. Three read-only reviews found no
+actionable corrections. Full diff/status review and `git diff --check` PASS;
+exactly the two intended documents changed, with no unrelated changes.
+Runtime NOT RUN; no qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
