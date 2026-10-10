@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `7ede98b579414841c6112092e2d0ad05904dae7d`
-— `docs: trace p07 transfer and field notification lifetimes`.
+Starting checkpoint: `5cbd7834402e38ec4115b27a6507ccb1d8802132`
+— `docs: trace p07 notification completion and startup context`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,57 +12,57 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: notification completion,
-startup context and loading callback coverage. Three parallel read-only agents
-traced notifications, scheduler setup and packet ownership. Coordinator
-reconciled their findings, checked key disassembly and traced loading callbacks.
+P0.7.4 source research continuation, 2026-10-10: descriptor lifetime, bulk
+teardown and window/TLS association. Three parallel read-only agents traced
+listener/descriptor cleanup, counter callers and window creation. Coordinator
+reconciled the results, checked key paths and resolved loading progress targets.
 No production code, tests, observer contract, hooks, controller ownership or
 navigation changed.
 
-Connected descriptor mutation to the later packet notification pass and local
-listener-removal completion. Connected startup context to packet pumping and
-world initialization inside event 5. These are bounded source paths, not a
-complete lifetime/coherence contract. **SOURCE GAP remains; profile location
+Established inline saved-descriptor ownership and distinct bulk listener
+cleanup; extended teardown through late packet-handler removal. Bound startup
+window creation/forwarding and identified a separate worker sharing the context
+TLS block. These narrow source gaps without establishing callback exclusion or
+a complete lifetime/coherence contract. **SOURCE GAP remains; profile location
 population stays BLOCKED.**
 
 Detailed anchors, reproduction ranges and limits are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — notification completion and startup context.” Earlier sections retain
-the exact executable hash and saved runtime capture evidence.
+“P0.7.4 — descriptor lifetime, bulk teardown and window association.” Earlier
+sections retain the exact executable hash and saved runtime capture evidence.
 
 ## Evidence
 
 ### SOURCE VERIFIED
 
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
-  12 strings. All four location/lifetime flags remain false. Additional manual
-  paths are outside that manifest; indirect/alias coverage is not exhaustive.
-- Update packet 0xA9 mutates descriptors, rewinds its buffer, then executes a
-  notification pass. Subscribed ranges are saved before mutation; callbacks
-  compare current/saved bytes. Active listener removal marks pending; the
-  notification executor unlinks/frees after callback return or equal-byte
-  suppression, or clears active when removal is not pending.
-  This establishes a local listener-node protocol, not object/manager lifetime.
-- Normal packet switch/restore encloses mutation, notification and further
-  virtual update hooks. Packet 0x1F6 directly forwards to the A9 handler without
-  another wrapper. Callback completion and owner restoration are distinct.
-- GUID object removal can defer using object+0xE8 and +0xE4 mask 0x10;
-  0x4683E0/0x468410 increment/decrement and retry pending removal. These helpers
-  mutate client state. Manager teardown's separate cleanup/destruction calls do
-  not establish full coverage of that deferral mechanism.
-- Concrete startup requests one scheduler slot, bypassing additional scheduler
-  worker creation on that path. It creates a message-processing context, installs
-  setup/cleanup callbacks and TLS storage, then selects it through the scheduler.
-  This does not establish that all client writers run on one thread.
-- Setup registers the packet pump in event 6 and a state callback in event 5.
-  The latter can initialize the world, construct a manager and register the
-  zone updater in event 5. Event 5 is not inherently a post-initialization phase.
-- Transfer/loading execute registered work and progress callbacks, including
-  calls after a queue lock is released. Indirect targets and window effects
-  remain incomplete. No world reentry or runtime failure is inferred as fact.
+  12 strings. All four location/lifetime flags remain false. New manual paths
+  are outside that manifest; indirect/alias coverage is not exhaustive.
+- Inspected active-player saved descriptor base is object+0x3178, within the
+  same allocation as the live descriptors. Selected teardown frees that
+  allocation, so the saved bytes are not an independently retained snapshot.
+- Bulk listener cleanup unlinks/frees nodes without the single-listener
+  active/pending checks. Notification traversal uses shared nodes and accesses
+  their links after callback return. Reachability of destructive or nested
+  callbacks remains unproved; no lifetime failure is claimed.
+- Player/unit destructor forwarding and preferred-GUID clear ordering are
+  connected to the inspected teardown. A second object pass precedes late
+  A9/1F6/AA handler removal, which is not a pre-teardown invalidation witness.
+- Direct-call inventory links object+0xE8 counter helpers to GameObject-related
+  state logic. This does not establish a notification guard or exhaustive
+  counter use; these helpers mutate client state.
+- Two inspected graphics constructors resolve loading-progress virtual targets
+  and window creation/getter paths. Startup assigns the HWND before scheduler
+  creation; window procedures can forward to installed callback 0x42CFE0.
+  Complete downstream/reentrant effects and live backend selection remain open.
+- Setup requests a separate loading worker and passes the current context's TLS
+  block. Successful creation lets another thread use that same block. One
+  scheduler slot or matching context identity does not establish writer thread
+  affinity. The inspected worker path does not prove world-location mutation.
 - Profile location/generation remain absent, area unsupported, and XYZ has no
-  qualified map association. Context IDs, callback return and deduplication
-  markers are not qualified world generations or freshness witnesses.
+  qualified map association. Context IDs and callback return are not qualified
+  world generations or freshness witnesses. Event 5 can initialize the world;
+  no new sampling boundary follows from its label or ordering.
 
 ### RUNTIME OBSERVED
 
@@ -81,18 +81,20 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-The startup chain narrows context ownership, and the later notification pass
-explains why returning from a field write is insufficient. Local ordering and
-client-internal deferral do not establish a safe external read phase. No torn
-sample, erroneous restore or gameplay fault was observed.
+Shared nodes and inline saved storage explain why a local pending flag cannot
+alone establish lifetime through bulk teardown. Shared TLS explains why context
+equality cannot substitute for thread ownership. No concurrent teardown,
+destructive callback reentry, torn read or gameplay fault was observed.
 
 ### UNKNOWN / SOURCE GAP
 
-- Callback-triggered object/manager destruction, nested notification traversal,
-  saved-descriptor lifetime, complete counter/teardown coverage, actual writer
-  thread/window ownership, helper TLS effects and indirect loading callbacks.
-- Complete writer coverage, initialization/invalidation, coherent samples,
-  same-map/character/address ABA, and player-bound zone/area freshness.
+- Field-callback reachability to bulk cleanup/nested traversal, retention of
+  objects/descriptors during callbacks, complete counter/teardown coverage,
+  worker/completion callback effects, window dispatch/TLS interaction and
+  loading/backend indirect targets.
+- Actual runtime writer/thread ownership, complete writer coverage,
+  initialization/invalidation, sample coherence, same-map/character/address
+  ABA, and player-bound zone/area freshness.
 - Completed unload, post-stop responsiveness, visible-screen/loading annotations
   and heartbeat continuity during unchanged dwell remain unestablished. Missing
   completion telemetry does not establish unload failure.
@@ -101,8 +103,8 @@ sample, erroneous restore or gameplay fault was observed.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — bounded notification/context/
-  loading research, reproduction ranges, proof limits and next investigation.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — bounded descriptor/teardown/
+  window research, reproduction ranges, proof limits and next investigation.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
@@ -112,11 +114,11 @@ sample, erroneous restore or gameplay fault was observed.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records: 111 C++
   executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
   SQL/TSV fixture, full MinGW build and diff check.
-  Report: `/tmp/wow-validation-3aepci12/results.json`.
+  Report: `/tmp/wow-validation-ynkotj4a/results.json`.
 - BUILD: separate `cmake --build build` PASS (DLL, testhost, loader, GUI).
-- REVIEW: three read-only reviews completed; equal-byte-suppression wording
-  corrected, no remaining actionable findings. Full diff/status inspected:
-  exactly two task documents, no unrelated changes; `git diff --check` PASS.
+- REVIEW: three read-only reviews found no actionable corrections. Full diff
+  and worktree status inspected: exactly two task documents, no unrelated
+  changes; `git diff --check` PASS.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
 
 ## Runtime qualification and blockers
@@ -129,14 +131,14 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Trace callback-triggered object/manager destruction against listener cleanup
-and saved-descriptor lifetime, including callers/scope of `0x4683E0/0x468410`
-and teardown `0x467800`. Resolve loading callback targets and window-owner
-creation/assignment against the startup context, including world initialization
-inside event 5. Close reentrant traversal, helper TLS effects, complete writer
-coverage, coherence and ABA before any profile location sampler design.
-Retain SOURCE GAP if proof remains incomplete; client mutation helpers are not
-an observe-only acquisition mechanism.
+Trace registered field callbacks into bulk cleanup or nested notification,
+starting from farsight `0x5DE0D0`, and enumerate loading worker/completion paths
+from `0x443300/0x443360/0x443E70`. Connect installed window callback `0x42CFE0`
+to downstream dispatch, TLS and world-transition effects. Establish reachability
+or exclusion while listener/object references are live; close writer coverage,
+coherence and ABA before any profile location sampler design. Retain SOURCE GAP
+if proof remains incomplete. Client mutation helpers are not an observe-only
+acquisition mechanism.
 
 Separately obtain manual module-absence/post-stop responsiveness evidence for
 unload acceptance. Future qualified location consumption also needs independent

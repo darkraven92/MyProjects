@@ -1216,6 +1216,100 @@ equal-byte-suppression wording, with no remaining actionable findings. Full diff
 and worktree status inspected: exactly these two documents, no unrelated changes;
 `git diff --check` PASS. Runtime NOT RUN; no qualification upgrade.
 
+### P0.7.4 — descriptor lifetime, bulk teardown and window association
+
+Continued on 2026-10-10 from `5cbd7834402e38ec4115b27a6507ccb1d8802132`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents investigated descriptor/listener lifetime, object deferral and
+window/TLS association. Coordinator reconciled the results, checked key paths
+and resolved the loading progress virtual targets. Only this audit and the
+handoff change. The same exact-client hash and bounded-source methodology apply.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+Saved descriptor ownership, bulk cleanup and window creation are now narrower
+source facts. No complete callback exclusion, thread affinity, coherent sampling,
+world generation or player-bound location freshness was established.
+
+#### SOURCE VERIFIED — allocation and teardown
+
+| Path | New evidence and qualification limit |
+|---|---|
+| Player descriptor storage | Type-4 construction `0x466D04–45` compares the active GUID and selects size 0x1408 for it, 0x798 otherwise. It passes live base object+0x1D70 and saved base object+0x1D70+size through `0x5DD2A0 → 0x5FAD10 → 0x613980`; `0x613989/98C` store object+8/+0xC. The inspected active-player saved base is object+0x3178, inside the player allocation. It is not an independently retained snapshot. |
+| Allocation and free | Active-player allocation `0x466E1F–3F` requests 0x3178 + 4*`0x47D540()` + `0x467040()` bytes; the last helper returns 0x2550. Teardown's active-GUID branch frees the object allocation at `0x46791B`, or in its second pass at `0x467A06`, including the inline saved storage. This establishes storage association, not retention during arbitrary callbacks. |
+| Bulk listener cleanup | `0x464C40` enumerates category lists, calls `0x464EC0(0)` and then frees the listener through `0x646430`; player examples are `0x464CFF → 0x464D0E` and active-player extended lists `0x464D53 → 0x464D62`. `0x464EC0–0x464F40` unlinks both intrusive links without checking listener+0x2C/+0x2D. Ordinary GUID removal calls bulk cleanup at `0x464974`; manager teardown at `0x4678B9/0x4679A4`. This path differs from the single-listener pending-removal protocol. Callback reachability to bulk cleanup remains unproved. |
+| Destructor forwarding | Inspected player slot 0 follows `0x5DD500 → 0x5DD600 → 0x5FB5E0 → 0x613B40`; unit slot 0 follows `0x5FB1D0 → 0x5FB5E0 → 0x613B40`. Calls at `0x5DD506`, `0x5DD84E`, `0x5FB1D6`, `0x5FB825` bind these paths. In the inspected teardown, bulk listener cleanup precedes this chain; preferred-GUID clears `0x5FB650/655` occur inside it, before the selected outer allocation free. |
+| Mutable traversal nodes | `0x465330` builds a stack-local list at `0x4653E6–404`. `0x465970` moves existing subscription nodes into it using the secondary link: unlink `0x4659D4–0x465A02`, insert `0x465A09–54`. It does not clone them. After callback `0x4655DC`, `0x4655DF–5F9` reads the same node's links/pending flag. Nested traversal or destructive callback reachability must be resolved before this becomes a lifetime argument. |
+| Counter callers | A linear direct-call scan finds acquisition `0x4683E0` at `0x5F3B27` in `0x5F3930`, releases `0x468410` at `0x5F4114/0x5F41D9` in `0x5F40E0/0x5F4120`. GUIDs come through controller+4 then object+8. Acquisition skips state values 1/3/6 and stores the remembered state at +0x14; release also skips -1. Release diagnostics reference `ObjectClient\GameObject_C.cpp` at `0x860890`. These inspected users are GameObject-related state logic, not an established notification guard. Indirect callers and other counter writers remain open; helpers mutate client state. |
+| Teardown extends beyond the prior range | `0x467800` has a second object pass: cleanup `0x4679A4`, virtual destruction `0x4679E9/9F3`, selected free `0x467A06`. Only afterward are A9/1F6/AA handlers removed through `0x537A80` at `0x467A8F/AA5/ABA`; that helper clears handler/context slots at `0x537A88/8C`. Handler removal is not a pre-teardown invalidation boundary. The inspected body supplies no counter-based callback exclusion proof. |
+
+#### SOURCE VERIFIED — loading and window/TLS association
+
+| Path | New evidence and qualification limit |
+|---|---|
+| Graphics object selection | `0x589AC0/0x589B20` select factories by argument: 1 reaches `0x58BA70 → 0x598CE0`, publishing vtable `0x809EF8` at `0x598D03`; 0 reaches `0x58DD70 → 0x58DDA0`, publishing `0x809AF8` at `0x58DEE7`. Factory return is stored in `0xC0ED38`. These inspected constructors narrow indirect targets, not every possible vtable/global writer or the live backend. |
+| Loading progress targets | The previously traced `0x58A960` virtual +0x68 selects `0x5A1910` or `0x59BA10` through table entries `0x809F60/0x809B60`. These call further virtual +0x14 at `0x5A1943/0x59BA2B`; inspected slots `0x809F0C/0x809B0C` bind `0x59A870/0x5956F0` (the former calls the latter at `0x59A88C`). Backend/helper indirect calls remain. Resolving these targets does not prove absence of reentry or qualify a sampling phase. |
+| Window callback installation | Startup `0x4027E7 → 0x63A230` passes `0x42CFE0` at `0x63A477/4C4` into `0x589AC0`. Virtual +0x20 entries `0x599A60/0x58CBB0` forward to `0x591F80` at `0x599B05/0x58CC1C`, storing callback at object+0xF28 (`0x591F88`). Window procedures `0x598750/0x58C6D0` are registered through `0x599B68/BA6` and `0x58CC88/CC6`; their inspected forwarding branches invoke object+0xF28 at `0x5989B3/0x58C9E0`. This binds the startup callback to window dispatch, not all downstream effects. |
+| HWND creation and assignment | Backend +0x28 paths create a window: `0x599C90 → 0x598B50`, CreateWindowExA at `0x598C88`, stores object+0x3894 at `0x598C90`; `0x58CE40 → 0x58CF10`, CreateWindowExA at `0x58D046`, stores returned HWND at object+0x39E4 (`0x58CEA6`). Getter `0x589C90` uses virtual +0x3C; entries `0x809F34/0x809B34` select `0x599E80/0x58D2A0`. Startup `0x63A6E7/6EE` stores the getter result in global `0x884EA0` through `0x435C50`. This precedes scheduler/context creation at `0x4027F8/0x402825`; HWND assignment is not itself context assignment. |
+| Separate worker shares context TLS | Context setup `0x402840` calls `0x443300` at `0x40285D`. It registers `0x443E70` in event 6 at `0x443314`, captures the current TLS block through `0x41DB60` at `0x443331`, stores it in `0x885680` at `0x44333B`, and requests worker `0x443360` through `0x659AC0` at `0x443356`. The worker loads that block at `0x443369` and installs it with `0x41DB50` at `0x443370`. On successful creation a separate worker can use the same TLS block. Thus one scheduler slot does not mean one client thread, and shared context identity cannot identify the executing thread. It releases the queue lock at `0x44340D`, executes `0x648460` at `0x443431` with an optional item lock, reacquires at `0x44346C` and marks completion at `0x4434C9`. This does not establish that the worker writes world location. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Preserve the prior raw-observer RUNTIME PASS within its saved
+capture limits. All location candidates remain UNQUALIFIED; profile location
+BLOCKED. Unload acceptance remains open, vendor/water runtime pending, reconnect
+unimplemented, and R0.1 open. No production code, observer contract, controller
+ownership or navigation changed.
+
+**INFERRED:** shared nodes and inline saved storage explain why a local pending
+flag cannot alone establish lifetime through bulk teardown. Shared TLS explains
+why context equality cannot substitute for thread ownership. These are proof
+limits; they do not show that concurrent teardown, destructive callback reentry,
+a torn read or any gameplay failure occurred.
+
+**UNKNOWN / SOURCE GAP:** callback-to-cleanup/nested-traversal reachability,
+complete counter and writer coverage, worker/completion callback effects,
+window dispatch/TLS interaction, all loading indirect targets, object/manager
+retention, initialization/invalidation, sample coherence, same-address/character/
+map ABA and player-bound zone/area freshness. No sampler or native invocation
+is qualified by this checkpoint.
+
+Reproduce with `objdump -d -Mintel --start-address=START --stop-address=STOP`
+against `/home/ludvig/Games/WoW Vanilla/WoW.exe` (stop exclusive):
+
+| Inspection | START / STOP |
+|---|---|
+| Descriptor placement/allocation | `0x466C70 / 0x466DB7`; `0x466E00 / 0x466E4B`; `0x467040 / 0x467046`; `0x5DD2A0 / 0x5DD2D6`; `0x5FAD10 / 0x5FAD43`; `0x613980 / 0x613993` |
+| Bulk cleanup and teardown | `0x464C40 / 0x464E98`; `0x464EC0 / 0x464F43`; `0x467800 / 0x467AC6`; `0x537A80 / 0x537A97` |
+| Destructors and shared traversal | `0x5DD500 / 0x5DD52B`; `0x5DD600 / 0x5DD85C`; `0x5FB1D0 / 0x5FB1FB`; `0x5FB5E0 / 0x5FB831`; `0x613B40 / 0x613CED`; `0x465330 / 0x465686`; `0x465970 / 0x465A7E` |
+| Counter callers | `0x5F3930 / 0x5F3B3D`; `0x5F40E0 / 0x5F41E1`; `0x4683E0 / 0x468456`; `0x614F00 / 0x614F7A` |
+| Graphics factories and progress | `0x589AC0 / 0x589B7C`; `0x58BA70 / 0x58BA94`; `0x598CE0 / 0x598D13`; `0x58DD70 / 0x58DF10`; `0x58A960 / 0x58A96F`; `0x59BA10 / 0x59BA69`; `0x5A1910 / 0x5A1A2F`; `0x59A870 / 0x59A891` |
+| Window setup and callback | `0x4027D0 / 0x402835`; `0x63A230 / 0x63A71A`; `0x599A60 / 0x599BB2`; `0x58CBB0 / 0x58CCD2`; `0x591F80 / 0x591F99` |
+| Window creation/forwarding/getters | `0x599C90 / 0x599D30`; `0x598B50 / 0x598CB7`; `0x58CE40 / 0x58D052`; `0x598750 / 0x5989D7`; `0x58C6D0 / 0x58CA10`; `0x589C90 / 0x589C9B`; `0x599E80 / 0x599E87`; `0x58D2A0 / 0x58D2A7`; `0x435C30 / 0x435C57` |
+| Shared TLS worker | `0x443300 / 0x443510`; `0x41DB50 / 0x41DB6B`; `0x436D80 / 0x436DB9`; `0x659AC0 / 0x659AE7`; `0x64BC20 / 0x64BC70`; `0x64BD20 / 0x64BED0` |
+
+Use `objdump -s` for diagnostic `0x860890 / 0x8608D4`
+and the listed vtable entries (4 bytes each); window creation slots are in
+`0x809AF8 / 0x809B40`, `0x809EF8 / 0x809F40`. `objdump -p` identifies the
+window, thread and TLS imports. These manual paths do not expand
+the automated 43-anchor/12-string manifest; its four qualification flags and
+runtimeObserved remain false.
+
+Next task: trace registered field callbacks into cleanup/nested notification,
+starting from farsight `0x5DE0D0`, and enumerate loading worker/completion paths
+from `0x443300/0x443360/0x443E70`. Connect the installed `0x42CFE0` callback to
+window dispatch, TLS and world-transition effects. Establish reachability or
+exclusion while listener/object references are live before proposing a sampler;
+retain SOURCE GAP if incomplete. Manual unload acceptance remains separate.
+
+Validation: exact-client offline audit PASS; `python3 tools/validate.py --jobs 4`
+PASS, all 247 records (111 C++ executables, 49 audit Python tests, 13 QuestDB
+Python tests, 10 Lua fixtures, SQL/TSV fixture, full MinGW build and diff check).
+Report: `/tmp/wow-validation-ynkotj4a/results.json`. Separate `cmake --build build`
+PASS (DLL, testhost, loader, GUI). Three read-only reviews found no actionable
+corrections. Full diff/status inspected: exactly two task documents, no unrelated
+changes; `git diff --check` PASS. Runtime NOT RUN; no qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
