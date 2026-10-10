@@ -1,5 +1,18 @@
 # R0.1 unattended maintenance / connection audit
 
+## New DeathRecovery safety investigation (2026-10-10)
+
+The separately preserved `runtime-captures/death-safety-2026-10-10/` run shows
+two confirmed reclaims followed by direct aggression and death at the respective
+resurrection positions. Current source checks close reclaim eligibility and
+alive confirmation, then releases ownership without a location-safety predicate.
+This is a new **runtime-observed/source-verified safety gap**; historical P0.5.8
+reclaim/route qualification remains PASS. Safe staging/egress is not implemented:
+Ghost threat coverage and positive safety evidence are unqualified. See the
+[DeathRecovery investigation](DEATH_RECOVERY_AUDIT.md) for exact evidence,
+ownership/water integration constraints and bounded design/test prerequisites.
+The vendor verdict below and AFK/water/reconnect evidence boundaries are unchanged.
+
 ## Vendor runtime qualification (2026-10-10): INSUFFICIENT EVIDENCE
 
 Reviewed against clean source checkpoint `65719e3942db12c90e73eff32b10d2dc37a1f4fb`

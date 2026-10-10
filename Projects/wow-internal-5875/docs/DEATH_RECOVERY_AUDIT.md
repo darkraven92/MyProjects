@@ -1,5 +1,209 @@
 # P0.1 DeathRecovery reliability audit
 
+## Resurrection location safety investigation (2026-10-10)
+
+**New safety gap: RUNTIME OBSERVED / SOURCE VERIFIED. Safe staging and
+DeathRecovery-owned living egress: NOT IMPLEMENTED — evidence gap.**
+Inspected clean checkpoint `6abd7ac3ff89e1c96f25e2869e8259499f8134e7` on
+`codex/vendor-afk-long-navigation`, AGENTS.md, AI_HANDOFF.md and relevant death,
+navigation and world-reader history. Three parallel read-only reviews covered
+resurrection architecture, hostile/world evidence, and NavMesh/test design.
+
+Historical **P0.5.8 RUNTIME PASS remains preserved**, with its original scope:
+natural death, directed-link route avoidance, reclaim, two fresh alive probes
+and Combat/Grind resume. The preserved user-reported qualification is recorded
+in [CODEX_PROJECT_STATE.md](CODEX_PROJECT_STATE.md#p053-release-requalification-prep-2026-10-08).
+It did not qualify avoiding post-reclaim re-aggro. This is a new safety/design
+requirement, not a revocation of successful resurrection or route qualification.
+The older scope/status and incidents below remain historical.
+
+### Runtime observation
+
+The user's supervised observation prompted the investigation; source causation
+was not assumed. A newer `build/wow-internal.log` contains corroborating evidence.
+Its stable bytes and lifecycle log were copied into the Git-excluded directory
+`runtime-captures/death-safety-2026-10-10/` before analysis. The earlier
+`vendor-runtime-2026-10-10-next` capture ends during the first corpse run and
+does not contain its later resurrection/redeath sequence.
+
+Raw log: 36,744 lines / 2,941,252 bytes, SHA256
+`53a8cddeb95f64e15f440d525f65afad29959da50fd017c798b5cb5dd54bf223`.
+Lifecycle: 136 lines / 34,079 bytes, SHA256
+`e5bfea4c987eb65845ef7fc0b5911b027af1d5f31f48a4f5d532638fc25a59cd`.
+Relevant session: `300.134361024694534150.71490348.508`, player GUID 112743,
+map 1. Lifecycle BOT START/STOP: monotonic 71490867–72351698 (~14m21s),
+ending with GUI stop and unload request. Earlier lifecycle sessions are not
+part of this episode. No captured DLL hash establishes exact source/binary
+identity. No new WoW session was launched by this investigation.
+
+All following references are one-based raw-log lines:
+
+| Lines | Observed sequence |
+| --- | --- |
+| 7785–7789 | First death anchor (2004.178,-2580.670,94.960); DeathRecovery enters episode 1. |
+| 19008–19087 | Reclaim at 6.397 yards; HP 1→332/664. Native combat flag is already set at 19054 while WaitingForAlive owns updates. First alive probe succeeds; HP falls to 273 before the second probe. |
+| 19110–19143 | Second fresh alive probe, verified reclaim, Done, Combat/Grind resume. Same position (2010.3558,-2581.5701,96.3555). Direct aggressor GUID `0xF130000F58007F25`, entry 3928, is tracked at 1.9573 yards immediately after the exit records. |
+| 21070–21137 | HP reaches zero. Episode 2 records death at (2010.356,-2581.570,96.356), matching the resurrection position at logged precision. |
+| 26859–26984 | Second reclaim at 5.310 yards; two alive probes at 357/664 HP; Done and Grind resume. Low-health gate starts passive recovery without usable food. |
+| 27002–27055 | At (2015.3982,-2580.8809,97.8714), recovery is preempted by the same entry/GUID, distance 7.7201, explicitly `evidence=live-targeting-player`; defense resumes. |
+| 29207–29274 | HP reaches zero again; episode 3 starts at (2015.398,-2580.881,97.871), matching the second resurrection position. |
+| 36589–36712 | Third run terminates on unsafe terrain; later two fresh alive probes take the existing `manual_alive_confirmed` exit. This is not a third automatic reclaim success or proof of who caused the alive transition. |
+
+There are two automatic reclaim confirmations, three death starts and no
+`post-death danger escape` movement-intent start. The log proves rapid combat
+after reclaim and two subsequent deaths in place. It does not prove a mob aggro
+radius, exact time-to-redeath from un-timestamped lines, a safe alternative
+location, or that a different staging point would have prevented either death.
+
+### Source verification and causal limit
+
+`DeathRecoveryController.h:1638` gates reclaim on the current server corpse
+anchor, fresh Ghost/delay evidence, retry bounds and the **8-yard precision
+distance**. It performs no nearby-threat or living-ground suitability assessment.
+The generated 14-yard ring variants in `RouteDestinationForVariant` are routing
+alternatives; they are not safety-ranked resurrection positions. Routes reaching the broad
+arrival band are brought closer through precision routing.
+
+`WaitingForAlive` at line 1696 calls `CompleteRecovery` after the established
+two fresh alive probes. `CompleteRecovery`/`FinalizeAliveEpisode` at lines
+930–959 go directly to Done. `WorldMonitor.h:1453` re-arms the controller and
+resumes Combat plus Grind/Quest without a danger/recovery release predicate.
+Combat remains suspended while those alive confirmation probes accumulate;
+the first trace already shows combat/damage in that interval. Self-defense
+must not be delayed further by simply inserting another waiting state.
+
+There **is** existing post-death protection: `RecordDeath` arms
+`postDeathEscapePending_`; Grind suppresses ordinary pulls, and
+`TryStartDangerEscape` (`GrindModeController.h:1004`) waits for no direct
+aggressor and at least 90% HP before choosing a NavMesh sector. The ordinary
+recovery and defensive paths therefore run first. This is not a missing
+post-death flag or evidence that Grind deliberately pulled a new target.
+It cannot protect the pre-reclaim location or provide the requested early
+DeathRecovery-owned egress. The observed control flow is consistent with
+healing/defending in place before escape becomes eligible. Avoid claiming this
+handoff alone caused every death, or lowering the health gate as a purported fix.
+
+### Exact evidence gaps preventing the requested safe-point policy
+
+1. **Ghost threat coverage is unqualified.** `WorldState.h:27` exposes read
+   failures and interrupted enumeration, not server/client visibility coverage.
+   The vector includes only type-3 units (`:214`), not other players; reaching
+   the 4096-object cap does not independently mark truncation. `valid=true`,
+   zero failures or an empty vector cannot prove the surroundings threat-free.
+   Ghost samples at raw lines 18014/18258 contain zero units, 18564 two, 18834
+   four; the alive sample at 19080 contains seven. Different time/position means
+   these counts do not prove which units were omitted. There is no complete
+   identity/position/visibility record at reclaim or candidate locations.
+2. **Hostility and aggression are not equivalent to a creature-shaped object.**
+   `PullSafetyPolicy.h:13` explicitly describes a potentially attackable proxy,
+   not exact hostility or aggro radius. `GrindTargetPolicy::LooksLikeCombatCreature`
+   excludes pets/NPC-flagged units; exclusion cannot certify harmlessness.
+   `UnitSnapshot.h:141,167` does not retain read-success evidence for target GUID
+   or faction template. Its zero fields cannot authorize a no-threat conclusion.
+   Existing selected-target UnitCanAttack checks do not classify every unselected
+   Ghost-visible GUID. The 12-yard density heuristic must not become a supposedly
+   qualified resurrection aggro radius. Visible threats can inform relative
+   ranking or reject a point, but do not supply a positive safety predicate.
+3. **Fresh targetless living safety evidence is not an existing adapter.**
+   `CombatClientEvidence5875` already supplies native combat-bit semantics and
+   a fresh game-thread type-3/type-4 direct-aggressor sweep, explicitly avoiding
+   absence inference from the cached vector. Its `Execution` entry requires a
+   target. A recovery release needs checked, current, same-player evidence
+   without selecting or attacking a target just to obtain that observation.
+   A checked scan would close read/truncation gaps, not Ghost visibility coverage.
+4. **Living terrain/water and owner identity must be kept distinct.**
+   Death route starts choose GhostDeathRecovery once Ghost was confirmed
+   (`DeathRecoveryController.h:717`); that historical latch cannot authorize
+   living egress. `WorldMonitor.h:1068` also treats `deathShouldOwn` as death
+   water ownership. Merely retaining an alive DeathRecovery state would bypass
+   the living-water controller. `WaterEvidencePolicy5875.h:29` leaves ground
+   contact/submergence/surface unknown; non-swimming alone is not dry-ground
+   proof. Existing water guards and uncertainty must remain authoritative.
+
+The first two gaps block the requested "safe corpse → immediate resurrection"
+and "safe candidate → resurrect" decisions. A policy that calls unknown safe
+would weaken evidence boundaries; a policy that blocks every unqualified Ghost
+snapshot would disable historically qualified automatic recovery without
+implementing usable safe staging. Therefore this checkpoint uses the user's
+explicit **document the exact gap instead of guessing** fallback. No production
+policy, ownership change or disconnected placeholder tests are introduced.
+
+### Available navigation and bounded design once evidence is qualified
+
+NavMesh access is available; lack of pathfinding is not the blocker.
+`DetourNavigationProvider::ProjectGroundNear` projects to filtered ground,
+but projection alone proves neither connected travel nor occupancy safety.
+Grind's existing preflight uses projected endpoint identity, connected non-partial
+`FindPath`, terrain validation and hazard rejection. GenericNavMesh supports
+movement-free planning, `PlanningOnlyReachedDestination` and
+`PlanningOnlyProjectedDestination`; a partial stage is not candidate arrival.
+Revalidate execution from the current origin and retain learned directed-link
+constraints. Use `AvoidUntilQualified` for staging intended to become a living
+position and for all living egress; a Ghost-permitted corridor cannot certify it.
+
+The 32-yard policy constant is not permission to broaden current reclaim.
+Both this trace (6.397/5.310) and historical P0.5.8 (6.301) qualify close reclaim,
+not arbitrary positions at the outer range. Candidate generation can remain
+inside the current 8-yard 3D gate, with projection and final live-position
+rechecks. Fresh server anchor, known delay zero, Ghost evidence, dispatch and
+two alive probes remain mandatory; route arrival never substitutes for them.
+
+Once sensing is qualified, the smallest design should remain in DeathRecovery:
+evaluate current position plus a finite generated shortlist (at most nine
+candidates total, using the existing variant count), spend existing route-attempt/liveness budgets on probes
+and execution, rank only qualified candidates, and stop on no defensible point.
+Do not reset the 18-route, nine-stationary-failure, 180-second no-progress or
+300-second episode bounds when candidates change. Failed searches must not
+fall back to an unsafe reclaim. Density/clearance may rank points but must not
+pretend to be client aggro eligibility.
+
+After confirmed resurrection, retain a distinct living recovery owner with
+ordinary Grind/Quest acquisition suppressed. It needs a defense-only handoff,
+fresh living-route validation, water priority, explicit recovery/safety release
+criteria and a finite monotonic deadline. Timeout must stop navigation and
+retain a blocked living owner with defense available; reusing today's Failed
+state would release after two alive probes without a safety check. Death again
+must start a new death episode, and world gaps must invalidate all partial
+safety evidence. State entry, candidate rejection/selection, actual route
+readiness, reclaim gate, defense/water preemption, deadline and release reasons
+need sparse telemetry. A successful build cannot qualify this proposed design.
+
+### Required qualification and deterministic cases
+
+First obtain read-only, same-session Ghost-to-alive evidence for local object
+coverage, per-field knownness, relevant living-unit identities/positions and
+reaction/attackability semantics at candidate positions. Verify the source of
+that visibility contract; sampling counts alone cannot establish it. Qualify a
+targetless native combat/aggressor reader and the living water/ownership handoff.
+Keep unknown, partial and stale observations explicit. Do not provoke a death
+or widen reclaim distance to manufacture acceptance.
+
+| Future deterministic case | Required behavior once the evidence adapter exists |
+| --- | --- |
+| Qualified safe corpse | Immediate reclaim permitted only by the unchanged fresh anchor/Ghost/delay/8-yard gate; no command-only success. |
+| Dangerous corpse, safer candidate | Choose a qualified, fully reachable, living-compatible projected point inside range; recheck danger and range before reclaim. |
+| No safe or known candidate | Bounded search/wait then blocked; no unsafe fallback and no unknown-as-safe inference. |
+| Successful resurrection | Two fresh alive probes enter temporary living recovery ownership, not normal Grind. |
+| Safe recovered living state | Explicit fresh safety and recovery criteria release once; pre-reclaim evidence cannot release it. |
+| Combat/water/world priority | Defense can preempt without voluntary acquisition; living water cannot inherit Ghost exemption; world loss invalidates proof. |
+| Timeout/retry/redeath | Absolute budgets survive candidate changes and preemptions; timeout cannot loop or release on alive-only proof; another death restarts death handling correctly. |
+
+These are an acceptance plan, **not tests of an implemented feature**. Next
+runtime must additionally show actual staging/reclaim location, retained living
+ownership, qualified egress or bounded block, self-defense, and safe release.
+Historical AFK, water, vendor and reconnect qualifications are unchanged.
+
+### Validation of this investigation checkpoint
+
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4` passed all
+108 C++ tests, registered Python/SQL/Lua suites, the full `cmake --build build`
+(up to date), and diff check. Report: `/tmp/wow-validation-f45nnesi/results.json`;
+console output: `/tmp/death-safety-2026-10-10-validation.log`. These checks cover
+the existing implementation, not the unimplemented safety design. No new tests
+claim candidate safety, living recovery ownership or runtime success. This
+checkpoint changes only this audit, the runtime audit cross-reference and
+AI_HANDOFF.md; preserved raw evidence remains local and Git-excluded.
+
 ## Scope and status
 
 2026-10-07. SOURCE VERIFIED; deterministic/build verification recorded in
