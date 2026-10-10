@@ -1929,6 +1929,119 @@ flag wording corrected to mask 0x1. Full diff/status review and `git diff --chec
 PASS; exactly the two intended documents changed, with no unrelated changes.
 Runtime NOT RUN; no qualification upgrade.
 
+### P0.7.4 — statusbar effects, script mutation and scene ownership
+
+Continued on 2026-10-10 from `84e5c4996f9d8bb2f0744feaa8439a35a19777ed`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced statusbar color effects, script binding and model/scene
+ownership. Coordinator checked key binary paths, current reader/adapter/tests,
+and reconciled the outstanding acquisition obligations. Only this audit and the
+handoff change; no sampler, source/test behavior or runtime changes.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+The inspected color tail narrows to UI dirty marks. Concrete SetScript/XML
+mutation prevents pinned declarations from proving live callback identity.
+Scene construction/release is connected, but complete context retention and
+teardown exclusion remain unproved. These findings qualify no sampling phase.
+
+#### SOURCE VERIFIED — statusbar callback effects and binding
+
+The preceding sections' exact executable and HealthBar/GameTooltip asset hashes
+apply. No new asset selection, runtime script installation or callback firing
+was observed; all native methods below were inspected offline, never invoked.
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Min/max getter | Pair `0x87B020` binds GetMinMaxValues (`0x87B0D8`) to `0x78F3F0`. The valid-widget path reads +0x318/+0x31C at `0x78F475/0x78F488` and pushes numbers through `0x6F3810`. This is the getter used by the pinned HealthBar function; Lua wrapper/error paths and live overrides must remain distinguished from the successful field-read path. |
+| Color dispatch | Pair `0x87B058` binds SetStatusBarColor (`0x87B060`) to `0x78FC20`. It parses/clamps RGB and optional alpha, packs the color and invokes widget virtual+0x94 at `0x78FE2D`. Known StatusBar table `0x81CA68` maps this to `0x782DD0`, which forwards nonnull child+0x324 to `0x77F750` at `0x782DE1`. That helper can resize arrays at +0xA0/+0xB0, writes alpha/RGBA at `0x77F893/0x77F89D`, then invokes child virtual+0x20 at `0x77F8A7`. It cannot be described as only a scalar store. |
+| Known texture tail | Statusbar texture creation `0x783192 → 0x76FC40` installs table `0x81C718` at `0x76FCB7`; +0x20 resolves to `0x77FAC0`. That path computes alpha using the owner pointer stored at region+0x9C, then owner+0xC8 and conditionally calls `0x77FDF0` at `0x77FC49`. With region+0xC8 nonzero, `0x77FE07 → 0x76A990` passes that owner pointer as receiver and region+0xC0 as argument. Owner mask 0x2000 selects `0x76B530` at `0x76A9A2`; otherwise nonnull owner+0xA0/+0xD4 allows `0x764A60` at `0x76A9C6`. The former ORs a bit into owner+0x1F8; the latter resolves indexed context storage and marks entry+0x10C/bucket state. These two inspected leaf helpers have no calls. This bounds the known tail to UI dirty marking, not object-manager cleanup or field notification; allocation/error paths, other classes, live bindings and later dirty-state consumption remain open. |
+| Specific script mutation | SetScript pair `0x878F40` binds name `0x8793E4` to `0x7748D0`. It accepts a name and function/nil, resolves object virtual+0xC at `0x77499F`, releases the old reference via `0x7749E6 → 0x702670`, obtains the replacement via `0x7749F2 → 0x6F5310`, stores a positive reference or zero at `0x774A03`, then context `0xCEEAC0` at slot+4 (`0x774A0B`). Nil returns -1 through `0x6F533D–5351`, converted to zero. StatusBar table+0xC binds `0x7830D0`, whose OnValueChanged resolver returns +0x32C at `0x7830F9`. This concretely permits replacement/removal of the exact callback slot used before the earlier world-descriptor reread. It does not identify actual calls or the live closure. |
+| XML script installation | Scripts branch `0x769D18 → 0x769EF0` sends each child name/text to `0x7025C0` at `0x769F10`. Virtual+0xC at `0x7025D5` selects the same slot; old reference release `0x7025EC` precedes compile/reference creation `0x70263C → 0x704C70`. Stores `0x702642/644` publish reference and zero context; null/empty text clears both at `0x702656/65C`. These writes do not retain an outer world object or prove callback exclusion. |
+| Inheritance ordering | `0x769820` reads inherits at `0x76982E–838`, looks up the template via `0x76984A → 0x6EE6F0` and invokes secondary virtual+8 at `0x76985C` before local processing. StatusBar secondary table `0x81CA38` +8 binds `0x782EF0`, which calls `0x769820` at `0x782F06`. This establishes conditional inherited-before-local processing, not selected template bytes, final installed reference, Lua global values or addon overrides. |
+
+The prior `0x529560` callback-before-world-read ordering remains: a conditional
+OnValueChanged dispatch can return before `0x5295A0/0x5295A6` reread saved
+world-object/descriptor storage. Closing one known color tail does not close
+all possible script effects or establish actual destructive reentry.
+
+#### SOURCE VERIFIED — scene construction, replacement and teardown order
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Widget scene creation | Constructor zeros widget+0x314 at `0x76C8FE`. Getter `0x76CFC0` creates a missing scene through `0x76CFCD → 0x706E10`, stores it at `0x76CFD2`. Factory allocates 0x1D6C bytes and passes literal address `0xCEEFB0` to `0x706FF0`, not the contents at that address. Constructor loads the argument at `0x7070DB`, stores scene+4 at `0x70717D`, initializes scene count to 1 at `0x70718E`. This connects creation to the previously traced widget scene release, not sole ownership. |
+| Model/scene association | Loader `0x76CCE0` gets the scene at `0x76CCFA`, creates model via `0x76CD01 → 0x707350`, invokes widget virtual+0x90 at `0x76CD0D`, then releases the temporary model reference at `0x76CD19`. Null/empty filename reaches the virtual with null. Model factory calls `0x70EA00` at `0x7073C0`; initializer stores model+0x2C=scene at `0x70EA0D`, links into scene+8 at `0x70EA1E`, and registers resource work through `0x70EBB6 → 0x71D5A0`. Its direct body contains no call to scene-acquire `0x707310`; that bounded fact excludes neither transitive retention nor other owners. |
+| Replacement and callback context | Model table `0x81C608` +0x90 binds `0x76CD30`: acquire incoming model at `0x76CD40`, release old at `0x76CD4F`, store replacement at `0x76CD56`, then install the three previously traced widget-context callbacks. No separate old-model callback detachment appears before release in this direct body. If old-model release does not destroy it, complete context removal remains a proof obligation; no surviving stale callback is demonstrated. |
+| Base cleanup occurs later | Subclass `0x76CA50` releases model/scene before tail-entering base `0x7693B0` at `0x76CAB7`. Base sets frame+0xAC=3 at `0x7693CC`, invokes owner helper `0x764710` at `0x7693D6`, clears frame+0xA0 at `0x7693EB`, calls `0x701CD0` at `0x7693F5`; child deleting virtuals occur at `0x769408/0x769433/0x7694C3`. These later operations do not establish pre-release model callback-context detachment. Prior repeated scene/model release and callback-record disposal findings remain bounded; active-delivery overlap is unproved. |
+
+#### Acquisition proof obligations — reconciled, not qualified
+
+This matrix combines the preceding binary findings with current repository code;
+it is not a new exhaustive writer inventory or a sampler design.
+
+| Obligation | Evidence retained | Unresolved requirement / decision |
+|---|---|---|
+| Writer and execution coverage | Generic descriptor store `0x6142EC`, separate zone/area stores `0x49479A/0x4947A0`, packet/transfer/event paths and callback mutation are traced. | Alias/bulk writers, all thread/context ownership and callback effects are not covered. Window-owner dispatch is not a world-writer lock. SOURCE GAP. |
+| Initialization/invalidation | Root publication `0x46510E` precedes map setup `0x46512C`; cleanup `0x467711` precedes root clear `0x46771E`; UI zone/area clearing follows manager destruction. | No universally valid pre-destruction invalidation or initialization-complete predicate. Pointer/cache availability alone is insufficient. |
+| Lifetime | Listener active/pending removal, specific model counts, scene construction/release and callback-before-read ordering are known. | Complete outer object/descriptor/listener retention and widget/scene teardown exclusion remain open. Client mutation helpers are not observe-only acquisition. |
+| Coherence | `LocationCandidates5875::Observe` and `AcrossWorldRead` repeat/bracket sequential reads and reject detected differences. | Equal reads do not prove one atomic world sample or defeat a writer paused between stores. `ConnectionLifecycleObserver5875` still places WorldStateReader between acquisitions; Core::Memory uses readability-check-then-memcpy. No complete fault-safe lifetime contract follows. |
+| Generation / ABA | Root save/switch/restore is a pointer protocol; profile session/sample stamps identify observations, not world generations. | No qualified same-map/character/address-reuse discriminator. Adapter boundary tests explicitly do not detect intra-read ABA. |
+| Player-bound cache freshness | Zone updater may prefer another GUID, skip updates and retain stale IDs; deduplication markers can precede publication. | No qualified map/position association or player-bound zone/area freshness. Current adapter leaves map, positionMap, zone and worldGeneration empty; area unsupported. |
+
+The exact-client audit still checks 43 instruction anchors and 12 strings with
+all four qualification flags false. Current adapter boundary tests assert
+Unknown for unqualified location inputs; passing those tests does not establish
+client-world lifetime or coherence. No observer, dispatcher or adapter changes.
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Prior raw-observer RUNTIME PASS remains limited to its saved
+capture. Candidates UNQUALIFIED; profile location BLOCKED; unload acceptance open;
+vendor/water runtime pending; reconnect unimplemented; R0.1 open.
+
+**INFERRED:** concrete mutability limits what archived script declarations can
+prove. UI dirty marking narrows one successful native path; scene creation and
+later cleanup do not establish all callback-context lifetimes. No runtime fault,
+bulk world cleanup or nested notification is established by these new traces.
+
+**UNKNOWN / SOURCE GAP:** actual installed callbacks/classes, archive/script
+selection and overrides; allocation/error and deferred UI effects; complete
+scene ownership, old-model callback removal, active-delivery retention and
+teardown exclusion; the matrix's writer/invalidation/coherence/ABA/freshness
+requirements. Earlier resource-descendant, TLS and unload limits persist.
+
+Reproduce with pinned WoW.exe and `objdump -d -Mintel --start-address=START
+--stop-address=STOP` (exclusive stop); use `objdump -s` for tables. Additional
+manual paths do not expand the automated manifest; runtimeObserved remains false.
+
+| Inspection | START / STOP |
+|---|---|
+| Statusbar color / marking | `0x7900A0 / 0x7900B5`; `0x78F3F0 / 0x78F4A4`; `0x6F3810 / 0x6F383B`; `0x78FC20 / 0x78FE3C`; `0x782DD0 / 0x782E1D`; `0x783173 / 0x783245`; `0x76FC40 / 0x76FD01`; `0x77F750 / 0x77F8B3`; `0x77FAC0 / 0x77FC55`; `0x77FDF0 / 0x77FE0D`; `0x76A990 / 0x76A9CF`; `0x76B530 / 0x76B549`; `0x764A60 / 0x764A9B` |
+| Script replacement / XML | `0x7748D0 / 0x774A40`; `0x7830D0 / 0x78310C`; `0x769CF9 / 0x769D2F`; `0x769EF0 / 0x769F4F`; `0x7025C0 / 0x702685`; `0x704C70 / 0x704CC3`; `0x6F5310 / 0x6F5352` |
+| Inheritance | `0x769820 / 0x769881`; `0x6EE6F0 / 0x6EE779`; `0x782EF0 / 0x782F0B` |
+| Scene / model creation | `0x76C8E0 / 0x76C920`; `0x76CFC0 / 0x76CFE0`; `0x706E10 / 0x706E40`; `0x706FF0 / 0x7071A0`; `0x76CCE0 / 0x76CDC0`; `0x707350 / 0x707400`; `0x70EA00 / 0x70EBD0` |
+| Destruction order | `0x76CA20 / 0x76CAC0`; `0x7693B0 / 0x7695DF` |
+| Tables / names | `0x878F40 / 0x878F48`; `0x8793E4 / 0x8793EE`; `0x81CA38 / 0x81CA80`; `0x87A440 / 0x87A44F`; `0x87B010 / 0x87B0E8`; `0x81CA68 / 0x81CB00`; `0x81C718 / 0x81C74C` |
+
+Next task: prioritize model callback-context removal when an old model survives
+replacement, and scene retention across synchronous load/replay/event callbacks.
+Trace deferred consumption of the now-bounded UI dirty marks only where it bears
+on bulk world cleanup or nested field notification. Keep actual script selection
+and mutable bindings UNKNOWN without evidence; do not substitute stock callback
+closure for all installed effects. Use the obligation matrix to prevent any
+sampler proposal until writer, invalidation, lifetime, coherence and ABA evidence
+qualifies it. Manual unload acceptance remains a separate evidence task.
+
+Validation: exact-client offline audit PASS; key manual chains independently
+checked. `python3 tools/validate.py --jobs 4` PASS, all 247 records (111 C++
+executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua fixtures,
+SQL/TSV fixture, full build and diff check). Report:
+`/tmp/wow-validation-wizuu9nt/results.json`. Separate `cmake --build build` PASS
+for DLL, testhost, loader and GUI. Three read-only reviews reconciled; region/owner
+field wording corrected. Full diff/status review and `git diff --check` PASS;
+exactly the two intended documents changed, with no unrelated changes.
+Runtime NOT RUN; no qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level

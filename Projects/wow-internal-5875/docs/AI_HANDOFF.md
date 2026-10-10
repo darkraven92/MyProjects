@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `bc00de2121da5b257597a101b6a20b3691a13938`
-— `docs: trace p07 tooltip and model callback effects`.
+Starting checkpoint: `84e5c4996f9d8bb2f0744feaa8439a35a19777ed`
+— `docs: trace p07 callback boundaries and model replay lifetime`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,22 +12,22 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: tooltip callback boundaries and
-model replay lifetime. Three parallel read-only agents traced coin/tooltip
-callbacks, model replay/destruction and listener/button binding. Coordinator
-reconciled findings and independently checked key binary paths and three asset
-hashes. No production code, tests, observer contract, hooks, controller ownership
-or navigation changed. Scope remains this P0.7 worktree and its current branch.
+P0.7.4 source research continuation, 2026-10-10: statusbar effects, script mutation
+and scene ownership. Three parallel read-only agents traced color methods,
+XML/SetScript binding and model/scene ownership. Coordinator checked key binary
+paths and current reader/adapter/tests, and reconciled an acquisition-obligation
+matrix. No production code, tests, observer contract, hooks, controller ownership
+or navigation changed. Work remains confined to this P0.7 worktree and branch.
 
-Tooltip removal cannot directly target the outer farsight listener. A separate
-tooltip statusbar callback can run before a saved world-object descriptor is
-reread. Queued model operations replay through resource completion; scene/context
-retention remains unproved. **SOURCE GAP remains; profile location population
-stays BLOCKED.** No runtime defect or safe sampling phase is established.
+The known statusbar color tail ends in UI dirty marking; SetScript and XML can
+replace/remove the exact callback slot. Scene construction, model association
+and widget teardown are connected, but complete callback-context retention and
+teardown exclusion remain unproved. **SOURCE GAP remains; profile location
+population stays BLOCKED.** No sampler design or runtime defect is established.
 
-Detailed anchors, hashes, reproduction ranges and limits are in
+Detailed anchors, reproduction ranges and the proof-obligation matrix are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — tooltip callback boundaries and model replay lifetime.” Earlier sections
+“P0.7.4 — statusbar effects, script mutation and scene ownership.” Earlier sections
 retain executable/archive provenance and saved runtime capture evidence.
 
 ## Evidence
@@ -36,35 +36,31 @@ retain executable/archive provenance and saved runtime capture evidence.
 
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
   12 strings. All four qualification flags remain false. Additional manual paths
-  and archive findings are outside that manifest; coverage is not exhaustive.
-- Per-listener removal matches callback and context. Tooltip and outer farsight
-  subscriptions differ in both, and category/offset; this direct removal cannot
-  select the outer node. The active/pending protocol does not prove outer lifetime.
-- Coin OnHide clears an owner flag and invokes sound; pickup/drop callbacks belong
-  to different function bodies. Three member lengths/hashes independently matched.
-  Actual script selection/overrides and native sound effects remain open.
-- Tooltip statusbar helper can dispatch OnValueChanged before callback 0x529560
-  rereads the saved world object's descriptor. The declared HealthBar handler
-  normalizes a value and sets color; native color effects/overrides remain open.
-  No destruction, stale read or nested field notification is demonstrated.
-- FontString/anchor/region paths narrow to layout invalidation and UI-node
-  mutations, distinct from object-manager cleanup. Downstream effects remain open.
-- Button constructor zeros +0x31C; later binding remains UNKNOWN. Bounded setter
-  reference searches cannot rule out indirect binding or alternative writers.
-- Pending model operation code 4 replays the sequence setter during initialization;
-  resource completion can enter that initializer. Operation/model/scene accesses
-  follow the setter, adding lifetime obligations.
-- Association installs animation and additional widget-context callbacks. The
-  load callback may execute synchronously and is cleared after return. Inspected
-  widget destruction releases model, scene and script references; direct bodies
-  do not establish complete callback-context detachment.
-- Scene destruction repeatedly releases models until zero, then frees event
-  storage. A queued model increment alone cannot establish safety across scene
-  teardown; scene ownership and teardown exclusion remain separate obligations.
-  No overlap with pending delivery or an active callback is established.
-- Earlier descriptor/shared-node, resource-descendant and shared-TLS limits remain.
-  Map/zone/world generation stay unqualified, area unsupported, XYZ without a
-  qualified map association. Prior conditional archive rules do not prove selection.
+  are outside that manifest; coverage is not exhaustive.
+- HealthBar's successful native min/max path reads statusbar fields. Its color
+  method parses/packs color and dispatches through a known texture to color/alpha
+  storage and UI dirty marks. Allocation/error paths, other classes/bindings and
+  deferred consumption remain open. Prior callback-before-world-descriptor-read
+  ordering is unchanged; no destructive reentry is demonstrated.
+- SetScript resolves the StatusBar OnValueChanged slot, releases its old reference
+  and replaces it or clears it for nil. XML installation uses the same resolver;
+  inherited template handling precedes local processing. These concrete mutation
+  paths prevent archived declarations from proving a live installed closure.
+- Widget scene creation initializes a count of one. Model creation stores a scene
+  backpointer and links into its model list; replacement acquires the new model,
+  releases the previous model and installs widget-context callbacks. The inspected
+  direct replacement body has no separate old-context detachment before release.
+- Base UI cleanup follows subclass model/scene release. Those later operations do
+  not prove pre-release callback detachment. Sole scene ownership, retention of
+  surviving old models' contexts, and teardown exclusion remain unqualified.
+- Reconciled matrix keeps writer coverage, initialization/invalidation, lifetime,
+  coherence, generation/ABA and player-bound cache freshness separate. Current
+  raw reader repeats sequential reads; the adapter deliberately omits qualified
+  map/positionMap/zone/worldGeneration. Area remains unsupported. Tests assert
+  this Unknown boundary, not intra-read ABA detection or client-world safety.
+- Prior exact listener identity/removal, model replay, shared-node/descriptor,
+  resource-descendant and shared-TLS findings retain their limits. Prior archive
+  priority rules still do not establish actual loaded scripts or overrides.
 
 ### RUNTIME OBSERVED
 
@@ -83,17 +79,18 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Listener identity narrows a specific removal route; callback-before-read ordering
-and model replay/destruction identify remaining retention obligations. They do
-not establish runtime failure, bulk cleanup, nested field notification, coherent
-sampling or an execution phase safe for acquisition.
+Closing a known color tail narrows one conditional route. It cannot substitute
+for live script identity, complete callback coverage or retention. Scene creation
+and release do not alone exclude teardown during callbacks. No runtime failure,
+bulk world cleanup, nested field notification or safe sampling phase follows.
 
 ### UNKNOWN / SOURCE GAP
 
-- Actual scripts/classes/bindings, statusbar color effects, downstream layout/
-  sound/child callbacks and nested event pumping.
-- Widget-context and scene retention, callback removal across replacement/
-  destruction, replay/drain mutation and nested/concurrent teardown exclusion.
+- Actual installed scripts/classes, archive/template selection and overrides;
+  allocation/error effects, deferred UI dirty-state consumers and nested pumping.
+- Complete scene ownership, callback removal when an old model survives release,
+  widget/context retention during synchronous load/replay/event callbacks and
+  exclusion of concurrent/nested teardown.
 - Outer object/descriptor/listener lifetime; resource-owner/descendant completion,
   remaining object/GUI virtuals and TLS effects.
 - Actual archive opens/selectors/views/mutations and open callback registration/
@@ -109,22 +106,22 @@ sampling or an execution phase safe for acquisition.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — coin/statusbar/layout callbacks,
-  listener identity, model replay/destruction, provenance and proof limits.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — statusbar color effects, script
+  mutation/inheritance, scene ownership/teardown and acquisition-proof matrix.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
 
-- SOURCE: exact-client offline audit PASS; three asset member hashes independently
-  matched. No automated-manifest expansion or qualification upgrade.
+- SOURCE: exact-client offline audit PASS; key manual chains independently checked.
+  No automated-manifest expansion or qualification upgrade.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
   111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
   10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-cw5_kmge/results.json`.
+  Report: `/tmp/wow-validation-wizuu9nt/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
-- REVIEW: three read-only reviews reconciled; resource flag wording corrected
-  to mask 0x1. Full diff/status review and `git diff --check` PASS; exactly the
-  two intended documents changed, with no unrelated changes.
+- REVIEW: three read-only reviews reconciled; region/owner field wording corrected.
+  Full diff/status review and `git diff --check` PASS; exactly the two intended
+  documents changed, with no unrelated changes.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
 
 ## Runtime qualification and blockers
@@ -137,14 +134,15 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Prioritize the statusbar callback-before-world-read route: close native color
-helper effects and actual script binding/override limits. Establish widget/model
-scene ownership and callback removal across replacement/destruction; trace
-remaining tooltip/layout paths for bulk cleanup or nested field notification.
-Prove scheduling/retention rather than treating reference increments or callback
-names as safety. Close writer, invalidation, lifetime, coherence and ABA
-obligations before sampler design; retain SOURCE GAP while incomplete.
-Client mutation helpers are not observe-only acquisition.
+Prioritize model callback-context removal when an old model survives replacement,
+and scene retention across synchronous load/replay/event callbacks. Trace deferred
+consumption of the now-bounded UI dirty marks only where it bears on bulk world
+cleanup or nested field notification. Keep actual script selection and mutable
+bindings UNKNOWN without evidence; stock callback closure cannot establish all
+installed effects. Use the audit's obligation matrix: require writer,
+invalidation, lifetime, coherence and ABA evidence before sampler design.
+Retain SOURCE GAP while incomplete; client mutation helpers are not observe-only
+acquisition.
 
 Separately obtain manual module-absence/post-stop responsiveness evidence for
 unload acceptance. Future qualified location consumption also needs independent
