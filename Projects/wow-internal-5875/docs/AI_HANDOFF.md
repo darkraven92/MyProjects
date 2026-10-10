@@ -3,8 +3,8 @@
 ## Repository state
 
 Actual branch: `codex/p07-world-zone-preparation`.
-Starting checkpoint: `090344528c3c6f46e0f51ea7a02b44d991f1b4b9`
-— `docs: trace p07 visibility callbacks and FrameXML loading`.
+Starting checkpoint: `bc00de2121da5b257597a101b6a20b3691a13938`
+— `docs: trace p07 tooltip and model callback effects`.
 Worktree: `/home/ludvig/Programming-worktrees/p07-world-zone/Projects/wow-internal-5875`.
 Clean at task start. The two task documents below are uncommitted at handoff
 preparation. The commit containing this handoff is the authoritative checkpoint;
@@ -12,22 +12,23 @@ publication verification follows commit.
 
 ## Task and result
 
-P0.7.4 source research continuation, 2026-10-10: tooltip listener removal, model
-delivery and archive priority. Three parallel read-only agents traced those
-paths; coordinator reconciled findings, checked key binary chains and four asset
-hashes, and narrowed the button OnHide override. No production code, tests,
-observer contract, hooks, controller ownership or navigation changed.
+P0.7.4 source research continuation, 2026-10-10: tooltip callback boundaries and
+model replay lifetime. Three parallel read-only agents traced coin/tooltip
+callbacks, model replay/destruction and listener/button binding. Coordinator
+reconciled findings and independently checked key binary paths and three asset
+hashes. No production code, tests, observer contract, hooks, controller ownership
+or navigation changed. Scope remains this P0.7 worktree and its current branch.
 
-Conditional tooltip Hide reaches field-listener removal and clearing scripts
-before the base visibility gate. Model callback event codes separate a suppressed
-setter callback from update-driven completion. Archive insertion/lookup now has
-a conditional priority rule. None establishes loaded scripts or outer retained
-lifetime. **SOURCE GAP remains; profile location population stays BLOCKED.**
+Tooltip removal cannot directly target the outer farsight listener. A separate
+tooltip statusbar callback can run before a saved world-object descriptor is
+reread. Queued model operations replay through resource completion; scene/context
+retention remains unproved. **SOURCE GAP remains; profile location population
+stays BLOCKED.** No runtime defect or safe sampling phase is established.
 
-Detailed anchors, asset hashes, reproduction ranges and limits are in
+Detailed anchors, hashes, reproduction ranges and limits are in
 [P07_WORLD_LEVELING_PROFILE_AUDIT.md](P07_WORLD_LEVELING_PROFILE_AUDIT.md),
-“P0.7.4 — tooltip listener removal, model delivery and archive priority.” Earlier
-sections retain executable/archive provenance and saved runtime capture evidence.
+“P0.7.4 — tooltip callback boundaries and model replay lifetime.” Earlier sections
+retain executable/archive provenance and saved runtime capture evidence.
 
 ## Evidence
 
@@ -36,33 +37,34 @@ sections retain executable/archive provenance and saved runtime capture evidence
 - Exact-client offline audit PASS: SHA256/PE layout, 43 instruction anchors,
   12 strings. All four qualification flags remain false. Additional manual paths
   and archive findings are outside that manifest; coverage is not exhaustive.
-- Tooltip Hide clears before base visibility checks. Conditional GUID/context
-  state reaches category-3/offset-0x40 listener removal, callback 0x529560;
-  this differs from the outer farsight callback 0x5DE0D0. The existing active/
-  pending removal protocol applies; bulk cleanup or nested notification is not
-  established by this route.
-- OnTooltipCleared can run before base Hide. Pinned assets hide a money frame;
-  its OnHide conditionally hides CoinPickupFrame. Tooltip OnHide also hides
-  shopping tooltips. Four extracted member lengths/hashes independently matched;
-  actual loaded bytes, overrides and complete child/layout effects remain open.
-- Button OnHide virtual+0x9C narrows to region/state changes and helpers; the
-  separate OnLeave callback through +0x31C still has an unresolved target.
-- Sequence setters can queue an operation; one inspected direct callback carries
-  event 1, rejected by the installed OnAnimFinished adapter. An update/drain can
-  deliver event 0 to that script. The inspected native AdvanceTime helper returns
-  without advancing. OnUpdateModel has a separate registered callback path and
-  reads widget/model fields after script return. Nested farsight execution is
-  not established.
-- Model references surround specific callbacks/queue entries, and archive open
-  increments an archive count. These operations do not prove UI-widget user
-  pointer or outer world-object/descriptor/listener retention.
-- Archive insertion orders descending signed priority, newest before equals;
-  lookup searches eligible archives in that order with per-archive selector
-  matching/fallback and special stop conditions. Actual opens, selectors, views,
-  earlier index/mode paths and loaded FrameXML remain UNKNOWN.
-- Earlier inline descriptors, shared listener nodes, bulk cleanup, resource
-  continuation ordering and shared-TLS worker limits remain. Profile location/
-  generation stay absent, area unsupported, XYZ without a qualified map association.
+- Per-listener removal matches callback and context. Tooltip and outer farsight
+  subscriptions differ in both, and category/offset; this direct removal cannot
+  select the outer node. The active/pending protocol does not prove outer lifetime.
+- Coin OnHide clears an owner flag and invokes sound; pickup/drop callbacks belong
+  to different function bodies. Three member lengths/hashes independently matched.
+  Actual script selection/overrides and native sound effects remain open.
+- Tooltip statusbar helper can dispatch OnValueChanged before callback 0x529560
+  rereads the saved world object's descriptor. The declared HealthBar handler
+  normalizes a value and sets color; native color effects/overrides remain open.
+  No destruction, stale read or nested field notification is demonstrated.
+- FontString/anchor/region paths narrow to layout invalidation and UI-node
+  mutations, distinct from object-manager cleanup. Downstream effects remain open.
+- Button constructor zeros +0x31C; later binding remains UNKNOWN. Bounded setter
+  reference searches cannot rule out indirect binding or alternative writers.
+- Pending model operation code 4 replays the sequence setter during initialization;
+  resource completion can enter that initializer. Operation/model/scene accesses
+  follow the setter, adding lifetime obligations.
+- Association installs animation and additional widget-context callbacks. The
+  load callback may execute synchronously and is cleared after return. Inspected
+  widget destruction releases model, scene and script references; direct bodies
+  do not establish complete callback-context detachment.
+- Scene destruction repeatedly releases models until zero, then frees event
+  storage. A queued model increment alone cannot establish safety across scene
+  teardown; scene ownership and teardown exclusion remain separate obligations.
+  No overlap with pending delivery or an active callback is established.
+- Earlier descriptor/shared-node, resource-descendant and shared-TLS limits remain.
+  Map/zone/world generation stay unqualified, area unsupported, XYZ without a
+  qualified map association. Prior conditional archive rules do not prove selection.
 
 ### RUNTIME OBSERVED
 
@@ -81,18 +83,19 @@ hashes and rows remain in the audit; earlier PID 300 records are separate.
 
 ### INFERRED
 
-Tooltip hiding expands the concrete listener-mutation path, while event-code
-checks narrow a specific model callback route. Resource-specific counting does
-not discharge outer lifetime obligations. No runtime fault, unsafe overlap,
-bulk cleanup or nested field notification was observed or proved here.
+Listener identity narrows a specific removal route; callback-before-read ordering
+and model replay/destruction identify remaining retention obligations. They do
+not establish runtime failure, bulk cleanup, nested field notification, coherent
+sampling or an execution phase safe for acquisition.
 
 ### UNKNOWN / SOURCE GAP
 
-- Loaded scripts/overrides, actual widget/hover/visibility state; remaining money/
-  coin/button/child/layout callbacks and nested event pumping.
-- Model queued-operation replay, callback-driven queue mutation and widget user
-  pointer retention; outer object/descriptor/listener lifetime; resource-owner/
-  descendant completion, remaining object/GUI virtuals and TLS effects.
+- Actual scripts/classes/bindings, statusbar color effects, downstream layout/
+  sound/child callbacks and nested event pumping.
+- Widget-context and scene retention, callback removal across replacement/
+  destruction, replay/drain mutation and nested/concurrent teardown exclusion.
+- Outer object/descriptor/listener lifetime; resource-owner/descendant completion,
+  remaining object/GUI virtuals and TLS effects.
 - Actual archive opens/selectors/views/mutations and open callback registration/
   effects, earlier file paths and signature acceptance.
 - Actual writer threads, complete writer/counter and initialization/invalidation
@@ -106,23 +109,22 @@ bulk cleanup or nested field notification was observed or proved here.
 
 ## Exact files changed
 
-- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — tooltip/button effects, model
-  callback delivery/retention, archive priority/selection, provenance and limits.
+- `docs/P07_WORLD_LEVELING_PROFILE_AUDIT.md` — coin/statusbar/layout callbacks,
+  listener identity, model replay/destruction, provenance and proof limits.
 - `docs/AI_HANDOFF.md` — task state, evidence, validation and Git checkpoint.
 
 ## Validation
 
-- SOURCE: exact-client offline audit PASS; four asset member hashes independently
+- SOURCE: exact-client offline audit PASS; three asset member hashes independently
   matched. No automated-manifest expansion or qualification upgrade.
 - TESTS: `python3 tools/validate.py --jobs 4` PASS, all 247 records;
   111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
   10 Lua fixtures, SQL/TSV fixture, full build and diff check.
-  Report: `/tmp/wow-validation-ylzhgbvd/results.json`.
+  Report: `/tmp/wow-validation-cw5_kmge/results.json`.
 - BUILD: separate `cmake --build build` PASS for DLL, testhost, loader and GUI.
-- REVIEW: three read-only reviews reconciled; archive-count wording narrowed
-  to the verified increment, without claiming closed destruction semantics.
-  Full diff/status review and `git diff --check` PASS; exactly the two intended
-  documents changed, with no unrelated changes.
+- REVIEW: three read-only reviews reconciled; resource flag wording corrected
+  to mask 0x1. Full diff/status review and `git diff --check` PASS; exactly the
+  two intended documents changed, with no unrelated changes.
 - RUNTIME: NOT RUN; prior observer qualification is not extended.
 
 ## Runtime qualification and blockers
@@ -135,15 +137,14 @@ The bounded research is complete; no sampler design is qualified.
 
 ## Recommended next task
 
-Prioritize the newly grounded tooltip listener-removal route: trace money/coin
-Hide scripts and remaining tooltip child/layout virtuals for bulk cleanup or
-nested field notification while outer references remain live. Resolve the
-button+0x31C callback if reachable. Bound model queued-operation replay and
-widget callback-context ownership before treating model counts as protection.
-Use the conditional archive rule only when actual selection inputs are known;
-retain loaded-script UNKNOWN otherwise. Close writer, invalidation, lifetime,
-coherence and ABA obligations before sampler design; retain SOURCE GAP while
-incomplete. Client mutation helpers are not observe-only acquisition.
+Prioritize the statusbar callback-before-world-read route: close native color
+helper effects and actual script binding/override limits. Establish widget/model
+scene ownership and callback removal across replacement/destruction; trace
+remaining tooltip/layout paths for bulk cleanup or nested field notification.
+Prove scheduling/retention rather than treating reference increments or callback
+names as safety. Close writer, invalidation, lifetime, coherence and ABA
+obligations before sampler design; retain SOURCE GAP while incomplete.
+Client mutation helpers are not observe-only acquisition.
 
 Separately obtain manual module-absence/post-stop responsiveness evidence for
 unload acceptance. Future qualified location consumption also needs independent

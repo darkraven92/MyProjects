@@ -1822,6 +1822,113 @@ Full diff/status review and `git diff --check` PASS; exactly the two intended
 documents changed, with no unrelated changes. Runtime NOT RUN; no qualification
 upgrade.
 
+### P0.7.4 — tooltip callback boundaries and model replay lifetime
+
+Continued on 2026-10-10 from `bc00de2121da5b257597a101b6a20b3691a13938`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced coin/tooltip effects, model replay/destruction and
+listener/button binding. Coordinator reconciled findings and independently
+checked key binary paths and extracted members. Only this audit and the handoff
+change; production code, observer contracts and runtime qualifications do not.
+
+**Decision: SOURCE GAP remains; profile location population stays BLOCKED.**
+The inspected tooltip removal cannot directly select the outer farsight listener.
+UI-list mutation is distinct from object-manager cleanup. Model replay and scene
+destruction add concrete lifetime obligations, not proof of a runtime overlap,
+use-after-free or a safe sampling phase.
+
+#### SOURCE VERIFIED — coin, tooltip and listener boundaries
+
+New members under `Interface\FrameXML\` in the previously pinned patch.MPQ:
+
+| Member | Bytes | SHA256 |
+|---|---:|---|
+| CoinPickupFrame.xml | 4564 | `64da9be56041147b6165271aceea2891152cd722c7a57cb0ffea78e8a4be8510` |
+| CoinPickupFrame.lua | 4949 | `578e52eb526716afd8a9c5188e070b7371963428e9062bc336a4c85bcf0fd44f` |
+| HealthBar.lua | 529 | `258f0d08ebde298df30b1117344daf4b717eaffb556de4b79dcdcdc2c9ca135f` |
+
+Coordinator independently matched all three lengths/hashes. The prior MoneyFrame,
+GameTooltip and template member hashes apply. Extraction establishes available
+bytes, not live selection, installed scripts or absence of overrides.
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Coin Hide body | MoneyFrame.xml:289–294 conditionally hides CoinPickupFrame and clears `hasPickup`. CoinPickupFrame.xml:148–151 binds OnHide to CoinPickupFrame_OnHide and PlaySound("MONEYFRAMECLOSE"). Lua:195–199 only conditionally clears `owner.hasPickup`. PickupFunc belongs to Okay_Click:182–188; DropFunc belongs to OpenCoinPickupFrame:2–51. Neither is called by this inspected OnHide body. This is a bounded body distinction, not transitive closure. Native PlaySound pair `0x835A50` maps name `0x835A9C` to `0x4586D0`; valid-string call `0x4586EF → 0x458030` leaves sound-helper effects open. |
+| Removal identity | `0x467FB0` locates GUID/category/offset bucket; helper `0x467FF0` matches both callback+0x10 and context+0x14 at `0x468019/0x46801E`. Matching inactive nodes are unlinked/freed at `0x46802A–49`; active+0x2C instead sets pending+0x2D at `0x468057`. Tooltip removal `0x53007C–8E` specifies category 3, offset 0x40, callback `0x529560`, child context. Outer farsight registration `0x5DDA38–4F` specifies category 4, offset 0x830, callback `0x5DE0D0`, null context; its explicit removal is `0x5DE710–723`. These identities cannot directly match. Subsequent child/script effects, bulk cleanup, nested notification and outer lifetime remain open. |
+| Button binding limit | Constructor `0x7786A0` explicitly zeros +0x31C at `0x7786BE` and installs table `0x81C7F8`. OnLeave `0x779507–530` independently tests +0x31C; nonnull path writes `0xCF4D98=button+0x324`, `0xCF4D9C=button`, then calls callback-object virtual+0x10 with `&0xCF4D90`. Setter `0x779760–782` accepts +0x31C/+0x320/+0x324 values. Linear direct-call/jump search and whole-file DWORD-literal search found no reference to that setter. This only narrows the inspected representation; indirect bindings and alternative writers remain UNKNOWN. Constructor default is not a live null guarantee. |
+| Statusbar callback before world reread | GameTooltipTemplate.xml:575–597 declares the StatusBar; OnValueChanged:592–594 calls HealthBar_OnValueChanged(arg1). Native name construction `0x5298E1` uses `%sStatusBar`; `0x52991D → 0x76C760` resolves it and `0x529923` stores tooltip+0x348. StatusBar registration `0x6EF11C–126` selects factory `0x6EEF20`; `0x6EEF68 → 0x782D80` installs table `0x81CA68` at `0x782DB0`, with +0x90=`0x7832D0`. Resolver `0x7830E9–0F9` maps OnValueChanged to +0x32C. Callback `0x529560` resolves a mask-8 world object at `0x52957B`, then calls min/max helper `0x783270` at `0x52959B`. If prior flag 4 was set, `0x7832BC` invokes +0x90; eligible nonzero script dispatch is `0x783371 → 0x7026F0 → 0x702710 → 0x704F10`. Only after that helper returns, `0x5295A0` rereads saved world-pointer+0x110, `0x5295A6` reads descriptor+0x40, and `0x5295B1` calls statusbar+0x90 again. This is conditional callback-before-read ordering, not a proved stale read or destructive reentry. HealthBar.lua:2–30 queries min/max, bounds/normalizes the value, chooses colors and calls SetStatusBarColor at 29; native color-helper effects and overrides remain open. |
+| FontString/layout narrowing | XML FontString creation `0x769E4D–61 → 0x6F2780 → 0x770D30` at `0x6F27C8` installs secondary table `0x81C74C` at `0x770DF4`. Its +0x14 slot `0x772830` conditionally resolves tooltip clear virtual `0x5301F0` for that class. `0x77283A → 0x7683D0` writes layout+0x50, clears flag 8 and calls `0x7680E0(0)` at `0x7683E4`; subsequent stores clear secondary-layout+0xD8/+0xDC. These are UI layout fields, not world-object state. |
+| Remaining UI mutations | Text helper `0x771D80` updates/clears text storage and calls `0x7680E0(0)` at `0x771EAC`. Anchor helper `0x767C70` replaces anchor objects, installs table `0x81C44C` at `0x767D29`, updates dependency links through `0x767EE0/0x767FA0`, and can invalidate at `0x767D59`. `0x7680E0` sets layout flags and recursively invalidates dependency entries at `0x768194`; list helper `0x7681B0` includes anchor virtual+0xC at `0x768218`. Region hide `0x77FC60` calls `0x768060`, removes owner-list nodes via `0x76A910`, then clears region+0xC8. `0x76A958–96E` unlinks/frees UI list nodes after `0x76A990`; this is not bulk object-manager or field-listener cleanup. Downstream layout delivery and helper effects remain open. |
+
+#### SOURCE VERIFIED — model replay and callback-context ownership
+
+| Path | Evidence and qualification limit |
+|---|---|
+| Pending code-4 replay | Initializer `0x70EBD0` sets model+0x10=1 at `0x71015B`, reads pending model+0x38 at `0x7101A0`, and temporarily substitutes operation timestamp into scene+0xC at `0x7101B7`. Jump table `0x7102E8` entry 4 (`0x7102F8`) selects `0x710219`, reloads seven saved arguments and calls sequence setter `0x7121A0` at `0x710237`. After return it rereads operation+4 at `0x71028D`, advances model+0x38, cleans/frees the record at `0x710295/0x7102A4`, then restores scene time at `0x7102B9` and calls `0x710560`. Operation/model/scene accesses after the setter remain lifetime obligations. |
+| Resource completion connection | `0x71D5A0` either links the model into a resource pending list or calls the initializer at `0x71D5D0` when resource+8 mask 0x1 is set. Completion `0x71D640` sets that mask, unlinks pending models and calls the initializer at `0x71D6A0`. This connects replay to the earlier resource-completion path, without proving nested execution inside the farsight handler. |
+| Additional widget callbacks | Association `0x76CD30` installs animation callback `0x76CDC0` via `0x711BB0`, callback `0x76D680` via `0x7134B0`, and load callback `0x76CDF0` via `0x7105A0`, each with widget context. `0x7134B0` stores model+0x3BC/+0x3C0. `0x7105A0` stores +0x24/+0x28 and immediately calls `0x710560`; after gate `0x7103D0`, the latter calls +0x24 at `0x71057C`, clears it only after return at `0x71057E`, then reads linked model+0x1CC. Installed `0x76CDF0` invokes widget virtual+0x9C, mapped by the inspected model table to `0x76CE00`. This is conditional synchronous callback capability, not a retained-context proof or complete callback-effects audit. |
+| Widget destruction | Deleting destructor `0x76CA20` calls `0x76CA50`, then conditionally frees widget at `0x76CA3F`. Body `0x76CA50` releases +0x31C at `0x76CA6A`, model+0x318 at `0x76CA79`, scene+0x314 at `0x76CA88`, script references +0x3CC/+0x3D4 at `0x76CA96/0x76CAA4`, then enters base `0x7693B0`. Neither this body nor replacement body `0x76CD30` directly clears old model callback/context fields or calls `0x711BB0` with null. This bounded observation does not exclude caller/transitive cleanup or establish a dangling live callback. |
+| Scene ownership limit | Scene release `0x707320` enters destructor `0x7071A0` when scene count reaches zero. The destructor calls model release `0x7103A0` repeatedly on the same model while its return is nonzero (`0x7071B0–B9`), then reloads scene+8 at `0x7071BB`; it later frees callback-record buffer scene+0x84 at `0x707243–257`. Model release decrements DWORD+0 and destroys/frees on zero. The queued model increment alone does not establish safety across scene teardown; scene ownership and teardown exclusion remain separate proof obligations. No evidence here establishes teardown with pending delivery or an active callback. |
+| Discard versus replay | Model destructor `0x70E170` discards pending operation records at `0x70E42C–454`. Record cleanup `0x70DD50` treats only code 0 specially; code-4 discard does not execute its sequence operation. This distinguishes this destruction path from completion replay, without closing all destruction effects. |
+
+#### Evidence limits and continuation
+
+**RUNTIME OBSERVED:** no new WoW run, capture inspection, attach, input, native
+invocation or memory write. Prior raw-observer RUNTIME PASS stays limited to its
+saved capture; candidates UNQUALIFIED, profile location BLOCKED, unload acceptance
+open, vendor/water runtime pending, reconnect unimplemented and R0.1 open.
+No controller, navigation or observer-contract changes.
+
+**INFERRED:** exact listener identities narrow one mutation route; model replay
+and destruction require separate scene/context lifetime proofs. Neither UI-node
+freeing nor repeated model release establishes outer world teardown or a runtime
+failure. No closed callback set, coherent sample or safe execution phase results.
+
+**UNKNOWN / SOURCE GAP:** actual loaded scripts/classes and callback binding;
+remaining layout/sound/child effects; widget context retention, mutation during
+replay/draining, scene retention and nested/concurrent teardown exclusion; full
+initializer/helper effects and routes to bulk cleanup/nested field notification.
+Archive selection inputs remain unobserved despite the prior conditional rule.
+Earlier resource-descendant/TLS, writer/invalidation, coherence, same-map/
+character/address ABA and player-bound zone/area freshness obligations remain.
+
+Reproduce against the pinned WoW.exe with `objdump -d -Mintel
+--start-address=START --stop-address=STOP` (exclusive stop); `objdump -s` for
+tables. Use the prior pinned MPQ reader or an extractor producing the same member
+hashes. Setter absence search is bounded to linear disassembly call/jmp references
+and `data.find(struct.pack('<I', 0x779760))` on the executable. Manual findings do
+not expand the automated 43-anchor/12-string manifest; four qualification flags
+and runtimeObserved remain false.
+
+| Inspection | START / STOP |
+|---|---|
+| Button / listener identity | `0x7786A0 / 0x778740`; `0x779490 / 0x779538`; `0x779760 / 0x779782`; `0x467FB0 / 0x468062`; `0x465570 / 0x465686`; `0x530050 / 0x5300A7`; `0x5DDA30 / 0x5DDA54`; `0x5DE708 / 0x5DE728` |
+| UI construction / layout / sound | `0x769E45 / 0x769E7B`; `0x6F2780 / 0x6F2800`; `0x770D30 / 0x770E12`; `0x772830 / 0x772852`; `0x7683D0 / 0x7683ED`; `0x771D80 / 0x771EB8`; `0x767C70 / 0x767D65`; `0x7680E0 / 0x768270`; `0x77FC60 / 0x77FCA6`; `0x76A910 / 0x76A9CF`; `0x4586D0 / 0x458711` |
+| Statusbar callback | `0x529560 / 0x5295C2`; `0x5298C7 / 0x529931`; `0x6EF11A / 0x6EF12B`; `0x6EEF20 / 0x6EEF88`; `0x782D80 / 0x782DC4`; `0x7830D0 / 0x78310C`; `0x783270 / 0x78337D`; `0x7026F0 / 0x702770` |
+| Replay / resource connection | `0x710153 / 0x7102CD`; `0x71D5A0 / 0x71D5DC`; `0x71D640 / 0x71D6B4` |
+| Context installation / destruction | `0x76CD30 / 0x76CE00`; `0x7134B0 / 0x7134C9`; `0x710560 / 0x7105B8`; `0x7103D0 / 0x710446`; `0x76CA20 / 0x76CABC`; `0x7071A0 / 0x7072B3`; `0x707320 / 0x707342`; `0x70E42C / 0x70E456`; `0x70DD50 / 0x70DD62` |
+| Tables / names | `0x81C74C / 0x81C778`; `0x835A50 / 0x835A58`; `0x7102E8 / 0x710310`; `0x81CA68 / 0x81CB00`; `0x8547C4 / 0x8547D0`; `0x871200 / 0x87120A`; `0x87A440 / 0x87A450` |
+
+Next task: close the newly identified callback/context paths before sampler
+design. Prioritize the statusbar callback-before-world-read route (including native
+color effects and actual script binding), widget/model scene ownership and
+callback removal across replacement/destruction, and tooltip/layout callbacks
+for outer world cleanup or nested field notification. Establish scheduling/retention rather
+than treating reference increments or callback names as safety. Keep SOURCE GAP
+until writer, invalidation, lifetime, coherence and ABA obligations close.
+Manual unload acceptance remains separate and requires module-absence and
+post-stop responsiveness evidence.
+
+Validation: exact-client offline audit PASS; three asset lengths/hashes
+independently matched. `python3 tools/validate.py --jobs 4` PASS, all 247 records
+(111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests, 10 Lua
+fixtures, SQL/TSV fixture, full build and diff check). Report:
+`/tmp/wow-validation-cw5_kmge/results.json`. Separate `cmake --build build` PASS
+for DLL, testhost, loader and GUI. Three read-only reviews reconciled; resource
+flag wording corrected to mask 0x1. Full diff/status review and `git diff --check`
+PASS; exactly the two intended documents changed, with no unrelated changes.
+Runtime NOT RUN; no qualification upgrade.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
