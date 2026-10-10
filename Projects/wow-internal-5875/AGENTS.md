@@ -177,10 +177,5 @@ Rules:
 - If the worktree has uncommitted changes, say so.
 - Do not commit automatically unless explicitly instructed.
 - Keep the handoff free of passwords, credentials, account secrets, or other sensitive data.
-
-When parallel subagents are used, summarize their reconciled conclusions rather
-than copying their full reports.
-
-At the end of a task, AI_HANDOFF.md must be sufficient for another AI agent to
-understand the current checkpoint and continue the project without needing the
-previous Codex conversation.
+- When parallel subagents are used, summarize their reconciled conclusions rather than copying their full reports.
+- At the end of a task, AI_HANDOFF.md must be sufficient for another AI agent to understand the current checkpoint and continue the project without needing the previous Codex conversation.
