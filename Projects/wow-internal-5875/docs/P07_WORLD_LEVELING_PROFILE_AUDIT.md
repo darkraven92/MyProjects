@@ -6,8 +6,10 @@ integrate profile selection into the running bot or qualify current location
 or any new gameplay behavior in WoW. The P0.7.4 runtime reconciliation below
 records the raw observer PASS only. Earlier checkpoint sections are historical.
 Latest acquisition closure review reaches Decision B: three explicit source
-blockers remain; location stays BLOCKED. The next productive task is offline
-profile catalogue/reference provenance validation, not further peripheral UI tracing.
+blockers remain; location stays BLOCKED. The offline catalogue/reference
+provenance milestone is now complete; see
+[P07_OFFLINE_CATALOGUE.md](P07_OFFLINE_CATALOGUE.md) for the current P1 readiness
+assessment. Further peripheral UI tracing remains out of scope.
 
 Baseline: 75cadc00b8343837b8fbb40c29a648d5dbc56298, branch
 codex/p07-world-zone-preparation. The World Evidence, Existing Profile / Quest
@@ -2500,3 +2502,33 @@ VENDOR EPISODE — RUNTIME PENDING
 WATER EMERGENCY EGRESS — RUNTIME PENDING
 
 SOURCE GAP — RECONNECT NOT IMPLEMENTED
+
+## P0.7.5 — offline catalogue and Orc provenance foundation
+
+2026-10-10, single agent, starting checkpoint `c749f15`. The independent offline
+roadmap block is complete. [P07_OFFLINE_CATALOGUE.md](P07_OFFLINE_CATALOGUE.md)
+contains the model/field inventory, exact evidence classifications, all 12 Orc
+quest records, source limitations, validator contract, P1 step schema and
+reproduction instructions. It supersedes historical statements above that this
+branch has no authored catalogue or quest-reference resolution.
+
+Implemented: source-pinned immutable catalogue loading, field provenance and
+source conflict checks; quest/entity/objective/relationship/profile validation;
+a deterministic 12-quest dataset, one external prerequisite reference and a
+35-step ten-quest authored Orc Warrior fixture; native LevelingProfile quest-ID
+reference validation; reward-column preservation and SQL hashes for future
+QuestDB imports. Existing runtime catalogue, controllers and source artifacts
+are unchanged. Special mechanics, unknown rewards and item-template limitations
+remain explicit. No runtime-backed field was fabricated.
+
+**P1 foundation readiness: YES**, to begin native adaptation and shared pure
+questing/grinding core policies with injected observations. All six requested
+step kinds are represented. This does not qualify live selection, travel,
+execution or merge readiness. Profile steps are separate from advisory leveling
+segments; no automatic runtime integration is installed.
+
+**P0.7.4 live location: still BLOCKED** by B1 protected acquisition, B2
+lifecycle/identity binding and B3 player-bound cache freshness. No location
+research was reopened. Prior raw observer PASS stays limited to the existing
+capture; no new runtime evidence exists. Source, full validation, separate build
+and Git checkpoint results are recorded in the final handoff.

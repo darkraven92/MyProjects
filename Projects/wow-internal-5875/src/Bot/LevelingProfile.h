@@ -131,5 +131,36 @@ namespace Bot
                 if (!ids.insert(p.id).second || !Valid(p)) return false;
             return true;
         }
+
+        // Offline reference closure only. The caller must supply IDs from its
+        // validated catalogue snapshot. Membership never proves eligibility,
+        // completion, current location or execution support. Keep the existing
+        // structural API available for synthetic/advisory profiles.
+        struct MissingQuestReference
+        {
+            ProfileSegmentId segment;
+            std::uint32_t questId = 0;
+            auto operator<=>(const MissingQuestReference&) const = default;
+        };
+
+        static std::vector<MissingQuestReference> MissingQuestReferences(
+            const std::vector<LevelingProfile>& profiles,
+            const std::set<std::uint32_t>& catalogueQuestIds)
+        {
+            std::set<MissingQuestReference> missing;
+            for (const auto& profile : profiles)
+                for (const auto& segment : profile.segments)
+                    for (const auto quest : segment.questIds)
+                        if (!catalogueQuestIds.contains(quest))
+                            missing.insert({{profile.id, segment.id}, quest});
+            return {missing.begin(), missing.end()};
+        }
+
+        static bool ValidCatalogue(const std::vector<LevelingProfile>& profiles,
+            const std::set<std::uint32_t>& catalogueQuestIds)
+        {
+            return ValidCatalogue(profiles) &&
+                MissingQuestReferences(profiles, catalogueQuestIds).empty();
+        }
     };
 }

@@ -1,0 +1,442 @@
+{
+  "empty": [],
+  "entities": {
+    "creature:10176": {
+      "identity_scope": "named-export-record",
+      "key": "creature:10176",
+      "kind": "creature"
+    },
+    "creature:10556": {
+      "identity_scope": "named-export-record",
+      "key": "creature:10556",
+      "kind": "creature"
+    },
+    "creature:11378": {
+      "identity_scope": "named-export-record",
+      "key": "creature:11378",
+      "kind": "creature"
+    },
+    "creature:3098": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3098",
+      "kind": "creature"
+    },
+    "creature:3101": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3101",
+      "kind": "creature"
+    },
+    "creature:3124": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3124",
+      "kind": "creature"
+    },
+    "creature:3143": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3143",
+      "kind": "creature"
+    },
+    "creature:3145": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3145",
+      "kind": "creature"
+    },
+    "creature:3153": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3153",
+      "kind": "creature"
+    },
+    "creature:3183": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3183",
+      "kind": "creature"
+    },
+    "creature:3188": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3188",
+      "kind": "creature"
+    },
+    "creature:3281": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3281",
+      "kind": "creature"
+    },
+    "creature:3287": {
+      "identity_scope": "named-export-record",
+      "key": "creature:3287",
+      "kind": "creature"
+    },
+    "creature:9796": {
+      "identity_scope": "named-export-record",
+      "key": "creature:9796",
+      "kind": "creature"
+    },
+    "gameobject:171938": {
+      "identity_scope": "named-export-record",
+      "key": "gameobject:171938",
+      "kind": "gameobject"
+    },
+    "gameobject:178087": {
+      "identity_scope": "named-export-record",
+      "key": "gameobject:178087",
+      "kind": "gameobject"
+    },
+    "item:11583": {
+      "identity_scope": "reference-only",
+      "key": "item:11583",
+      "kind": "item"
+    },
+    "item:12635": {
+      "identity_scope": "reference-only",
+      "key": "item:12635",
+      "kind": "item"
+    },
+    "item:16114": {
+      "identity_scope": "reference-only",
+      "key": "item:16114",
+      "kind": "item"
+    },
+    "item:16332": {
+      "identity_scope": "reference-only",
+      "key": "item:16332",
+      "kind": "item"
+    },
+    "item:4859": {
+      "identity_scope": "reference-only",
+      "key": "item:4859",
+      "kind": "item"
+    },
+    "item:4862": {
+      "identity_scope": "reference-only",
+      "key": "item:4862",
+      "kind": "item"
+    },
+    "item:4905": {
+      "identity_scope": "reference-only",
+      "key": "item:4905",
+      "kind": "item"
+    }
+  },
+  "external_quests": {
+    "1499": "Vile Familiars alternate Warlock prerequisite from enriched R 794. Reference only; outside the Orc Warrior route, not silently dropped."
+  },
+  "objectives": {
+    "2383": [
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "quest-supplied"
+      }
+    ],
+    "4402": [
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "world-object"
+      }
+    ],
+    "4641": [],
+    "5441": [
+      {
+        "id": "creature:1",
+        "kind": "UseItemOnUnit",
+        "review": "ValleyOfTrialsProfiles explicitly overrides 5441 as UseItemOnUnit. Raw creature credit is not a kill objective; P1 basic steps cannot represent it.",
+        "source_mode": "use-item"
+      },
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "quest-supplied"
+      }
+    ],
+    "6394": [
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "world-object"
+      }
+    ],
+    "788": [
+      {
+        "id": "creature:1",
+        "kind": "KillObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "kill"
+      }
+    ],
+    "789": [
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "loot"
+      }
+    ],
+    "790": [
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "loot"
+      }
+    ],
+    "792": [
+      {
+        "id": "creature:1",
+        "kind": "KillObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "kill"
+      }
+    ],
+    "794": [
+      {
+        "id": "item:1",
+        "kind": "ItemObjective",
+        "review": "Reviewed against ValleyOfTrialsProfiles::HandAuthored and exported objective/source rows; count remains export-authoritative. Execution is unqualified.",
+        "source_mode": "loot"
+      }
+    ],
+    "804": [],
+    "805": []
+  },
+  "profiles": [
+    {
+      "class_mask": 1,
+      "id": "orc-warrior-valley-foundation",
+      "max_level": 6,
+      "min_level": 1,
+      "quest_ids": [
+        4641,
+        788,
+        2383,
+        789,
+        4402,
+        790,
+        804,
+        792,
+        794,
+        805
+      ],
+      "race_mask": 2,
+      "steps": [
+        {
+          "id": "4641:pickup",
+          "npc": "creature:10176",
+          "quest_id": 4641,
+          "type": "Pickup"
+        },
+        {
+          "id": "4641:turnin",
+          "npc": "creature:3143",
+          "quest_id": 4641,
+          "type": "TurnIn"
+        },
+        {
+          "id": "788:pickup",
+          "npc": "creature:3143",
+          "quest_id": 788,
+          "type": "Pickup"
+        },
+        {
+          "id": "788:creature:1:move",
+          "objective": "creature:1",
+          "quest_id": 788,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "788:creature:1:objective",
+          "objective": "creature:1",
+          "quest_id": 788,
+          "type": "KillObjective"
+        },
+        {
+          "id": "788:turnin",
+          "npc": "creature:3143",
+          "quest_id": 788,
+          "type": "TurnIn"
+        },
+        {
+          "id": "2383:pickup",
+          "npc": "creature:3143",
+          "quest_id": 2383,
+          "type": "Pickup"
+        },
+        {
+          "id": "2383:item:1:move",
+          "objective": "item:1",
+          "quest_id": 2383,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "2383:item:1:objective",
+          "objective": "item:1",
+          "quest_id": 2383,
+          "type": "ItemObjective"
+        },
+        {
+          "id": "2383:turnin",
+          "npc": "creature:3153",
+          "quest_id": 2383,
+          "type": "TurnIn"
+        },
+        {
+          "id": "789:pickup",
+          "npc": "creature:3143",
+          "quest_id": 789,
+          "type": "Pickup"
+        },
+        {
+          "id": "789:item:1:move",
+          "objective": "item:1",
+          "quest_id": 789,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "789:item:1:objective",
+          "objective": "item:1",
+          "quest_id": 789,
+          "type": "ItemObjective"
+        },
+        {
+          "id": "789:turnin",
+          "npc": "creature:3143",
+          "quest_id": 789,
+          "type": "TurnIn"
+        },
+        {
+          "id": "4402:pickup",
+          "npc": "creature:9796",
+          "quest_id": 4402,
+          "type": "Pickup"
+        },
+        {
+          "id": "4402:item:1:move",
+          "objective": "item:1",
+          "quest_id": 4402,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "4402:item:1:objective",
+          "objective": "item:1",
+          "quest_id": 4402,
+          "type": "ItemObjective"
+        },
+        {
+          "id": "4402:turnin",
+          "npc": "creature:9796",
+          "quest_id": 4402,
+          "type": "TurnIn"
+        },
+        {
+          "id": "790:pickup",
+          "npc": "creature:3287",
+          "quest_id": 790,
+          "type": "Pickup"
+        },
+        {
+          "id": "790:item:1:move",
+          "objective": "item:1",
+          "quest_id": 790,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "790:item:1:objective",
+          "objective": "item:1",
+          "quest_id": 790,
+          "type": "ItemObjective"
+        },
+        {
+          "id": "790:turnin",
+          "npc": "creature:3287",
+          "quest_id": 790,
+          "type": "TurnIn"
+        },
+        {
+          "id": "804:pickup",
+          "npc": "creature:3287",
+          "quest_id": 804,
+          "type": "Pickup"
+        },
+        {
+          "id": "804:turnin",
+          "npc": "creature:3143",
+          "quest_id": 804,
+          "type": "TurnIn"
+        },
+        {
+          "id": "792:pickup",
+          "npc": "creature:3145",
+          "quest_id": 792,
+          "type": "Pickup"
+        },
+        {
+          "id": "792:creature:1:move",
+          "objective": "creature:1",
+          "quest_id": 792,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "792:creature:1:objective",
+          "objective": "creature:1",
+          "quest_id": 792,
+          "type": "KillObjective"
+        },
+        {
+          "id": "792:turnin",
+          "npc": "creature:3145",
+          "quest_id": 792,
+          "type": "TurnIn"
+        },
+        {
+          "id": "794:pickup",
+          "npc": "creature:3145",
+          "quest_id": 794,
+          "type": "Pickup"
+        },
+        {
+          "id": "794:item:1:move",
+          "objective": "item:1",
+          "quest_id": 794,
+          "type": "MoveToObjective"
+        },
+        {
+          "id": "794:item:1:objective",
+          "objective": "item:1",
+          "quest_id": 794,
+          "type": "ItemObjective"
+        },
+        {
+          "id": "794:turnin",
+          "npc": "creature:3145",
+          "quest_id": 794,
+          "type": "TurnIn"
+        },
+        {
+          "id": "805:pickup",
+          "npc": "creature:3145",
+          "quest_id": 805,
+          "type": "Pickup"
+        },
+        {
+          "id": "805:turnin",
+          "npc": "creature:3188",
+          "quest_id": 805,
+          "type": "TurnIn"
+        },
+        {
+          "id": "valley:grind-fallback",
+          "location": "creature:3098",
+          "targets": [
+            3098,
+            3124
+          ],
+          "type": "GrindFallback"
+        }
+      ]
+    }
+  ]
+}

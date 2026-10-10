@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -502,6 +503,9 @@ def import_sql(sql_path: Path, db_path: Path, target_patch: int) -> None:
             if idx % 5000 == 0:
                 conn.commit()
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("source_sql", str(sql_path)))
+        with sql_path.open("rb") as source:
+            sql_digest = hashlib.file_digest(source, "sha256").hexdigest()
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("source_sql_sha256", sql_digest))
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("target_patch", str(target_patch)))
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("format", "phase12a-v1"))
         conn.commit()
@@ -596,6 +600,7 @@ def quest_record(conn: sqlite3.Connection, qid: int, map_id: Optional[int] = Non
             obj["loot_sources"] = quest_sources_for_item(conn,obj["item_id"],map_id)
         q["objectives"].append(obj)
     quest_metadata.enrich(conn, q)
+    q["reward_source"] = quest_metadata.rewards(conn, qid)
     return q
 
 

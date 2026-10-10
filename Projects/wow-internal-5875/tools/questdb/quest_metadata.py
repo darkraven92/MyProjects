@@ -35,10 +35,19 @@ def verified_spheres(q, dbc):
 FIELDS = ("Method", "QuestFlags", "SpecialFlags", "ExclusiveGroup",
           "RequiredSkill", "RequiredSkillValue", "StartScript", "CompleteScript",
           "RepObjectiveFaction", "LimitTime", "RewOrReqMoney", "BreadcrumbForQuestId")
+# Preserve source slots, including absent columns, without choosing rewards or
+# computing level-dependent XP. Column names match VMaNGOS quest_template.
+REWARD_FIELDS = ("RewOrReqMoney", "RewMoneyMaxLevel", "RewXP", "RewSpell", "RewSpellCast",
+                 "RewMailTemplateId", "RewMailDelaySecs", "RewMailMoney") + tuple(
+    f"{prefix}{slot}" for prefix, slots in (
+        ("RewChoiceItemId", 6), ("RewChoiceItemCount", 6),
+        ("RewItemId", 4), ("RewItemCount", 4),
+        ("RewRepFaction", 5), ("RewRepValue", 5)) for slot in range(1, slots + 1))
 TABLES = {"conditions", "areatrigger_template", "areatrigger_involvedrelation",
           "scripted_areatrigger", "gossip_menu", "gossip_menu_option"}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS quest_metadata(quest_id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS quest_rewards(quest_id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS source_metadata(kind TEXT NOT NULL, identity TEXT NOT NULL,
     payload TEXT NOT NULL, PRIMARY KEY(kind,identity));
 """
@@ -64,6 +73,18 @@ def preserve(conn, table, d):
 def quest(conn, qid, d):
     conn.execute("INSERT OR REPLACE INTO quest_metadata VALUES (?,?)",
                  (qid, json.dumps({f: d.get(f.lower()) for f in FIELDS}, sort_keys=True)))
+    conn.execute("INSERT OR REPLACE INTO quest_rewards VALUES (?,?)",
+                 (qid, json.dumps({f: d.get(f.lower()) for f in REWARD_FIELDS}, sort_keys=True)))
+
+
+def rewards(conn, qid):
+    """Legacy DBs and missing columns stay unknown, never defaulted to zero."""
+    result = dict.fromkeys(REWARD_FIELDS)
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='quest_rewards'").fetchone():
+        row = conn.execute("SELECT payload FROM quest_rewards WHERE quest_id=?", (qid,)).fetchone()
+        if row:
+            result.update(json.loads(row[0]))
+    return result
 
 def available(conn):
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name='quest_metadata'").fetchone() is not None
