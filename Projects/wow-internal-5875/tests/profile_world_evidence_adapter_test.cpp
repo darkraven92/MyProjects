@@ -214,10 +214,80 @@ static void UnknownPropagation()
            LevelingSelectionStatus::EvidenceUnavailable);
 }
 
+static void UnqualifiedLocationBoundary()
+{
+    // Synthetic unqualified input, not a client-memory fixture. Similarly
+    // named fields (including observed raw caches) are not a source contract.
+    struct UnqualifiedWorld : WorldFixture
+    {
+        std::uint32_t mapId = 1, positionMapId = 1, zoneId = 14, areaId = 363;
+        std::uint64_t worldGeneration = 99;
+    } world;
+    static_cast<WorldFixture&>(world) = World();
+    auto stamp = Stamp();
+    auto current = Check();
+    const auto sample = [&] { return Adapter::Capture(world, stamp); };
+    const auto observe = [&] { return Adapter::Adapt(sample(), current, 10); };
+    assert(sample() == Adapter::Capture(World(), stamp));
+
+    // Independently changing candidate map/zone/area must never create either
+    // location evidence or an association between raw XYZ and a map.
+    const auto baseline = observe();
+    for (auto* candidate : {&world.mapId, &world.positionMapId,
+                            &world.zoneId, &world.areaId})
+    {
+        for (const auto value : {0u, 1u, 14u, 1637u,
+                                std::numeric_limits<std::uint32_t>::max()})
+        {
+            *candidate = value;
+            assert(observe() == baseline);
+            UnsupportedUnknown(observe());
+        }
+    }
+    ++world.worldGeneration;
+    assert(observe() == baseline);
+
+    // Valid -> unavailable -> restored with equal identity models only the
+    // Unknown boundary. This pure adapter cannot detect an intra-read ABA.
+    world.valid = false;
+    assert(observe() == ProfileWorldEvidence{});
+    world.valid = true;
+    assert(observe() == baseline);
+    for (int i = 0; i < 3; ++i)
+    {
+        ++stamp.sampleSequence;
+        current.stamp.sampleSequence = stamp.sampleSequence;
+        stamp.observedAtMs += 100;
+        current.stamp.observedAtMs += 100;
+        ++world.worldGeneration;
+        world.player.x += 10000;
+        const auto result = observe();
+        assert(result.QualifiedIdentity() && result.position);
+        UnsupportedUnknown(result);
+        assert(observe() == result);
+    }
+    ++stamp.monitorSession;
+    assert(observe() == ProfileWorldEvidence{});
+    current.stamp.monitorSession = stamp.monitorSession;
+    ++world.manager;
+    assert(observe() == ProfileWorldEvidence{});
+    current.manager = world.manager;
+    ++world.activePlayerGuid;
+    assert(observe() == ProfileWorldEvidence{});
+    current.playerGuid = world.activePlayerGuid;
+    ++world.localPlayer;
+    world.player.address = world.localPlayer;
+    assert(observe() == ProfileWorldEvidence{});
+    current.localPlayer = world.localPlayer;
+    assert(observe().QualifiedIdentity());
+    UnsupportedUnknown(observe());
+}
+
 int main()
 {
     ValidAndFieldValidation();
     InvalidSnapshotsAndIdentity();
     FreshnessAndPurity();
     UnknownPropagation();
+    UnqualifiedLocationBoundary();
 }

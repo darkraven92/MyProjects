@@ -275,6 +275,240 @@ Adapter checkpoint validation:
   its focused test untracked. No staged files or commit.
 - Runtime: NOT RUN / PENDING. No new WoW behavior is enabled or qualified.
 
+## P0.7.3 — source-qualified location investigation
+
+Continued from `93dad5c6bb02c1cd9ec981e5a12792ba547d5475` on
+2026-10-10. Three parallel read-only agents completed before coordinator edits:
+A traced native current-map sources, B traced zone/area and local assets, and
+C audited lifetime, reader isolation and tests. All three recommend **CASE B**.
+The coordinator reconciled their reports and independently inspected the map
+getter, constructor/destructor, area-row selection, ID publication and cleanup.
+
+Exact client: `/home/ludvig/Games/WoW Vanilla/WoW.exe`, PE32 i386, preferred
+base `0x400000`, SHA256
+`b4756d38ef207c02ed651f4952bd89a70b4857b73a33413339e1b285b28d2dc7`.
+The hash and focused instruction/string signatures pass the new offline audit.
+All addresses below are absolute VAs in this exact executable. Research names
+describe disassembled behavior; they are not asserted debug symbols.
+
+### Reconciled qualification decision
+
+- **SOURCE VERIFIED:** the bounded instruction-path facts below: numeric map
+  getter/writer/consumers, numeric zone/child-area cache provenance, parent/child
+  relationship, text API return types, publication ordering and teardown gaps.
+  This label applies to those facts only. **No candidate satisfies the complete
+  SOURCE VERIFIED current-world reader standard**, because current-player and
+  lifetime qualification remains incomplete.
+- **RUNTIME OBSERVED:** none in this task. No WoW launch, attach, native function
+  call, Lua command, memory write, patch, input or gameplay action was performed.
+- **INFERRED:** patch-2 > patch > base asset precedence (not traced through
+  the exact client's archive mount path). These candidates could support a
+  future diagnostic observer; repeated stable values would be useful research
+  telemetry. They would not establish a fully initialized, current, coherent
+  world lifetime.
+- **UNKNOWN:** current map, zone, area/subzone, position-map association and
+  world generation as usable profile evidence. No new production reader,
+  policy, schema field, adapter input, WorldMonitor hook or controller change
+  is introduced. Area has no separate field in the existing evidence schema;
+  it remains unsupported, never folded into zone. Existing optional map/zone
+  and generation outputs remain empty. Actual runtime archive selection is
+  also Unknown; the asset inspection below does not establish it.
+
+### A — current-map sources and rejected alternatives
+
+| Candidate | Exact origin / consumer path | Validity and decision |
+|---|---|---|
+| Object-manager map `[0xB41414]+0xCC` | Getter `0x468580`, wrapper jump `0x5EA700`, setter `0x4685A0` (ECX -> owner+CC). Constructor `0x464FF0` receives map in ECX, zeroes +CC at `0x4650ED`, publishes root at `0x46510E`, sets map at `0x46512C`. | Strong numeric map provenance, but publication precedes completion. Null getter returns 0, indistinguishable from valid map 0 without separately qualified availability. Unknown as profile evidence. |
+| Current-map consumer | `SetMapToCurrentZone` registration `0x845090` -> `0x4A7E20` -> `0x4A6650`; active-player lookup precedes map calls at `0x4A6697/0x4A66F1`. Diagnostic `0x5AC256` uses the same getter, map table `0xC0DAA8/AC`, and `Map:\t\t%u (%s)\n` at `0x85D71C`. | Establishes map identity semantics beyond a suggestive name or historical offset. Does not establish safe sampling. SetMapToCurrentZone writes selection state and must not be invoked by a read-only observer. |
+| Pending transfer map `0x88262C` | Registration `0x40174A` binds opcode `0x3E` to `0x401B00`; packet read fills global, validates map-table membership, schedules `0x401BC0`. Diagnostic `Bad SMSG_NEW_WORLD zoneID\n` at `0x82E3B0` is historical wording, not a zone/area contract. Another packet callback `0x401DE0` compares incoming map with getter at `0x401E36`, then writes pending map at `0x401E5C`. | Destination/transition value can differ from the installed owner map. Rejected. |
+| Transfer ordering | `0x401BC0` destroys old owner at `0x401BF7`, constructs replacement from pending map at `0x401C22`, then loads terrain at `0x401C5C`. | New owner/map exists before terrain loading completes. Matching player/root/map cannot by itself classify loading. |
+| Terrain map `0x86A2CC` | Pending map at `0x401C49` -> loader `0x66FBE0` -> EDX at `0x66FC14` -> `0x6941F0` -> store at `0x69441E`. Consumers `0x670269/0x6703B3` access map records. Startup `0x691BB7` initializes -1. | Unload `0x697AC0` does not reset this map; it clears resource markers `0xC9E380/384` only at `0x697BE8/ED`. Retained terrain map and late-cleared markers do not qualify current readiness/generation. Rejected. |
+| Selected world-map indices `0x84506C/70` | `GetCurrentMapContinent` registration `0x8450A0` -> `0x4A7ED0`; `GetCurrentMapZone` `0x8450A8` -> `0x4A7F00`. Each returns stored index +1. Selection path `0x4A7E14` -> `0x4A67A0` writes supplied indices. | UI selection indices, not current map or AreaTable IDs. Rejected. |
+| `GetMapInfo` | Registration `0x845098` -> `0x4A7E30` -> `0x4A6CF0/0x4A6D50`, selected-map information/string/texture dimensions. | No accepted current numeric identity. Rejected. |
+| World-initialized flag `0x882734` | Set at `0x4017E5`; cleared at `0x40204D`, after object teardown at `0x402011`. Transfer `0x401BC0` replaces owner without writing this flag. | Not a per-transition readiness guard or generation. Rejected. |
+| Existing repository inputs | Offsets.h supplies root/list/GUID only; WorldState has no map. Controller configuration, navmesh destination/mesh generation, corpse map, quest zoneOrSort, authored profile data and XYZ have their existing separate meanings. | None may substitute for observed current-world identity. Creature composition and minimap text likewise provide no accepted evidence. |
+
+Mechanically, bounded memory reads of a scalar need not mutate the client.
+That fact does not make these scalars current. Calling map selection, terrain
+or packet functions would violate this task's boundary and was not attempted.
+
+### B — numeric zone/area, text and local assets
+
+`0x494780` writes ECX to `0xB4E314` (zone) at `0x49479A` and EDX to
+`0xB4E318` (child area) at `0x4947A0`. These are separate DWORD stores before
+text updates/events, with no qualified publication sequence protecting them.
+
+The direct caller at `0x67E645`, within `0x67E510`, establishes numeric
+provenance: `0x6703A0` supplies a spatial area ID; `0xC0E048` is the
+AreaTable row-pointer table, bounded by `0xC0E04C`. Row +8 is the parent
+ID (`0x67E57D`). A nonzero parent selects its row as zone and retains the
+child row. With no parent, the original row becomes zone and child is null.
+`0x67E62F–0x67E645` passes row +0 IDs to the writer. **The child cache is zero
+for a top-level row; it is not a guaranteed copy of zone ID.** Localized text
+comes separately from row +0x2C + locale*4 (`0xC0E080` locale index).
+
+This establishes stable numeric cache semantics, but the source is not a
+qualified fresh local-player sample:
+
+- Upstream `0x5DB900` increments `0xC4D790`, skips work until threshold 10,
+  and prefers GUID `0xC4DA98/9C` with type mask 8. Only on lookup failure does
+  it fall back to active-player GUID/type mask 0x10. The selected object's
+  +0xE0 supplies the spatial input. Alternate-owner meaning remains unresolved.
+- Null input, failed spatial resolution, missing/out-of-range rows and
+  unchanged-update suppression can return without clearing published IDs.
+  A stable cache can therefore be unavailable/stale rather than newly sampled.
+- `0x67E7F0` compares prior zone/area/map markers `0x8685FC/600/604`;
+  these are deduplication values, not a monotonic generation. `0x67E450`
+  resets only markers `0x868608/604` to -1.
+- Teardown calls marker reset at `0x401FCB`, object-manager destruction at
+  `0x402011`, then UI cleanup `0x491180` at `0x402039`. Only within that
+  later cleanup do `0x491266/26C` zero zone/area. Thus cached IDs survive
+  part of teardown, including object-manager destruction.
+
+| Text candidate | Registration -> callback -> cached pointer | Result / rejection |
+|---|---|---|
+| GetZoneText | `0x83E0A8` -> `0x48A0A0` -> `0xB4B3F8` | Localized string, no numeric ID. |
+| GetRealZoneText | `0x83E0B0` -> `0x48A0C0` -> `0xB4B404` | Localized string, no numeric ID. |
+| GetSubZoneText | `0x83E0B8` -> `0x48A0E0` -> `0xB4E280` | Localized string, no numeric ID. |
+| Zone-change events | `0x51ADA7–C4` registers ZONE_CHANGED / ZONE_CHANGED_INDOORS / ZONE_CHANGED_NEW_AREA; writer emits 0xCD for changed zone, else text-change 0xCB/0xCC according to indoor flag. | Update notification, not polled generation/freshness proof. |
+
+Each text callback substitutes empty string `0x882748` for null and calls
+Lua push-string `0x6F3890`, which mutates the Lua stack. The setter allocates,
+copies and frees cached strings; cleanup frees/clears them after IDs. Neither
+these pointers nor text-to-ID conversion is an accepted read-only ID source.
+Native spatial resolver/setter invocation would also write state/emit events.
+
+Local archives in `/home/ludvig/Games/WoW Vanilla/Data` were read without
+extraction or client execution using the already installed `mpyq` from
+`/home/ludvig/Programming/Projects/wow-internal-5875/build/r01b2-research/python`.
+Patch-2, patch and base archives were checked separately. The table identifies
+highest-patch inspected assets; archive precedence is inferred, not qualified.
+These assets interpret IDs and UI semantics only; their presence cannot
+establish current location or prove which asset the running client loaded.
+
+| Asset and inspected archive | SHA256 / interpretation |
+|---|---|
+| DBFilesClient\\AreaTable.dbc, patch-2.MPQ | `ac4c33c2ae65d37ab801050adf489ea5286d7dd9f9ebf78e6e5c7120418a3528`; WDBC, 1081 rows, 25 fields, 100-byte records, 15838-byte string block. |
+| DBFilesClient\\Map.dbc, patch-2.MPQ | `4bb6b53841b113eb0ec4fa624ef42d7de7ebdd5169aac17d3e6f9a4f73654245`; 44 rows, 42 fields, 168-byte records. |
+| AreaTable.dbc, patch.MPQ | `e3d588f4da646d817672e58205bf61a0019f86c7af2fd9d2d4bb06edafd0d96c`; base dbc.MPQ has older 21-field/84-byte rows. Do not qualify against base rows. |
+| Interface\\FrameXML\\WorldMapFrame.lua, patch.MPQ (absent patch-2) | `74ef7d6506bf76190679ad02f3f4a4d08efcf3d626cfd0e7cd27ba21d6ee0e05`; lines 245–265 call SetMapZoom from dropdown handlers and restore selected GetCurrentMapZone index. |
+| Interface\\FrameXML\\Minimap.lua, patch.MPQ | `73700cf18fe1b3554a5b3c852982d0426bebe0a5eb9e2f5eaa867f049bdfa9e1`; displays GetMinimapZoneText, not numeric evidence. |
+| Interface\\FrameXML\\ZoneText.lua, patch.MPQ | `4c21094a538292df722e7a4772bf8984413275cfb19be359ecf9a11a537ae73a`; inspected content handles autofollow status, no numeric source. |
+
+The binary loader near `0x53FCE0` checks WDBC, field count 25 at `0x53FD6D`
+and record size 100 at `0x53FD9B`; `0x53FEC8–E6` builds a row-ID-indexed
+table. `0x574040` returns path `0x857ECC` (AreaTable.dbc). Example patch-2
+rows: 14=(map1,parent0), 362=(map1,parent14), 363=(map1,parent14),
+1637=(map1,parent0). Names Durotar/Razor Hill/Valley of Trials/Orgrimmar
+corroborate schema interpretation only, never player location.
+
+### C — lifetime, reader contract and future hook
+
+Root assignment `0x464FA0`, save/switch `0x464FB0` using `0xB41418`, and
+restore `0x464FD0` prove `0xB41414` is a context pointer, not a generation.
+Network helper `0x538020` obtains a temporary owner from connection +0x1AD8.
+Constructor publication precedes map setup. Destructor `0x467700` calls
+object cleanup `0x467800` at `0x467711` before clearing root at `0x46771E`.
+GUID getter `0x468550` returns owner +0xC0/C4; cleanup uses it without first
+clearing GUID. GUID publication at `0x466245/0x466254` uses two DWORD stores
+on i386. Root/GUID/map equality cannot exclude torn identity, switched/restored
+context, same-address reuse or an entire same-character transition between reads.
+The loading query `0x407E70` tests resource handle `0x882BE0`, not a qualified
+complete loading-phase contract.
+
+The unresolved source gap is a proven read-side sampling/lifetime mechanism
+covering initialization, teardown, context switching, map changes, same-map
+reload and same-character/address reuse. A true generation with publication
+and invalidation ordering, or an equally rigorous serialized sampling boundary,
+is needed. The area source additionally needs current-player ownership and
+freshness proof, independent from map availability. Matching area/map DBC
+values cannot repair stale evidence.
+
+ConnectionEvidence5875 supplies reusable architecture only: injectable bounded
+read callback, exact signature comparisons, owner overflow checks, repeated
+reads and default-Unknown output. Server-connected state, historical Glue,
+connection tracker and reconnect policy cannot qualify world lifetime. Existing
+ClientIdentity checks version/name, not the exact executable SHA. A future
+reader needs its own explicit exact-client provenance contract. Prefer a
+fault-safe ReadProcessMemory callback to Core::Memory's VirtualQuery + memcpy
+check/use race. No connection or generic-memory code is changed here.
+
+Any future reader must reject wrong signatures, null/unreadable/overflowing
+owners, mismatched/torn identity, loading/unavailable lifetime and stale cache;
+recheck manager/GUID/type-4 local-player association after acquisition; bind all
+accepted fields to the same qualified sample; and discard prior successes on
+failure. Map, zone and area validity must be independent. Neither monitor
+session nor sampleSequence is a world generation. Same-value double reads alone
+are not sufficient. No new successful-value cache is authorized.
+
+The future adapter input should be an isolated source-qualified location
+sample with its lifetime and identity binding. The eventual WorldMonitor hook
+remains around `WorldStateReader::Read` / `nowMs` in `WorldMonitor::Run`
+(`WorldMonitor.h:596–602`), with read-start stamp beforehand, independent
+post-read identity/lifetime checks, and diagnostics before the invalid-read
+early continue or any owner dispatch. No such hook is implemented here.
+
+A **controlled raw diagnostic observer is justified as a future research task**
+to characterize pending/owner/terrain map and zone/area caches across login,
+loading, map transfer, same-map reload, zone-only/area-only changes and teardown.
+It must label values unqualified, include unavailable samples, invoke no client
+functions/actions and never feed profile selection. Observing matching values
+cannot alone close the static lifetime gap; a profile-populating observer is
+not yet justified. No live test is needed or performed in this checkpoint.
+
+### P0.7.3 offline audit and regression coverage
+
+Repeat against the exact file:
+
+```sh
+python3 tools/profile_world_location_client_audit.py '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x464fa0 --stop-address=0x465140 '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+objdump -d -Mintel --start-address=0x67e510 --stop-address=0x67e670 '/home/ludvig/Games/WoW Vanilla/WoW.exe'
+```
+
+The audit checks the SHA256, PE32/i386/base layout and a fixed manifest of
+43 instruction anchors and 12 strings for the documented paths. It is not a
+general disassembler or proof of the whole call graph. Asset hashes above are
+a research record, not checks performed by this executable-only tool. PASS explicitly
+retains `currentMapQualified=false`, `currentZoneQualified=false`,
+`currentAreaQualified=false`, `worldLifetimeQualified=false`,
+`readerImplemented=false`, `runtimeObserved=false`.
+
+Python regressions reject wrong fingerprints before reading addresses, malformed
+PE fixtures, and every mutated/truncated/missing signature or string. They test
+deterministic audit results and prohibit a PASS from granting location/runtime
+qualification. The adapter's complete local include closure remains only the
+adapter and evidence headers, without memory readers or action adapters.
+
+C++ regression extends the existing adapter test with deliberately unqualified
+map, position-map, zone, area and generation fields. Independent candidate
+changes, changed coordinates, valid/unavailable/restored states, new sessions,
+sequences and identities never fabricate location or generation. Equal identity
+after a synthetic gap tests only preserved Unknown, **not ABA detection**.
+Native execution and MinGW compilation against actual WorldState both pass.
+No implemented-field reader tests are claimed: there is no new reader or field.
+Future Case A must add all signature, owner/read failure, coherence, loading,
+lifetime, map-change and independent zone/area-change cases before acceptance.
+
+P0.7.3 validation, 2026-10-10:
+
+- Exact local executable offline audit: PASS (SHA256, PE layout, 43 instruction
+  anchors, 12 strings). SOURCE path verification only; no runtime qualification.
+- Focused native C++20 compile/run and MinGW i686 compile against WorldState:
+  PASS with `-Wall -Wextra -Werror`.
+- Five focused Python audit/boundary tests: PASS.
+- `python3 tools/validate.py --jobs 4`: PASS; 110 C++ executables, 47 audit
+  Python tests, 13 QuestDB Python tests, SQL/TSV fixture, 10 Lua fixtures,
+  full MinGW build and diff check. All 245 validation records passed.
+  Report: `/tmp/wow-validation-20foukj7/results.json`.
+- Separate `cmake --build build`: PASS (DLL, testhost, loader, GUI).
+- `git diff --check` and untracked-file `--no-index --check`: PASS.
+- Source comparison against checkpoint `93dad5c`: no changes anywhere in
+  `src`, including all eight protected files. Read-only review: no blockers.
+- `git status --short`: only this document and the adapter test modified;
+  new location audit tool and its Python test untracked. No staging or commit.
+- Runtime: NOT RUN. Production location fields remain Unknown.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
