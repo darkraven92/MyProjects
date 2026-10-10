@@ -1022,6 +1022,107 @@ Continuation validation on 2026-10-10:
   staged or committed.
 - Runtime: NOT RUN in this task; prior raw-observer qualification preserved.
 
+### P0.7.4 — queued transfer, packet dispatch and field notifications
+
+Continued on 2026-10-10 from `fb9b574b5188e5774f8d5a5222351b0a6659853f`,
+branch `codex/p07-world-zone-preparation`, initially clean. Three parallel
+read-only agents traced scheduling, field writers and packet ownership. The
+coordinator reconciled their reports, checked key instruction paths and traced
+cache publication/suppression. This task changes only this audit and the handoff.
+
+**Decision: SOURCE GAP remains; profile population stays BLOCKED.** The previous
+source gaps are narrowed by concrete queue, callback and writer paths below.
+No eligible sampling boundary, complete writer coverage, world generation or
+current-player cache freshness was established. No production code, observer
+contract, controller ownership or navigation changed.
+
+#### SOURCE VERIFIED — local scheduling and nested dispatch
+
+These facts use the same exact-client SHA256 as P0.7.3. Addresses describe
+bounded disassembly; names such as queue/context are research interpretations
+of the inspected structure, not debug symbols or runtime thread identities.
+
+| Path | New evidence and qualification limit |
+|---|---|
+| Deferred transfer queue | `0x4200A0 → 0x428B30` stores callback at node+0x18 (`0x428C62`) and argument at +0x1C (`0x428C68`). Consumer `0x428510` loads callback at `0x428575`, checks due time at `0x4285EF–5F6`, removes a due entry, releases context+0x10 at `0x42864E`, invokes callback at `0x428659`, then reacquires at `0x4286C9`. The queue lock does not cover the transfer callback's manager replacement/loading. |
+| Main loop order | In the inspected branch of `0x420C00`: due callbacks `0x420D0C` → optional message pump `0x420D23` → event 6 path `0x420D55` → queued event drain `0x420D5C` → event 5 path `0x420D63`. `0x420FF0` selects event 6 at `0x421016/1D`; event 5 reaches the previously traced zone updater. This is conditional local order, not a globally safe sampling phase. |
+| Intervening callbacks | Event drain `0x424AD0` detaches the pending list while locked, releases at `0x424B6F`, then dispatches queued events at `0x424B8A`. Message pump `0x423920 → 0x42C9F0` reaches PeekMessageA (`0x42CB0A`) and DispatchMessageA (`0x42CB68`). These paths can run callbacks between due transfers and event 5; which handlers reenter world transitions remains unproved. |
+| Context/thread scope | `0x420CD3–CE3` installs the selected context through TLS helpers. The loop has a direct entry through `0x41F5C0/0x420BE0` and a created-thread path: `0x421B5B/60 → 0x659AC0 → 0x64BD20/40`, CreateThread at `0x64BE9A`, wrapper invocation at `0x64BC5A`. This does not identify the thread/context owning all world writers. An analogous body `0x422540` has similar ordering, but these searches established no caller; it is not evidence of an active second pump or recursive execution. |
+| Packet execution in event 6 | `0x402B84–8E` registers `0x403620` in event 6; `0x403624 → 0x5B3DB0` holds global critical section `0xC2A314` while walking connections and calling `0x538040`. The latter uses connection+0x1A54 and enters `0x5384D0`, which holds queue+4 from `0x5384E0` through handler execution to `0x538604`. Queued type 0x12 dispatches connection virtual slot +0x30 at `0x53853E`; inspected table entries `0x8090A0/0x80A3C8/0x80A688` bind it to `0x537C50`. These locks cover this bounded path, not every world/cache writer. |
+| Transfer within temporary ownership | On the inspected packet chain, different-valid-map handler `0x401DE0` calls `0x401BC0` at `0x401EA4`, destroys manager at `0x401BF7` and constructs at `0x401C22`, before wrapper restore `0x537CC9`. Same-map branch skips that direct call. A nonzero saved-owner slot can affect restoration; the root after return cannot be assumed to be the new manager without qualifying prior context. No actual erroneous restoration was observed. |
+| Nested handler dispatch | Registration `0x6038B6–C0` binds packet 0x2FB to `0x603CE0`. Its embedded-buffer loop obtains a connection via `0x5AB490` and calls `0x537AA0` again at `0x603DA6`. This establishes nested handler dispatch in source, not nested entry to the switch/restore wrapper, a particular embedded transfer packet, or observed runtime reentrancy. |
+
+The context lock released before event 5, the timed-queue lock released before
+callbacks, and the connection locks held during packet dispatch have distinct
+scopes. None is an authorized reader lock. A source path that runs before event 5
+cannot establish that all initialization, deferred work and notification delivery
+have completed by event 5, especially with conditional updater/cache suppression.
+
+#### SOURCE VERIFIED — field writers, cleanup and cache publication
+
+| Path | New evidence and qualification limit |
+|---|---|
+| Farsight subscription | `0x5DDA30–4F` registers callback `0x5DE0D0`, GUID, category 4, relative offset 0x830 and length 8 through `0x467E70`. Its category translation through `0x465690` adds base 0x2F0, covering descriptor+0xB20/+0xB24. `0x5DE708–723` requests removal through `0x467FB0`; removal can defer via node+0x2D when node+0x2C is nonzero (`0x468023–057`). Registration/removal is not proof of callback completion or lifetime. |
+| Farsight notification body | `0x5DE0D0` resolves the notified GUID with mask 0x10, checks active GUID, reads PLAYER_FARSIGHT, mask-1 resolves the alternate object, then calls `0x5EE270` (`0x5DE144`) or `0x5EE590` (`0x5DE15D`). This supplies a concrete field-notification path; completion ordering against field writes and destruction remains open. |
+| Generic descriptor mutation | Masked loop `0x466590` calls `0x466A00` at `0x4666F0`, which calls `0x6142E0`. Store `0x6142EC` writes one DWORD to `[object+8]+index*4`; index increments at `0x4666FB`. PLAYER_FARSIGHT indices 0x2C8/0x2C9 can be separate loop iterations. No coherent two-DWORD publication follows from this path; displacement searches cannot exclude generic/bulk writers. |
+| Preferred-GUID invalidation | In `0x5FB5E0`, several cleanup calls precede GUID comparisons `0x5FB631/63C`, then equality clears the pair at `0x5FB650/655`, bypassing `0x6006B0`. Wrapper `0x5FB1D0` calls this destructor before conditional free at `0x5FB1EF`. Thus this clear precedes that free but follows earlier cleanup. Initialization also clears at `0x6039A9/9AF`. The linear direct-store inventory now contains four pairs: these two, `0x6006C7/6D1`, and `0x600791/79A`; it is not an exhaustive alias/bulk-writer proof. |
+| Flag mutation ingress | Object+0xC58 is initialized to zero at `0x5FAE7A`. Setter `0x5FA600` changes bit 0x400. One direct caller `0x5DEB56` supplies true; handler `0x603EA0`, registered for packet 0x159 at `0x6038C6–D0`, parses a GUID and byte, mask-8 resolves and calls the setter at `0x603EEB`. The packet/flag gameplay names remain UNKNOWN; neither is a world-ready predicate. |
+| Cache suppression and publication | Branch helper `0x67E670` returns false at `0x67E6A0–6BC` when mode `0x868608` is positive and spatial helper output equals `0x86860C`; that comparison contains no map/GUID binding. False skips numeric writer via `0x67E602`. Other branch `0x67E7F0` writes deduplication map/zone/area markers at `0x67E835/83F/845` before helper calls and numeric publication at `0x67E645 → 0x494780`. Neither marker set certifies completed numeric publication or world generation. |
+
+#### Evidence limits, reproduction and next task
+
+**RUNTIME OBSERVED:** no new run, capture inspection, attach, input, native call
+or memory write. Preserve the prior raw-observer RUNTIME PASS within its saved
+capture limits. All location candidates remain UNQUALIFIED. Unload acceptance,
+vendor episode and water emergency egress remain runtime pending; reconnect
+remains unimplemented and R0.1 remains open.
+
+**INFERRED:** released callback locks, per-field stores and late clears explain
+why the newly traced ordering is insufficient as a sampling contract. They do
+not prove a torn sample, erroneous restore or gameplay failure occurred in WoW.
+
+**UNKNOWN / SOURCE GAP:** actual world-writer context/thread ownership, complete
+writer and callback coverage, field-notification completion/removal ordering,
+window/loading reentrancy, initialization/invalidation, pair/sample coherence,
+same-address/character/map ABA, and current-player zone/area freshness. No
+source-qualified sampler design or hook is justified by this checkpoint.
+
+Reproduce with `objdump -d -Mintel --start-address=START --stop-address=STOP`
+against `/home/ludvig/Games/WoW Vanilla/WoW.exe` (stop exclusive):
+
+| Inspection | START / STOP |
+|---|---|
+| Transfer enqueue/consume | `0x4200A0 / 0x420164`; `0x428B30 / 0x428CF8`; `0x428510 / 0x4286F7` |
+| Pump order, event 6, queued events/messages | `0x420C00 / 0x420E1F`; `0x420FF0 / 0x421026`; `0x424AD0 / 0x424BD8`; `0x423920 / 0x423995`; `0x42C9F0 / 0x42CBE4` |
+| TLS installation/thread entry | `0x41DB50 / 0x41DBCA`; `0x436DB0 / 0x436DBB`; `0x421B52 / 0x421B65`; `0x659AC0 / 0x659AE7`; `0x64BD20 / 0x64BEA0`; `0x64BC20 / 0x64BC5F` |
+| Packet pump and nested dispatch | `0x402B79 / 0x402B93`; `0x403620 / 0x403634`; `0x5B3DB0 / 0x5B3DF2`; `0x538040 / 0x53804B`; `0x5384D0 / 0x538624`; `0x6038B5 / 0x6038D5`; `0x603CE0 / 0x603DFB` |
+| Field subscription/notification/removal | `0x5DDA30 / 0x5DDA54`; `0x5DE708 / 0x5DE728`; `0x467E70 / 0x468062`; `0x465690 / 0x4656B1`; `0x5DE0D0 / 0x5DE180` |
+| Generic field mutation | `0x466590 / 0x466704`; `0x466A00 / 0x466A11`; `0x6142E0 / 0x6142F8` |
+| Cleanup, initialization and flag ingress | `0x5FB5E0 / 0x5FB670`; `0x5FB1D0 / 0x5FB1FB`; `0x6033C0 / 0x6039FB`; `0x5FAD50 / 0x5FAE80`; `0x5DEB49 / 0x5DEB6A`; `0x603EA0 / 0x603EFB` |
+| Cache branch and marker ordering | `0x67E510 / 0x67E668`; `0x67E670 / 0x67E7E8`; `0x67E7F0 / 0x67E935` |
+
+Use `objdump -s` for field-category table `0x4656B4 / 0x4656D4` and the three
+packet virtual-slot entries listed above (4 bytes each); `objdump -p` identifies
+critical-section, TLS, thread and window-message imports. Manual paths are not
+added to the automated 43-anchor/12-string manifest. Its four location/lifetime
+qualification flags and runtimeObserved remain false.
+
+Next task: connect the masked descriptor-update loop to notification execution,
+including deferred removal, and prove which event context executes it. Trace
+context creation/selection through `0x421430` and window-context assignment
+against event 6, event 5 and transfer callbacks. A qualified sampling proposal
+must cover loading/window callbacks, initialization/invalidation and ABA; retain
+SOURCE GAP if closure is unavailable. Manual unload acceptance is separate.
+
+Validation: exact-client audit PASS; `python3 tools/validate.py --jobs 4` PASS,
+247 records (111 C++ executables, 49 audit Python tests, 13 QuestDB Python tests,
+10 Lua fixtures, SQL/TSV fixture, full MinGW build and diff check), report
+`/tmp/wow-validation-o3yxzmhz/results.json`. Separate `cmake --build build`
+PASS (DLL, testhost, loader, GUI). Three read-only reviews found no actionable
+corrections. Full diff reviewed; `git diff --check` PASS. Worktree changes are
+exactly the audit and handoff documents, with no unrelated files.
+No new runtime qualification follows from these results.
+
 ## Regression and validation
 
 leveling_profile_selector_test.cpp covers level boundaries and gaps, level
