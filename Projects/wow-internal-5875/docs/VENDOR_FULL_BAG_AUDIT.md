@@ -1,5 +1,16 @@
 # P0.6 unattended vendor and full-bag audit
 
+## Latest automatic episode qualification (2026-10-10)
+
+**INSUFFICIENT EVIDENCE.** The food-only capture in
+`runtime-captures/vendor-runtime-2026-10-10/` shows a merchant visit with no
+purchase, one cooldown-qualified retry, combat preemption and a stopped service
+wait. It does not prove completed maintenance, active-route deadline cancellation
+or terminal retry exhaustion. Free slots (22, later 19) are not a full-bag
+recovery qualification. No vendor code or evidence boundary changed. See the
+[current runtime audit](RUNTIME_CONNECTION_RELIABILITY_AUDIT.md) for raw-line
+chronology, source interpretation, hashes and the next required evidence.
+
 ## Publication dependency boundary
 
 The independently validated prerequisite `b61e4962779a24a308b5f4388cfc71041b4b7ae9`

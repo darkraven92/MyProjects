@@ -1,5 +1,136 @@
 # R0.1 unattended maintenance / connection audit
 
+## Vendor runtime qualification (2026-10-10): INSUFFICIENT EVIDENCE
+
+Reviewed against clean source checkpoint `65719e3942db12c90e73eff32b10d2dc37a1f4fb`
+on `codex/vendor-afk-long-navigation`, including the implementation/history in
+`75cadc0`. The supplied capture proves several transitions below, but neither
+the complete success path nor the complete bounded failure/retry path. **No
+vendor runtime PASS or verified vendor defect is established. No controller,
+policy, test, AFK guard, water boundary or reconnect behavior was changed.**
+The earlier 2026-10-09 runtime-pending implementation section is historical;
+this section records the additional observations and remaining gaps.
+
+### Evidence and reproducibility
+
+All line references below are one-based in
+`runtime-captures/vendor-runtime-2026-10-10/wow-internal.log`, unless identified
+as lifecycle lines. The complete raw log has 74,809 lines / 4,927,439 bytes.
+All 240 numbered records in `vendor-extract.txt` match their raw-log lines;
+the extract is corroboration, not independent evidence or a complete timeline.
+The 72-line lifecycle file contains older sessions: only lines 62–72 concern
+this run. Runtime session `492.134360982794280090.67202147.696`, player GUID
+`0x000000000001AA56`, identifies a verified 1.12.1.5875 client. Lifecycle
+BOT START/STOP span monotonic 67202662–68302261 (~18m20s); the raw stop differs
+by 1 ms. GUI stop and unload-request records explain the ending. Unload request
+does not itself prove completed module detach. No captured DLL hash or Git
+revision binds the deployed binary exactly to the inspected source revision.
+
+`runtime-audit.json` was **absent on arrival**. It was regenerated locally with
+the unchanged tool, not treated as a supplied independent artifact:
+
+```sh
+python3 tools/runtime_reliability_audit.py runtime-captures/vendor-runtime-2026-10-10/wow-internal.log > runtime-captures/vendor-runtime-2026-10-10/runtime-audit.json
+```
+
+SHA256 (original bytes, including CRLF where present):
+
+| File | SHA256 |
+| --- | --- |
+| wow-internal.log | `cf698079980eb0d24abe479bff5ce912d6440e0e3078b0b1113a8d6524bf6e74` |
+| wow-internal.lifecycle.log | `3161b9d3c5c902d40966f398921a65fd3b4d9b09499faec02552d5ae39bbc240` |
+| vendor-extract.txt | `9b681db0509fe90456929d3a3bd4ef705bd801ff5c58919500055e614e1018ae` |
+| runtime-audit.json (regenerated) | `215cf9e26ca33888adc884e8c07d1714fcc093d55d00d1dd10510436464370ec` |
+
+The regenerated summary reports two vendor starts, one retry, zero recovered
+waits, zero terminal vendor failures, one AFK threshold crossing and zero
+verified AFK actions. World gaps, confirmed disconnects, reconnect attempts
+and reconnect successes are all zero. `runtimeQualified=false` and
+`disconnectCause=unproven` remain unchanged. This tool does not qualify the
+automatic episode: zero terminal failures does not erase candidate failure,
+and its vendor-trip list is not a completed-episode count. Captures are locally
+Git-excluded; preserve them alongside this committed audit.
+
+### Runtime chronology and source interpretation
+
+| Raw lines | Observation and meaning |
+| --- | --- |
+| 10593–10793 | Food episode starts at tick 509, attempt 1, cap 480 ticks. Entry 7952 is selected at tick 516 with route cost 105.553. Selection probes report zero movement commands. |
+| 11133–11647 | Five interactions fail to open 7952's MerchantFrame. One candidate failure leads to 3933 at episode age 147, cost 86.918. The episode/attempt is retained across the alternate. |
+| 11955–12035 | 3933's MerchantFrame is verified. Food purchase stops at the cash-reserve check (`money=19 price=4000`); zero purchases, `unmet=yes`, zero observed sales and 22 free slots. Merchant opening is not successful restocking. |
+| 12497–12521 | Return intent 13 arrives at tick 804, only 295 ticks after start. Vendor reaches Done; Grind resumes with `maintenanceUnmet=yes`. No `VENDOR EPISODE state=completed` occurs anywhere in the capture. |
+| 71836–71888 | At tick 3204, retained attempt 1 expires with episode age 2695, vendor Idle, candidatePenalized=no. Wait entry logs route cancellation/hold and retryAtTick=3204. Tick 3205 retires expired PostKillDelay without acquisition. One retry begins at tick 3212 (episode attempt 2, wait retry 1). |
+| 72044–72364 | Retry selects the already verified 3933, cost 302.314. Intent 31 runs from tick 3218 to 3270 (52 ticks); release is owner_released, not arrival. Direct aggressor preempts into the maintenance wait and defense. No new episode-start record is emitted. |
+| 73508–74770 | Food is freshly observed as 1, free bags 19; food remains below the requested-service threshold 5. At tick 3305 PostKillDelay is retired again. Repeated WorldState samples remain at (-920.4258,-4747.0195,20.7453), with no further vendor/grind movement intent. The wait retains ownership despite free bags. |
+| 74619–74809 | Last explicit session tick is 3600; attempt 2's deadline is 3692 and its expiry is not observed. User stop follows. No third attempt, terminal MaintenanceBlocked, two-read service-qualified release, or completed episode is captured. |
+
+The late first expiry is explained by the current scheduler, not evidence of
+a vendor route running for 2695 ticks. `VendorController::RunMaintenanceStep`
+marks the unaffordable food pass unmet. `GrindModeController::Update`'s Done
+branch deliberately resumes ordinary Grind and sets `maintenanceSuppressedUntil_`
+to 804 + 2400 = 3204. It retains the episode because service proof failed.
+The subsequent maintenance-start gate calls idempotent Begin, detects expiry,
+and enters the wait. `EnterVendorEpisodeWait` preserves the already elapsed
+cooldown (`max(tick, previousRetryAt)`); therefore retry at the next scheduled
+bag read, 3212, does not skip a required new cooldown. Expiry in Idle correctly
+does not penalize a merchant. The 480-tick cap bounds an active attempt at
+eligible ownership updates, not the full wall-clock duration including Grind
+backoff, defense and waiting. No change to that documented contract is justified
+by this trace.
+
+After retry preemption, the existing wait deadline is 3270 + 480 = 3750.
+The service-proof latch survives retry/Reset, so free bags with only one food
+cannot release it. The capture does not show the next attempt expiry or retry
+deadline being reached. Treat the stopped wait as observed behavior, not an
+unbounded stall or proof that all retry budgets terminate correctly.
+
+### Qualification boundaries and next evidence
+
+Observed: bounded candidate failover, short return navigation, retained episode
+through one cooldown and one combat preemption, wait entry, measured stopped
+samples, and expired post-kill handoff. Still unqualified: cancellation of an
+actively navigating/planning attempt at its deadline, all retry attempts through
+terminal MaintenanceBlocked, fresh requested-service satisfaction plus two
+scheduled bag observations releasing an exhausted wait, and a complete verified
+restock/episode-completion/Grind-resume sequence.
+
+AFK remains separate. Protect mode is recorded at line 134, but line 39153
+observes `active=no clientActive=yes`; line 39157 crosses 300000 ms under
+`native_combat_flag`. This is not authoritative server AFK=true. Later stopped
+wait samples reach Due/Overdue (74299/74717), with no confirmed input delivery.
+Clock changes alone cannot be attributed to the bot. Preserve native movement,
+combat, recovery, UI and unknown-evidence guards and the 240000/270000/300000-ms
+thresholds. Investigating absent delivery requires its own source/runtime action
+chain; no AFK PASS is inferred from a safe-looking workload or vendor hold.
+
+Living-water avoidance remains enabled; no emergency-egress qualification is
+established. **WATER EMERGENCY EGRESS — RUNTIME PENDING.** A healthy session
+without world gaps cannot qualify reconnect. **SOURCE GAP — RECONNECT NOT
+IMPLEMENTED.** Prior separately qualified lifecycle observations are unchanged.
+
+For a subsequent supervised natural maintenance run, retain raw and lifecycle
+logs through a verified terminal outcome and normal stop, plus the deployed
+DLL hash/revision and regenerated audit. Observe either verified requested
+service completion and Grind resume, or active-route expiry/cancellation/hold,
+measured stopped state, cooldown-qualified retries (at most two extras) and
+terminal MaintenanceBlocked. If service naturally becomes satisfied during a
+wait, require two distinct fresh bag reads before release. Preserve combat,
+world/death/water priority and assess AFK delivery independently using confirmed
+native input-clock advancement. Do not manufacture failures or relax boundaries
+to obtain a PASS. No new WoW run was performed during this qualification.
+
+### Static/build validation (separate from runtime qualification)
+
+`PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --jobs 4` passed:
+108 C++ tests, the registered Python/SQL/Lua suites, `cmake --build build`
+(up to date), and `git diff --check`. Local report:
+`/tmp/wow-validation-eqe71496/results.json`; console log:
+`/tmp/vendor-runtime-2026-10-10-validation.log`. The evidence cross-check also
+verified the episode event counts and 17 identical stopped-position samples.
+These checks do not upgrade the runtime verdict. Only audit/handoff documents
+are included in this checkpoint; no new test was needed for a documentation-only
+qualification result.
+
 ## Automatic vendor episode / AFK incident (2026-10-09)
 
 Starting branch `codex/vendor-afk-long-navigation`, clean checkpoint
